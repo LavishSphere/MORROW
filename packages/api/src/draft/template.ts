@@ -3,9 +3,13 @@ import type { DraftProposal, ProposalFacts } from "../../../../shared/types.ts";
 /** Deterministic draft when Gemini is unavailable or rejects validation. */
 export function buildTemplateDraft(facts: ProposalFacts): DraftProposal {
   const before =
-    facts.beforeMeters == null ? "an inaccessible detour" : `${facts.beforeMeters} m`;
+    facts.beforeMeters == null || !Number.isFinite(facts.beforeMeters)
+      ? "an inaccessible detour"
+      : `${Math.round(facts.beforeMeters).toLocaleString("en-US")} m`;
   const after =
-    facts.afterMeters == null ? "a shorter accessible path" : `${facts.afterMeters} m`;
+    facts.afterMeters == null || !Number.isFinite(facts.afterMeters)
+      ? "a shorter accessible path"
+      : `${Math.round(facts.afterMeters).toLocaleString("en-US")} m`;
   const evidenceLabel = facts.evidenceStatus.replaceAll("_", " ");
 
   return {
