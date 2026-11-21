@@ -69,3 +69,23 @@ The seeded Wellesley barrier is **`illustrative`** — a demo simulation, not a 
 ## Seat
 
 Accessible Interface — Caroline Hu
+
+## CI
+
+Run the same app gates that pull requests run:
+
+```bash
+npm ci
+npm run ci
+```
+
+That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audits npm advisories at high severity and above.
+
+| Workflow | When it runs | What it does |
+| --- | --- | --- |
+| [CI](.github/workflows/ci.yml) | Pull requests and pushes to `main` | App gates, workflow lint, secret scan, offline link check, and a high-severity npm audit |
+| [External links](.github/workflows/links.yml) | Monday, or a manual run | Live check of links in the README, docs, and site |
+
+Model and database credentials are not available to these workflows.
+
+Until `apps/web` exists, the build writes the holding page in `site/` to `dist/`. When that app is added, its build should write `apps/web/dist/index.html`. The pipeline copies that directory to `dist/`.
