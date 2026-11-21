@@ -76,8 +76,11 @@ async function fetchWays(place: UsPlace): Promise<OsmWay[]> {
  * Geocode a US place and pull the surrounding streets and buildings
  * from OpenStreetMap. This is a basemap, not a barrier list.
  */
-export async function loadUsNeighborhood(query: string): Promise<LoadedNeighborhood> {
-  const place = await geocodeUsPlace(query)
+export async function loadUsNeighborhood(
+  query: string,
+  magicKey?: string,
+): Promise<LoadedNeighborhood> {
+  const place = await geocodeUsPlace(query, magicKey)
   if (!place) {
     throw new Error('No US place matched that name.')
   }

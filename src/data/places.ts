@@ -25,13 +25,69 @@ export function placeFromEsri(body: unknown): UsPlace | null {
   return { label: address.trim(), lng, lat }
 }
 
+const SUGGEST =
+  'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest'
+
+export type CitySuggestion = {
+  /** e.g. "Greenville, SC, USA" */
+  label: string
+  /** Esri key that pins the exact match when geocoding the pick. */
+  magicKey: string
+}
+
+/** Pull usable city suggestions out of an Esri suggest body. */
+export function suggestionsFromEsri(body: unknown): CitySuggestion[] {
+  if (!body || typeof body !== 'object') return []
+  const list = (body as { suggestions?: unknown }).suggestions
+  if (!Array.isArray(list)) return []
+  const out: CitySuggestion[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const { text, magicKey, isCollection } = item as {
+      text?: unknown
+      magicKey?: unknown
+      isCollection?: unknown
+    }
+    if (isCollection === true) continue
+    if (typeof text !== 'string' || !text.trim()) continue
+    if (typeof magicKey !== 'string' || !magicKey) continue
+    out.push({ label: text.trim(), magicKey })
+  }
+  return out
+}
+
+/** US cities that match what has been typed so far. */
+export async function suggestUsCities(
+  query: string,
+  signal?: AbortSignal,
+): Promise<CitySuggestion[]> {
+  const text = query.trim()
+  if (text.length < 2) return []
+  const url = new URL(SUGGEST)
+  url.searchParams.set('f', 'json')
+  url.searchParams.set('text', text)
+  url.searchParams.set('countryCode', 'USA')
+  url.searchParams.set('category', 'City')
+  url.searchParams.set('maxSuggestions', '10')
+  const res = await fetch(url, {
+    headers: { accept: 'application/json' },
+    signal,
+  })
+  if (!res.ok) return []
+  return suggestionsFromEsri(await res.json())
+}
+
 /** Resolve a typed US place name to a point. Does not invent a match. */
-export async function geocodeUsPlace(query: string): Promise<UsPlace | null> {
+export async function geocodeUsPlace(
+  query: string,
+  magicKey?: string,
+): Promise<UsPlace | null> {
   const text = query.trim()
   if (text.length < 2) return null
   const url = new URL(GEOCODE)
   url.searchParams.set('f', 'json')
   url.searchParams.set('singleLine', text)
+  if (magicKey) url.searchParams.set('magicKey', magicKey)
   url.searchParams.set('sourceCountry', 'USA')
   url.searchParams.set('maxLocations', '1')
   const res = await fetch(url, {
