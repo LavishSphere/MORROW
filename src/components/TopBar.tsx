@@ -1,54 +1,25 @@
+import { LogoMark } from '../brand/LogoMark'
 import { PlaceSearch } from './PlaceSearch'
 import type { LoadedNeighborhood } from '../data/overpass'
-import type { SurfaceView } from '../types'
 
 type Props = {
   reducedMotion: boolean
   onReducedMotionChange: (value: boolean) => void
-  surfaceView: SurfaceView
-  onSurfaceViewChange: (view: SurfaceView) => void
   onPlace: (neighborhood: LoadedNeighborhood) => void
 }
 
-export function TopBar({
-  reducedMotion,
-  onReducedMotionChange,
-  surfaceView,
-  onSurfaceViewChange,
-  onPlace,
-}: Props) {
+export function TopBar({ reducedMotion, onReducedMotionChange, onPlace }: Props) {
   return (
     <header className="top-bar">
       <div className="top-bar__brand-block">
+        {/* Decorative: the wordmark beside it already says MORROW. */}
+        <LogoMark decorative className="top-bar__logo" />
         <p className="top-bar__wordmark">MORROW</p>
         <p className="top-bar__promise">Make tomorrow possible.</p>
       </div>
 
       <div className="top-bar__controls">
         <PlaceSearch onLoad={onPlace} />
-
-        <div
-          className="view-toggle"
-          role="group"
-          aria-label="Neighborhood view"
-        >
-          <button
-            type="button"
-            className={surfaceView === 'canvas' ? 'is-active' : undefined}
-            aria-pressed={surfaceView === 'canvas'}
-            onClick={() => onSurfaceViewChange('canvas')}
-          >
-            Canvas
-          </button>
-          <button
-            type="button"
-            className={surfaceView === 'list' ? 'is-active' : undefined}
-            aria-pressed={surfaceView === 'list'}
-            onClick={() => onSurfaceViewChange('list')}
-          >
-            List (2D)
-          </button>
-        </div>
 
         <label className="motion-toggle">
           <input

@@ -25,5 +25,8 @@ test("the unused holographic city still builds from glass blocks", async () => {
   assert.match(city, /crystal/);
   assert.equal(city.includes("DetailedBuilding"), false);
   assert.equal(canvas.includes("OpeningSequence"), false);
-  assert.match(sky, /0.62, 0.90, 0.95/);
+  // Realistic daylight sky: blue zenith, sun glow, drifting clouds.
+  assert.match(sky, /vec3 zenith/);
+  assert.match(sky, /fbm\(/);
+  assert.match(sky, /uSun/);
 });

@@ -11,7 +11,8 @@ test("README runbook says how to open the demo and what fallbacks do", async () 
   assert.equal(readme.includes("custom domain"), true);
   assert.equal(readme.includes("npm run dev"), true);
   assert.equal(readme.includes("What the fallbacks do"), true);
-  assert.equal(readme.includes("List (2D)"), true);
+  // The canvas is the only view now; the README must not promise a list.
+  assert.equal(readme.includes("List (2D)"), false);
   assert.equal(readme.includes("compareScenario"), true);
   assert.equal(readme.includes("wellesley-demo-01"), true);
   assert.equal(readme.includes("wellesley-intervention-ramp-01"), true);
