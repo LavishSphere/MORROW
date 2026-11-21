@@ -85,6 +85,7 @@ That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audit
 | --- | --- | --- |
 | [CI](.github/workflows/ci.yml) | Pull requests and pushes to `main` | App gates, workflow lint, secret scan, offline link check, and a high-severity npm audit |
 | [Deploy](.github/workflows/deploy.yml) | Pushes to `main`, or a manual run | Re-runs the app gates and publishes `dist/` to GitHub Pages |
+| [CodeQL](.github/workflows/codeql.yml) | Pull requests, pushes to `main`, and Monday | `security-extended` analysis for JavaScript and TypeScript |
 | [External links](.github/workflows/links.yml) | Monday, or a manual run | Live check of links in the README, docs, and site |
 
 GitHub Pages is the static demo host. A manual deploy can publish another git ref. Model and database credentials are not available to these workflows.

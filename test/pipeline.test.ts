@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { parse } from "yaml";
 
 const workflowDir = ".github/workflows";
-const expectedWorkflows = ["ci.yml", "deploy.yml", "links.yml"];
+const expectedWorkflows = ["ci.yml", "codeql.yml", "deploy.yml", "links.yml"];
 
 const forbidden = [
   "pull_request_target",
