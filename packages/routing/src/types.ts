@@ -42,3 +42,21 @@ export type RoutePath = {
    */
   geometry: Array<[number, number]>;
 };
+
+/** One edge edit from an intervention. Unknown edge ids are rejected. */
+export type GraphChange = {
+  edgeId: string;
+  accessible: boolean;
+  weight?: number;
+};
+
+export type RouteComparison = {
+  before: RoutePath;
+  after: RoutePath;
+  beforeMeters: number | null;
+  afterMeters: number | null;
+  /** afterMeters - beforeMeters when both trips are reachable. */
+  deltaMeters: number | null;
+  becameReachable: boolean;
+  assumptions: string[];
+};
