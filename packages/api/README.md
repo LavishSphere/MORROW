@@ -60,4 +60,6 @@ curl -s -X POST "http://127.0.0.1:8787/api/proposals/generate" \
 
 ## Frontend
 
-Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin (see [`docs/deploy-api-vultr.md`](../../docs/deploy-api-vultr.md)). When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+
+Set `MORROW_HOSTED_ON=vultr` on the Vultr container so `GET /api/health` reports `"vultr": true`. Do not claim Vultr until that public health check succeeds.

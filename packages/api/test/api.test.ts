@@ -37,12 +37,25 @@ async function json(
 }
 
 test("GET /api/health reports template-only without Gemini key", async () => {
+  delete process.env.MORROW_HOSTED_ON;
   const { status, body } = await json("/api/health");
   assert.equal(status, 200);
   const record = body as Record<string, unknown>;
   assert.equal(record.ok, true);
   assert.equal(record.geminiConfigured, false);
   assert.equal(record.tigerData, false);
+  assert.equal(record.vultr, false);
+});
+
+test("GET /api/health reports vultr when MORROW_HOSTED_ON=vultr", async () => {
+  process.env.MORROW_HOSTED_ON = "vultr";
+  try {
+    const { status, body } = await json("/api/health");
+    assert.equal(status, 200);
+    assert.equal((body as { vultr: boolean }).vultr, true);
+  } finally {
+    delete process.env.MORROW_HOSTED_ON;
+  }
 });
 
 test("GET /api/barriers?bbox= returns bundled Wellesley barrier", async () => {

@@ -17,7 +17,8 @@ if (isMain) {
   console.log(
     `[@morrow/api] Gemini: ${geminiConfigured() ? `configured (${geminiModel()})` : "template-only (no GEMINI_API_KEY)"}`,
   );
+  const hosted = process.env.MORROW_HOSTED_ON?.trim() || "local";
   console.log(
-    "[@morrow/api] Tiger Data / Mastra / Vultr: not claimed in this build (see WHA-9).",
+    `[@morrow/api] host=${hosted} | Tiger Data / Mastra: see WHA-9 PRs. Vultr runbook: docs/deploy-api-vultr.md`,
   );
 }

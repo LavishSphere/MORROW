@@ -70,6 +70,6 @@ export function handleHealth(
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
     tigerData: false,
     mastra: false,
-    vultr: false,
+    vultr: process.env.MORROW_HOSTED_ON?.trim().toLowerCase() === "vultr",
   });
 }
