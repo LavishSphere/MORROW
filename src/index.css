@@ -1290,9 +1290,14 @@ code {
   z-index: 8;
 }
 
+/* Top bar: a single row. Brand on the left, every control the same
+   height and centered on one line on the right. */
 .app-shell--city .top-bar {
+  --bar-control-h: 2.5rem;
   top: 0;
+  flex-wrap: nowrap;
   align-items: center;
+  gap: 1rem;
   padding: 0.85rem 1.15rem 2.2rem;
   background: linear-gradient(180deg, rgba(8, 14, 12, 0.72) 0%, rgba(8, 14, 12, 0) 100%);
   pointer-events: none;
@@ -1303,6 +1308,20 @@ code {
   pointer-events: auto;
 }
 
+.app-shell--city .top-bar__brand-block {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.app-shell--city .top-bar__controls {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .app-shell--city .top-bar__wordmark {
   color: #f7faf8;
   font-size: 1.05rem;
@@ -1310,16 +1329,45 @@ code {
 }
 
 .app-shell--city .top-bar__promise {
+  margin: 0;
   color: rgba(247, 250, 248, 0.72);
   font-size: 0.78rem;
 }
 
 .app-shell--city .motion-toggle,
 .app-shell--city .view-toggle {
+  box-sizing: border-box;
+  height: var(--bar-control-h);
+  align-items: center;
+  white-space: nowrap;
   background: rgba(12, 20, 17, 0.55);
   color: #f7faf8;
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow: none;
+}
+
+.app-shell--city .motion-toggle {
+  padding: 0 0.8rem;
+}
+
+.app-shell--city .view-toggle button {
+  height: 100%;
+  padding: 0 0.75rem;
+}
+
+/* Narrower screens: drop the tagline first, then let the row wrap
+   rather than overflow off the edge. */
+@media (max-width: 1100px) {
+  .app-shell--city .top-bar__promise {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell--city .top-bar,
+  .app-shell--city .top-bar__controls {
+    flex-wrap: wrap;
+  }
 }
 
 .app-shell--city .view-toggle button {

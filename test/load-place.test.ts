@@ -2,7 +2,27 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { waysFromOverpass } from "../src/data/overpass.ts";
-import { placeFromEsri } from "../src/data/places.ts";
+import { placeFromEsri, suggestionsFromEsri } from "../src/data/places.ts";
+
+test("typed text lists every matching US city the geocoder suggests", () => {
+  const list = suggestionsFromEsri({
+    suggestions: [
+      { text: "Greenville, SC, USA", magicKey: "a", isCollection: false },
+      { text: "Greenville, NC, USA", magicKey: "b", isCollection: false },
+      { text: "Green Bay, WI, USA", magicKey: "c", isCollection: false },
+      { text: "Coffee shops", magicKey: "d", isCollection: true },
+      { text: "", magicKey: "e" },
+      { text: "No key, USA" },
+    ],
+  });
+  assert.deepEqual(
+    list.map((s) => s.label),
+    ["Greenville, SC, USA", "Greenville, NC, USA", "Green Bay, WI, USA"],
+  );
+  assert.equal(list[0]?.magicKey, "a");
+  assert.deepEqual(suggestionsFromEsri({}), []);
+  assert.deepEqual(suggestionsFromEsri(null), []);
+});
 
 test("a US place comes from the geocoder match", () => {
   const place = placeFromEsri({
