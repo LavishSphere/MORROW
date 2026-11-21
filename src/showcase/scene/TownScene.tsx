@@ -3,7 +3,7 @@ import basemap from "../../../data/wellesley/basemap.geojson";
 import { footprintSource } from "../layout";
 import { CameraRig } from "./CameraRig";
 import { City } from "./City";
-import { Sky } from "./Space";
+import { HORIZON_HAZE, Sky } from "./Space";
 import { Street } from "./Street";
 
 type TownSceneProps = {
@@ -35,8 +35,9 @@ export function TownScene({
 
   return (
     <group name={`footprints-${source}`}>
-      <color attach="background" args={["#b7ebf4"]} />
-      <fog attach="fog" args={["#8fd4e2", 120, 240]} />
+      {/* Background and fog match the sky's horizon haze. */}
+      <color attach="background" args={[HORIZON_HAZE]} />
+      <fog attach="fog" args={[HORIZON_HAZE, 120, 240]} />
       <hemisphereLight args={["#f2ffff", "#0a3842", 1.15]} />
       <directionalLight
         position={[40, 52, 18]}
@@ -53,7 +54,7 @@ export function TownScene({
         shadow-bias={-0.0004}
       />
       <directionalLight position={[-24, 18, 30]} intensity={0.58} color="#7ee0ea" />
-      <Sky />
+      <Sky reducedMotion={reducedMotion} />
       <CameraRig
         reducedMotion={reducedMotion}
         descendSignal={descendSignal}

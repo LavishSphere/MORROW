@@ -653,36 +653,9 @@ code {
   left: 9rem;
 }
 
-.view-toggle {
-  display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  backdrop-filter: blur(8px);
-}
 
-.view-toggle button {
-  border: 0;
-  background: transparent;
-  color: var(--ink-soft);
-  font-weight: 600;
-  font-size: 0.85rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 8px;
-  cursor: pointer;
-}
 
-.view-toggle button.is-active {
-  background: var(--moss);
-  color: #f4faf7;
-}
 
-.view-toggle button:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
 
 .canvas-slot__route {
   margin: 1rem 0 0;
@@ -702,91 +675,17 @@ code {
 }
 
 /* —— List / 2D fallback —— */
-.list-fallback {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: calc(var(--radius) + 4px);
-  box-shadow: var(--shadow);
-  padding: 1.1rem 1.2rem 1.3rem;
-  min-height: 420px;
-  backdrop-filter: blur(10px);
-  overflow: auto;
-}
 
-.list-fallback__title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-}
 
-.list-fallback__lead {
-  margin: 0.35rem 0 1rem;
-  color: var(--ink-soft);
-  font-size: 0.92rem;
-  line-height: 1.4;
-}
 
-.list-fallback__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
 
-.list-fallback__table th,
-.list-fallback__table td {
-  text-align: left;
-  padding: 0.65rem 0.5rem;
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
 
-.list-fallback__table th {
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink);
-  font-weight: 700;
-}
 
-.list-fallback__table tr.is-selected {
-  background: var(--moss-soft);
-}
 
-.list-fallback__link {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--moss-deep);
-  font-weight: 700;
-  text-decoration: underline;
-  cursor: pointer;
-  text-align: left;
-}
 
-.list-fallback__link:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
 
-.list-fallback__compare {
-  margin-top: 1rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--line);
-}
 
-.list-fallback__compare h3 {
-  margin: 0 0 0.35rem;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
 
-.list-fallback__compare p {
-  margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
 
 /* —— Proposal editor —— */
 .btn-primary,
@@ -994,7 +893,6 @@ code {
   #mode-toolbar,
   .skip-link,
   .canvas-slot,
-  .list-fallback,
   .context-panel__header,
   .context-panel__lead,
   .proposal-editor__status,
@@ -1322,6 +1220,17 @@ code {
   gap: 0.6rem;
 }
 
+.app-shell--city .top-bar__logo {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-self: center;
+}
+
+.app-shell--city .top-bar__brand-block {
+  align-items: center;
+}
+
 .app-shell--city .top-bar__wordmark {
   color: #f7faf8;
   font-size: 1.05rem;
@@ -1335,25 +1244,11 @@ code {
 }
 
 .app-shell--city .motion-toggle,
-.app-shell--city .view-toggle {
-  box-sizing: border-box;
-  height: var(--bar-control-h);
-  align-items: center;
-  white-space: nowrap;
-  background: rgba(12, 20, 17, 0.55);
-  color: #f7faf8;
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: none;
-}
 
 .app-shell--city .motion-toggle {
   padding: 0 0.8rem;
 }
 
-.app-shell--city .view-toggle button {
-  height: 100%;
-  padding: 0 0.75rem;
-}
 
 /* Narrower screens: drop the tagline first, then let the row wrap
    rather than overflow off the edge. */
@@ -1370,14 +1265,7 @@ code {
   }
 }
 
-.app-shell--city .view-toggle button {
-  color: rgba(247, 250, 248, 0.72);
-}
 
-.app-shell--city .view-toggle button.is-active {
-  background: #f7faf8;
-  color: #14211c;
-}
 
 .app-shell--city .app-shell__main {
   position: absolute;

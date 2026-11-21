@@ -34,7 +34,7 @@ npm run build && npm run preview
 1. Open the public URL. The MORROW wordmark stays in the top bar. **Explore | Improve | Compare | Propose** stays on the bottom bar. Arrow keys move between modes.
 2. There is no Barriers sidebar. The Wellesley scene fills the width to the right edge.
 
-The bundled intervention is `wellesley-intervention-ramp-01`. Compare math remains `@morrow/routing.compareScenario` on `wellesley-demo-01`. Proposal generation remains the API client. List (2D) is the top-bar alternate to the canvas.
+The bundled intervention is `wellesley-intervention-ramp-01`. Compare math remains `@morrow/routing.compareScenario` on `wellesley-demo-01`. Proposal generation remains the API client.
 
 ## What the fallbacks do
 
@@ -83,7 +83,7 @@ Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shap
 
 ## Accessible Interface
 
-- Top bar keeps the MORROW wordmark, the Wellesley selector, Canvas / List (2D), and reduced motion.
+- Top bar keeps the MORROW logo and wordmark, the US city search, and reduced motion. The canvas is the only view.
 - Bottom bar is **Explore | Improve | Compare | Propose**.
 - No Barriers sidebar. The scene fills the remaining width to the right edge.
 - Compare via `@morrow/routing.compareScenario` (`src/data/compare.ts`) stays in the data layer.

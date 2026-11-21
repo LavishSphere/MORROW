@@ -4,7 +4,9 @@ import { test } from 'node:test'
 
 test('each mode has its own page', async () => {
   const app = await readFile('src/App.tsx', 'utf8')
-  assert.match(app, /const showCanvas = mode !== 'explore' \|\| surfaceView === 'canvas'/)
+  // Canvas only: no Canvas / List toggle.
+  assert.equal(app.includes('ListFallback'), false)
+  assert.equal(app.includes('surfaceView'), false)
   // One CanvasSlot, so switching modes never remounts the city.
   assert.equal(app.match(/<CanvasSlot/g)?.length, 1)
   assert.match(app, /<CanvasSlot/)

@@ -2,7 +2,6 @@ export type EvidenceStatus = 'verified' | 'community_reported' | 'illustrative'
 export type BarrierType = 'missing_ramp' | 'unsafe_crossing' | 'blocked_path'
 export type InterventionType = 'install_ramp' | 'improve_crossing' | 'connect_path'
 export type AppMode = 'explore' | 'improve' | 'compare' | 'propose'
-export type SurfaceView = 'canvas' | 'list'
 
 export type Barrier = {
   id: string

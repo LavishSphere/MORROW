@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
 import { ImprovePage } from './components/ImprovePage'
-import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { useChromeInsets } from './components/useChromeInsets'
-import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
+import { fetchBarriers, getDemoScenario } from './data/api'
 import type { LoadedNeighborhood } from './data/overpass'
 import { getBarrier, interventionsForBarrier } from './data/fixtures'
-import type { AppMode, Barrier, SurfaceView } from './types'
+import type { AppMode, Barrier } from './types'
 
 export default function App() {
   const scenario = getDemoScenario()
@@ -26,11 +25,8 @@ export default function App() {
     if (next !== 'explore') setPanelMode(next)
   }
   const panelOpen = mode !== 'explore'
-  const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
-  // Explore can swap the canvas for the 2D list; other modes always show it.
-  const showCanvas = mode !== 'explore' || surfaceView === 'canvas'
   const [barriers, setBarriers] = useState<Barrier[]>([])
-  const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
+  const [selectedBarrierId] = useState<string | null>(
     scenario.barrierId,
   )
   const [selectedInterventionId, setSelectedInterventionId] = useState<
@@ -60,12 +56,6 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  const compare = selectedInterventionId
-    ? tryCompareByIds({
-        scenarioId: scenario.id,
-        interventionId: selectedInterventionId,
-      })
-    : null
   const selectedBarrier =
     barriers.find((barrier) => barrier.id === selectedBarrierId) ??
     (selectedBarrierId ? (getBarrier(selectedBarrierId) ?? null) : null)
@@ -85,8 +75,6 @@ export default function App() {
       <TopBar
         reducedMotion={reducedMotion}
         onReducedMotionChange={setReducedMotion}
-        surfaceView={surfaceView}
-        onSurfaceViewChange={setSurfaceView}
         onPlace={setNeighborhood}
       />
 
@@ -98,25 +86,11 @@ export default function App() {
       >
         {/* One canvas for every mode, so switching modes keeps the city
             mounted instead of rebuilding it behind the loading cover. */}
-        {showCanvas && (
-          <CanvasSlot
-            mode={mode}
-            reducedMotion={reducedMotion}
-            neighborhood={neighborhood}
-          />
-        )}
-        {mode === 'explore' && surfaceView === 'list' && (
-          <ListFallback
-            barriers={barriers}
-            selectedBarrierId={selectedBarrierId}
-            compare={compare}
-            onSelectBarrier={(id) => {
-              setSelectedBarrierId(id)
-              const opts = interventionsForBarrier(id)
-              setSelectedInterventionId(opts[0]?.id ?? null)
-            }}
-          />
-        )}
+        <CanvasSlot
+          mode={mode}
+          reducedMotion={reducedMotion}
+          neighborhood={neighborhood}
+        />
         <OverlayPanel open={panelOpen} contentKey={panelMode}>
           {panelMode === 'improve' && (
             <ImprovePage
