@@ -63,7 +63,7 @@ export default function App() {
     : []
 
   return (
-    <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
+    <div className={`app-shell app-shell--city${reducedMotion ? ' is-reduced-motion' : ''}`}>
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes
       </a>
@@ -85,6 +85,9 @@ export default function App() {
         aria-labelledby={`mode-tab-${mode}`}
       >
         {mode === 'explore' && surfaceView === 'canvas' && (
+          <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
+        )}
+        {mode !== 'explore' && (
           <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
         )}
         {mode === 'explore' && surfaceView === 'list' && (
