@@ -1,0 +1,15 @@
+{
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", "dist/**"],
+  // The project brief keeps its own heading and table style. These rules stay off so CI does not rewrite it.
+  "config": {
+    "MD013": false,
+    "MD024": { "siblings_only": true },
+    "MD033": false,
+    "MD001": false,
+    "MD022": false,
+    "MD026": false,
+    "MD036": false,
+    "MD060": false
+  }
+}
