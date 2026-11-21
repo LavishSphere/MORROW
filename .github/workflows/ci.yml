@@ -58,7 +58,8 @@ jobs:
 
   dependency-review:
     name: dependency review
-    if: github.event_name == 'pull_request'
+    # The dependency review API rejects bases other than the default branch.
+    if: github.event_name == 'pull_request' && github.base_ref == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
