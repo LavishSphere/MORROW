@@ -57,8 +57,9 @@ test("deploy publishes dist to GitHub Pages", async () => {
   const environment = asRecord(deploy["environment"], "pages environment");
   assert.equal(environment["name"], "github-pages");
   assert.match(text, /path:\s*dist/);
-  assert.match(text, /VITE_BASE=/);
+  assert.match(text, /VITE_BASE=\.\//);
   assert.match(text, /enablement:\s*true/);
+  assert.match(text, /\/MORROW\/assets\//);
 });
 
 test("package scripts expose the local CI entrypoint", async () => {
