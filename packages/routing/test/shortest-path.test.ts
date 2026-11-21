@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { RoutingError } from "../src/errors.ts";
+import { haversineMeters } from "../src/from-geojson.ts";
 import { shortestPath } from "../src/shortest-path.ts";
 import type { PedestrianGraph } from "../src/types.ts";
 
@@ -239,4 +240,105 @@ test("rejects a broken graph and unknown stops", () => {
       ),
     /Unknown destination/,
   );
+});
+
+test("A* with coordinates still prefers the cheaper geographic corridor", () => {
+  const start: [number, number] = [0, 0];
+  const east: [number, number] = [0.002, 0];
+  const dest: [number, number] = [0.004, 0];
+  const north: [number, number] = [0, 0.02];
+  const graph: PedestrianGraph = {
+    nodes: [
+      { id: "start", coordinates: start },
+      { id: "east", coordinates: east },
+      { id: "dest", coordinates: dest },
+      { id: "north", coordinates: north },
+    ],
+    edges: [
+      {
+        id: "start-east",
+        from: "start",
+        to: "east",
+        lengthMeters: haversineMeters(start, east),
+        accessible: true,
+      },
+      {
+        id: "east-dest",
+        from: "east",
+        to: "dest",
+        lengthMeters: haversineMeters(east, dest),
+        accessible: true,
+      },
+      {
+        id: "start-north",
+        from: "start",
+        to: "north",
+        lengthMeters: haversineMeters(start, north),
+        accessible: true,
+      },
+      {
+        id: "north-dest",
+        from: "north",
+        to: "dest",
+        lengthMeters: haversineMeters(north, dest),
+        accessible: true,
+      },
+    ],
+  };
+  const path = shortestPath(graph, {
+    originId: "start",
+    destinationId: "dest",
+    requireAccessible: true,
+  });
+  assert.deepEqual(path.nodeIds, ["start", "east", "dest"]);
+  assert.equal(
+    path.distanceMeters,
+    haversineMeters(start, east) + haversineMeters(east, dest),
+  );
+});
+
+test("drops the heuristic when a weight is cheaper than straight-line distance", () => {
+  const start: [number, number] = [0, 0];
+  const dest: [number, number] = [0.001, 0];
+  const far: [number, number] = [1, 0];
+  const graph: PedestrianGraph = {
+    nodes: [
+      { id: "s", coordinates: start },
+      { id: "t", coordinates: dest },
+      { id: "b", coordinates: far },
+    ],
+    edges: [
+      {
+        id: "direct-expensive",
+        from: "s",
+        to: "t",
+        lengthMeters: 1000,
+        weight: 1000,
+        accessible: true,
+      },
+      {
+        id: "s-far",
+        from: "s",
+        to: "b",
+        lengthMeters: 1,
+        weight: 1,
+        accessible: true,
+      },
+      {
+        id: "far-t",
+        from: "b",
+        to: "t",
+        lengthMeters: 1,
+        weight: 1,
+        accessible: true,
+      },
+    ],
+  };
+  const path = shortestPath(graph, {
+    originId: "s",
+    destinationId: "t",
+    requireAccessible: true,
+  });
+  assert.equal(path.distanceMeters, 2);
+  assert.deepEqual(path.nodeIds, ["s", "b", "t"]);
 });
