@@ -1,12 +1,6 @@
 import { MODELED_IMPACT_ASSUMPTIONS } from '@morrow/routing'
 import demoDataset from '../../data/wellesley/demo-dataset.json'
-import type { Barrier, Intervention, LocationOption, Scenario } from '../types'
-
-export const LOCATIONS: LocationOption[] = [
-  { id: 'wellesley', label: 'Wellesley, MA', featured: true, available: true },
-  { id: 'cambridge', label: 'Cambridge, MA', available: false },
-  { id: 'boston', label: 'Boston, MA', available: false },
-]
+import type { Barrier, Intervention, Scenario } from '../types'
 
 /** Align UI fixtures with data/wellesley/demo-dataset.json (Ashsmith + Sophia). */
 export const BARRIERS: Barrier[] = demoDataset.barriers.map((b) => ({

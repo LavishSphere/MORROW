@@ -1,6 +1,6 @@
 # Satellite town
 
-The canvas is a top-down satellite of the Wellesley showcase, not the low-poly street model.
+The opening canvas is the isometric holographic glass city. This page describes the satellite town that opens after a US city name is loaded.
 
 ## What this view owns
 

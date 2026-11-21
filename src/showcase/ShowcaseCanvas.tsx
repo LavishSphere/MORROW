@@ -3,6 +3,7 @@ import * as THREE from "three";
 import basemap from "../../data/wellesley/basemap.geojson";
 import { TownScene } from "./scene/TownScene";
 import type { ShowcaseCanvasProps } from "./types";
+import "./styles.css";
 
 export function ShowcaseCanvas({
   geoJson = basemap,

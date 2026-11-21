@@ -50,12 +50,25 @@ test("OpenStreetMap ways are streets and buildings, not barriers", () => {
   assert.equal(ways[1]?.kind, "building");
 });
 
-test("the canvas loads a typed place on the satellite scene", async () => {
+test("the top bar keeps the US city picker and drops the featured location menu", async () => {
+  const bar = await readFile("src/components/TopBar.tsx", "utf8");
+  const app = await readFile("src/App.tsx", "utf8");
+  assert.match(bar, /<PlaceSearch/);
+  assert.match(bar, /top-bar__lead/);
+  assert.equal(bar.includes("LocationSelector"), false);
+  assert.equal(app.includes("LocationSelector"), false);
+  assert.equal(app.includes("location-select"), false);
+});
+
+test("a typed US city opens the satellite loader after the glass city", async () => {
   const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
   const town = await readFile("src/satellite/town/SatelliteTown.tsx", "utf8");
   const query = await readFile("src/data/overpass.ts", "utf8");
-  assert.match(slot, /SatelliteTown/);
-  assert.equal(slot.includes("ShowcaseCanvas"), false);
+  const nullAt = slot.indexOf("neighborhood == null");
+  const glass = slot.indexOf("<ShowcaseCanvas");
+  const satellite = slot.indexOf("<SatelliteTown");
+  assert.ok(nullAt !== -1 && glass !== -1 && satellite !== -1);
+  assert.ok(nullAt < glass && glass < satellite);
   assert.match(query, /Not a barrier inventory/);
   assert.match(town, /No modeled route for this place/);
 });

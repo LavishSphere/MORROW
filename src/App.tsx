@@ -11,7 +11,6 @@ import type { LoadedNeighborhood } from './data/overpass'
 import {
   getBarrier,
   interventionsForBarrier,
-  LOCATIONS,
 } from './data/fixtures'
 import type { AppMode, Barrier, SurfaceView } from './types'
 
@@ -19,7 +18,6 @@ export default function App() {
   const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
   const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
-  const [locationId, setLocationId] = useState('wellesley')
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
     scenario.barrierId,
@@ -71,9 +69,6 @@ export default function App() {
       </a>
 
       <TopBar
-        locations={LOCATIONS}
-        selectedLocationId={locationId}
-        onLocationSelect={setLocationId}
         reducedMotion={reducedMotion}
         onReducedMotionChange={setReducedMotion}
         surfaceView={surfaceView}

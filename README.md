@@ -14,7 +14,7 @@ Public civic-planning demo. **No login. No judge account.**
 
 `https://lavishsphere.github.io/MORROW/` redirects there. Prefer the custom-domain link: the github.io URL currently 301s to HTTP.
 
-On screen: a top-down satellite of the Wellesley showcase. **See next problem** moves between places from the AI detection pass. Body text is white. The Gemini cost estimate stays in `src/satellite/stats`.
+On screen: an isometric holographic glass city. A typed US city opens the satellite loader, where **See next problem** moves between places from the AI detection pass. Body text on that satellite scene is white. The Gemini cost estimate stays in `src/satellite/stats`.
 
 Local fallback (same app, no login):
 
