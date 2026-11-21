@@ -2,8 +2,6 @@
 
 **Make tomorrow possible.**
 
-WHACK 2026 · Better Worlds (Social Impact)
-
 ## Run locally
 
 ```bash
@@ -11,20 +9,12 @@ npm install
 npm run dev
 ```
 
-Typically `http://localhost:5173`.
+## This PR — Propose + Export PDF
 
-## This PR — Compare
-
-Wires **Compare** to Sophia’s `@morrow/routing`:
-
-```ts
-import { compareIntervention } from '@morrow/routing'
-// see src/data/compare.ts — ids only from the client
-```
-
-Demo graph: `src/data/demoGraph.ts`. Do not vendor a second routing package.
-
-Propose / PDF / List(2D) land in follow-up PRs.
+- Editable template draft (Gemini labeled **unavailable**)
+- **Export PDF** via print styles — seven sections
+- Metrics and evidence badges render from the `facts` object (not invented client prose)
+- Generate stub accepts **ids only**
 
 ## Docs
 
