@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { ModeToolbar } from './components/ModeToolbar'
+import { ProposeSheet } from './components/ProposeSheet'
 import type { AppMode } from './types'
 
 export default function App() {
@@ -26,6 +27,8 @@ export default function App() {
       <main className="app-shell__stage">
         <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
       </main>
+
+      {mode === 'propose' && <ProposeSheet />}
 
       <div id="mode-toolbar">
         <ModeToolbar
