@@ -1,0 +1,16 @@
+{
+  "name": "morrow",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test packages/routing/test/*.test.ts",
+    "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  }
+}
