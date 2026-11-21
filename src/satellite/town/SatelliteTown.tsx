@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
 import { compareByIds } from '../../data/compare'
 import { SatelliteStage } from '../camera/SatelliteStage'
+import { formatMeters } from '../stats/format'
 import { useTownCamera } from '../camera/useTownCamera'
 import {
   type AiDetection,
@@ -36,11 +37,6 @@ function illustrativeDetection(): AiDetection {
     selectProblem() {},
     sourceLabel: 'Illustrative Wellesley scenario, not an AI detection',
   }
-}
-
-function formatMeters(meters: number | null): string {
-  if (meters === null) return 'unreachable'
-  return `${Math.round(meters)} m`
 }
 
 function detectionFromPins(): AiDetection | null {
