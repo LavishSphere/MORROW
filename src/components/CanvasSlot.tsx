@@ -1,5 +1,5 @@
+import { ShowcaseCanvas } from '../showcase/ShowcaseCanvas'
 import type { LoadedNeighborhood } from '../data/overpass'
-import { SatelliteTown } from '../satellite/town/SatelliteTown'
 import type { AppMode } from '../types'
 
 type Props = {
@@ -8,17 +8,17 @@ type Props = {
   neighborhood: LoadedNeighborhood | null
 }
 
-/** Satellite scene between the top bar and the mode bar. */
+/** Glass city between the top bar and the mode bar. */
 export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
-  const place = neighborhood?.place.label ?? 'Wellesley College'
+  const place = neighborhood?.place.label ?? 'Wellesley, MA'
   return (
     <section
       className={`canvas-slot${reducedMotion ? ' is-reduced' : ''}`}
-      aria-label="Satellite view"
+      aria-label="Holographic city"
     >
-      <SatelliteTown reducedMotion={reducedMotion} neighborhood={neighborhood} />
+      <ShowcaseCanvas reducedMotion={reducedMotion} barriers={[]} />
       <p className="sr-only">
-        {place}. Illustrative when the Wellesley scenario is showing. Mode {mode}.
+        {place}. Illustrative glass city. Mode {mode}.
       </p>
     </section>
   )
