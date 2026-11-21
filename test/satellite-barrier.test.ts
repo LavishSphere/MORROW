@@ -9,6 +9,7 @@ test("satellite falls back to the illustrative Wellesley barrier", async () => {
   ) as { barriers: Array<{ id: string }> };
   assert.match(town, /demo-dataset\.json/);
   assert.match(town, /Illustrative Wellesley scenario, not an AI detection/);
+  assert.match(town, /satellite-town__caption/);
   assert.match(town, /typeof pinsModule\?\.useAiDetection !== 'function'/);
   assert.equal(dataset.barriers[0]?.id, "wellesley-barrier-campus-path-01");
   assert.equal(town.includes("Problems detected by AI"), false);
