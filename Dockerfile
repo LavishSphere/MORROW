@@ -1,4 +1,4 @@
-# MORROW proposal API image (GHCR). Does not claim Vultr hosting.
+# MORROW proposal API image (GHCR → optional Vultr host; see docs/deploy-api-vultr.md).
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -15,5 +15,6 @@ ENV HOST=0.0.0.0
 ENV PORT=8787
 EXPOSE 8787
 
-# GEMINI_API_KEY is injected at runtime; never bake secrets into the image.
+# Inject GEMINI_API_KEY, DATABASE_URL, and MORROW_HOSTED_ON=vultr at runtime.
+# Never bake secrets into the image.
 CMD ["npm", "run", "start", "-w", "@morrow/api"]

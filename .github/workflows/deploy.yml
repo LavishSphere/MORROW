@@ -45,6 +45,17 @@ jobs:
           # domain serves the same artifact at /. Absolute /MORROW/assets
           # 404s on the custom domain. Relative ./ works at both hosts.
           echo "VITE_BASE=./" >> "${GITHUB_ENV}"
+      - name: Set VITE_API_BASE for Pages → hosted API
+        env:
+          API_BASE: ${{ vars.VITE_API_BASE }}
+        run: |
+          if [[ -n "${API_BASE}" ]]; then
+            trimmed="${API_BASE%/}"
+            echo "VITE_API_BASE=${trimmed}" >> "${GITHUB_ENV}"
+            printf 'Pages build will call API at %s\n' "${trimmed}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            printf '%s\n' "VITE_API_BASE unset — Pages Propose uses bundled/unavailable until the repository Actions variable VITE_API_BASE points at the hosted API (see docs/deploy-api-vultr.md)." >> "${GITHUB_STEP_SUMMARY}"
+          fi
       - name: Setup Node
         uses: ./.github/actions/setup-node
       - name: Lint, typecheck, test, build, and audit

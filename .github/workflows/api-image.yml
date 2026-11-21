@@ -7,6 +7,12 @@ on:
       - Dockerfile
       - .dockerignore
       - .github/workflows/api-image.yml
+      - package.json
+      - package-lock.json
+      - packages/api/**
+      - packages/routing/**
+      - shared/**
+      - data/**
   workflow_dispatch:
 
 permissions:

@@ -82,7 +82,7 @@ Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run de
 | `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
 | `VITE_API_BASE` | No | Front-end API base (no trailing slash). Empty = same-origin / proxy. Required for GitHub Pages → hosted API. |
 
-Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). Mastra / Vultr are separate WHA-9 PRs. Details: [`packages/api/README.md`](packages/api/README.md).
+Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). For Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin after Vultr (or another host) is up — see [`docs/deploy-api-vultr.md`](docs/deploy-api-vultr.md). Details: [`packages/api/README.md`](packages/api/README.md).
 
 ## Accessible Interface
 
@@ -107,6 +107,7 @@ Do not vendor a second routing package.
 - [Project plan](docs/MORROW_WHACK_2026_Project_Plan.md) — vision, demo flow, sponsors, and phase gates
 - [Team plan](docs/team-plan.md) — four-person seat assignments and handoffs
 - [Project context](docs/project-context.md) — short north-star brief for the team
+- [Vultr API host runbook](docs/deploy-api-vultr.md) — GHCR image → Vultr → `VITE_API_BASE` for Pages (blocked until Vultr credentials exist)
 
 ## Phase-1 starter data (Wellesley)
 
@@ -151,6 +152,8 @@ That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audit
 | [API image](.github/workflows/api-image.yml) | A `Dockerfile` lands on `main` | Builds the API image and pushes it to GHCR |
 | [External links](.github/workflows/links.yml) | Monday, or a manual run | Live check of links in the README, docs, and site |
 
-GitHub Pages is the static demo host. A custom domain is attached, so the judge URL is the domain above. Vite assets are relative (`./`) so they load at `/` on that host and at `/MORROW/` on github.io. A manual deploy can publish another git ref. A Dockerfile exists for the proposal API image. Model and database credentials are not available to these workflows.
+GitHub Pages is the static demo host. A custom domain is attached, so the judge URL is the domain above. Vite assets are relative (`./`) so they load at `/` on that host and at `/MORROW/` on github.io. A manual deploy can publish another git ref. The API image workflow publishes `Dockerfile` builds to GHCR when API sources change. Model and database credentials are not available to these workflows — inject them on the Vultr host only.
+
+Set repository variable `VITE_API_BASE` so the Pages build can call the hosted API. Until that variable and a live host exist, Propose on Pages stays on the bundled / **unavailable** path (intentional).
 
 `npm run build` writes the Vite app to `dist/`. Pages publishes that folder. The `site/` holding page is not the judge demo.
