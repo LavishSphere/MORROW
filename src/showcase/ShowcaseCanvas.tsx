@@ -35,7 +35,7 @@ export function ShowcaseCanvas({
           antialias: true,
           alpha: false,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.18,
+          toneMappingExposure: 0.92,
         }}
         onCreated={({ camera }) => {
           camera.lookAt(8, 3.2, 6);

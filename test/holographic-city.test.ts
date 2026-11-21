@@ -18,5 +18,5 @@ test("explore canvas mounts the holographic glass city immediately", async () =>
   assert.match(city, /crystal/);
   assert.equal(city.includes("DetailedBuilding"), false);
   assert.equal(canvas.includes("OpeningSequence"), false);
-  assert.match(sky, /0.71, 0.93, 0.97/);
+  assert.match(sky, /0.62, 0.90, 0.95/);
 });

@@ -1,7 +1,7 @@
 import { Edges, Sparkles } from "@react-three/drei";
 
-const GLASS = "#9ee7ef";
-const GLASS_GLOW = "#7af0fa";
+const GLASS = "#3ec8d8";
+const GLASS_GLOW = "#7af4ff";
 const EDGE = "#f8ffff";
 const GROUND = "#0a3842";
 const ROAD = "#e8fbff";
@@ -110,64 +110,68 @@ function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: n
 
 const CITY = buildCity();
 
-function Glass({
-  opacity,
-  glow,
-}: {
-  opacity: number;
-  glow: number;
-}) {
-  return (
-        <meshStandardMaterial
-      color={GLASS}
-      transparent
-      opacity={opacity}
-      roughness={0.08}
-      metalness={0.42}
-      emissive={GLASS_GLOW}
-      emissiveIntensity={glow}
-    />
-  );
-}
-
 function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
-  const opacity = wire ? 0.18 : 0.34 + glow * 0.12;
-  const floors = Math.max(2, Math.floor(h / 3.2));
+  const fill = wire ? 0.35 : 0.85 + glow * 0.2;
+  const belts = h > 12 ? 3 : h > 7 ? 2 : 1;
+  const crown = stepped ? h * 0.28 : 0;
   return (
     <group position={[x, 0, z]}>
       <mesh position={[0, h / 2, 0]} castShadow>
         <boxGeometry args={[w, h, d]} />
-        <Glass opacity={opacity} glow={glow} />
-        <Edges threshold={12} color={EDGE} />
+        <meshStandardMaterial
+          color={GLASS}
+          emissive={GLASS_GLOW}
+          emissiveIntensity={fill}
+          roughness={0.22}
+          metalness={0.18}
+        />
+        <Edges threshold={15} color={EDGE} />
       </mesh>
-      {Array.from({ length: floors }, (_, index) => (
-        <mesh
-          key={`floor-${index}`}
-          position={[0, (h / (floors + 1)) * (index + 1), 0]}
-          raycast={() => null}
-        >
-          <boxGeometry args={[w * 1.01, 0.035, d * 1.01]} />
-          <meshBasicMaterial color={EDGE} transparent opacity={0.45} />
+      {Array.from({ length: belts }, (_, index) => {
+        const y = h * ((index + 1) / (belts + 1));
+        return (
+          <mesh key={`belt-${index}`} position={[0, y, 0]} raycast={() => null}>
+            <boxGeometry args={[w * 1.02, 0.08, d * 1.02]} />
+            <meshBasicMaterial color="#f4ffff" transparent opacity={0.85} />
+          </mesh>
+        );
+      })}
+      {(
+        [
+          [w / 2, d / 2],
+          [w / 2, -d / 2],
+          [-w / 2, d / 2],
+          [-w / 2, -d / 2],
+        ] as const
+      ).map(([cx, cz]) => (
+        <mesh key={`${cx}-${cz}`} position={[cx, h / 2, cz]} raycast={() => null}>
+          <boxGeometry args={[0.08, h, 0.08]} />
+          <meshBasicMaterial color="#ffffff" />
         </mesh>
       ))}
       {stepped && (
-        <mesh position={[0, h + h * 0.16, 0]} castShadow>
-          <boxGeometry args={[w * 0.6, h * 0.32, d * 0.56]} />
-          <Glass opacity={opacity + 0.06} glow={glow + 0.12} />
-          <Edges threshold={12} color={EDGE} />
+        <mesh position={[0, h + crown / 2, 0]} castShadow>
+          <boxGeometry args={[w * 0.58, crown, d * 0.54]} />
+          <meshStandardMaterial
+            color="#7af4ff"
+            emissive="#d8fbff"
+            emissiveIntensity={1.2}
+            roughness={0.16}
+            metalness={0.12}
+          />
+          <Edges threshold={12} color="#ffffff" />
         </mesh>
       )}
-      <mesh position={[0, h + (stepped ? h * 0.34 : 0.1), 0]}>
-        <boxGeometry args={[Math.max(1.05, w * 0.4), 0.14, Math.max(1.05, d * 0.4)]} />
-        <meshStandardMaterial
-          color="#d4f7ff"
-          transparent
-          opacity={0.8}
-          emissive="#ffffff"
-          emissiveIntensity={0.45}
-        />
-        <Edges color="#ffffff" threshold={15} />
+      <mesh position={[0, h + crown + 0.12, 0]}>
+        <boxGeometry args={[Math.max(0.9, w * 0.34), 0.16, Math.max(0.9, d * 0.34)]} />
+        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.8} />
       </mesh>
+      {h > 14 && (
+        <mesh position={[0, h + crown + 1.1, 0]} raycast={() => null}>
+          <cylinderGeometry args={[0.05, 0.05, 1.8, 6]} />
+          <meshBasicMaterial color="#ffffff" />
+        </mesh>
+      )}
     </group>
   );
 }

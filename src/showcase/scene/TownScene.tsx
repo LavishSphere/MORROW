@@ -36,7 +36,7 @@ export function TownScene({
   return (
     <group name={`footprints-${source}`}>
       <color attach="background" args={["#b7ebf4"]} />
-      <fog attach="fog" args={["#b6e8f1", 95, 210]} />
+      <fog attach="fog" args={["#8fd4e2", 120, 240]} />
       <hemisphereLight args={["#f2ffff", "#0a3842", 1.15]} />
       <directionalLight
         position={[40, 52, 18]}
