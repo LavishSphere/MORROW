@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
+import {
+  dataset,
+  graphChangesForIntervention,
+} from "../src/data/dataset.ts";
 import { clearProposals } from "../src/data/proposals.ts";
 import { buildTemplateDraft } from "../src/draft/template.ts";
 import { resolveGenerateInput } from "../src/facts.ts";
@@ -35,6 +39,18 @@ async function json(
   const body = (await res.json()) as unknown;
   return { status: res.status, body };
 }
+
+test("bundled dataset keeps scenario graphChanges equal to the linked intervention", () => {
+  const linked = dataset.interventions.find(
+    (item) => item.id === dataset.scenario.interventionId,
+  );
+  assert.ok(linked);
+  assert.equal(dataset.scenario.id, "wellesley-demo-01");
+  assert.equal(linked.id, "wellesley-intervention-ramp-01");
+  assert.deepEqual(dataset.scenario.graphChanges, linked.graphChanges);
+  assert.deepEqual(graphChangesForIntervention(linked.id), linked.graphChanges);
+  assert.ok(linked.graphChanges.length > 0);
+});
 
 test("GET /api/health reports template-only without Gemini key", async () => {
   delete process.env.MORROW_HOSTED_ON;
@@ -175,8 +191,12 @@ test("resolveGenerateInput recomputes meters via @morrow/routing", () => {
   assert.equal(typeof resolved.facts.afterMeters, "number");
   assert.ok(resolved.facts.afterMeters !== null);
   assert.equal(resolved.facts.newlyReachableDestinations, 1);
-  // Client cannot inject meters — these come from compareScenario.
+  // Client cannot inject meters — these come from compareScenario, not mocks.
   assert.notEqual(resolved.facts.afterMeters, 99999);
+  assert.notEqual(resolved.facts.afterMeters, 1200);
+  assert.notEqual(resolved.facts.afterMeters, 800);
+  assert.notEqual(resolved.facts.beforeMeters, 1200);
+  assert.notEqual(resolved.facts.beforeMeters, 800);
 });
 
 test("template draft matches PDF DraftProposal shape", () => {

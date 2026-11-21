@@ -48,13 +48,18 @@ function apiUrl(path: string): string {
 }
 
 async function probeLiveApi(): Promise<boolean> {
-  if (liveApiReachable !== null) return liveApiReachable
+  // Cache successes only. A sticky false hid the API if it came up after
+  // the first probe (local npm run dev without api:dev already running).
+  if (liveApiReachable === true) return true
   try {
     const res = await fetch(apiUrl('/api/health'), {
       signal: AbortSignal.timeout(2500),
     })
     if (!res.ok) {
-      liveApiReachable = false
+      API_STATUS.barriersApi = false
+      API_STATUS.generateApi = false
+      API_STATUS.gemini = false
+      API_STATUS.tigerData = false
       return false
     }
     const body = (await res.json()) as {
@@ -62,17 +67,18 @@ async function probeLiveApi(): Promise<boolean> {
       geminiConfigured?: boolean
       tigerData?: boolean
     }
-    liveApiReachable = Boolean(body.ok)
-    API_STATUS.barriersApi = liveApiReachable
-    API_STATUS.generateApi = liveApiReachable
+    const ok = Boolean(body.ok)
+    if (ok) liveApiReachable = true
+    API_STATUS.barriersApi = ok
+    API_STATUS.generateApi = ok
     API_STATUS.gemini = Boolean(body.geminiConfigured)
     API_STATUS.tigerData = Boolean(body.tigerData)
-    return liveApiReachable
+    return ok
   } catch {
-    liveApiReachable = false
     API_STATUS.barriersApi = false
     API_STATUS.generateApi = false
     API_STATUS.gemini = false
+    API_STATUS.tigerData = false
     return false
   }
 }
@@ -140,7 +146,7 @@ export async function fetchBarriers(bbox?: string): Promise<BarriersResult> {
         }
       }
     } catch {
-      liveApiReachable = false
+      liveApiReachable = null
       API_STATUS.barriersApi = false
       API_STATUS.generateApi = false
     }
@@ -183,6 +189,53 @@ export function getDemoIntervention(): Intervention | null {
 
 export { compareByIds }
 
+function idsMatchDemoScenario(
+  req: GenerateProposalRequest,
+  barrier: Barrier | undefined,
+  intervention: Intervention | undefined,
+): barrier is Barrier {
+  return (
+    req.scenarioId === SCENARIO.id &&
+    barrier !== undefined &&
+    intervention !== undefined &&
+    intervention.barrierId === barrier.id &&
+    SCENARIO.barrierId === barrier.id &&
+    SCENARIO.interventionId === intervention.id
+  )
+}
+
+function invalidGenerateResponse(): GenerateProposalResponse {
+  return {
+    proposalId: 'invalid',
+    facts: {
+      city: SCENARIO.city,
+      locationLabel: 'Unknown',
+      evidenceStatus: 'illustrative',
+      evidenceSources: [],
+      barrierType: 'unknown',
+      intervention: 'unknown',
+      beforeMeters: null,
+      afterMeters: null,
+      newlyReachableDestinations: null,
+      modelAssumptions: [...SCENARIO.modelAssumptions],
+      originLabel: SCENARIO.originLabel,
+      destinationLabel: SCENARIO.destinationLabel,
+      nextSteps: SCENARIO.label,
+    },
+    draft: {
+      headline: 'Unable to generate proposal',
+      plainLanguageSummary: 'Unknown scenario, barrier, or intervention id.',
+      requestForReview: '',
+      meetingTalkingPoints: [],
+      limitations: 'Invalid ids rejected by client stub.',
+    },
+    aiGenerated: false,
+    warnings: ['Unknown ids — proposal not generated.'],
+    geminiAvailable: false,
+    apiAvailable: false,
+  }
+}
+
 function buildFacts(
   barrierId: string,
   interventionId: string,
@@ -204,7 +257,10 @@ function buildFacts(
     beforeMeters: compare.beforeMeters,
     afterMeters: compare.afterMeters,
     newlyReachableDestinations: compare.becameReachable ? 1 : null,
-    modelAssumptions: compare.assumptions,
+    modelAssumptions:
+      SCENARIO.modelAssumptions.length > 0
+        ? [...SCENARIO.modelAssumptions]
+        : [...compare.assumptions],
     originLabel: SCENARIO.originLabel,
     destinationLabel: SCENARIO.destinationLabel,
     nextSteps:
@@ -215,6 +271,12 @@ function buildFacts(
 function bundledGenerate(
   req: GenerateProposalRequest,
 ): GenerateProposalResponse {
+  const barrier = getBarrier(req.barrierId)
+  const intervention = getIntervention(req.interventionId)
+  if (!idsMatchDemoScenario(req, barrier, intervention)) {
+    return invalidGenerateResponse()
+  }
+
   const compare = compareByIds({
     scenarioId: req.scenarioId,
     interventionId: req.interventionId,
@@ -222,35 +284,7 @@ function bundledGenerate(
   const facts = buildFacts(req.barrierId, req.interventionId, compare)
 
   if (!facts) {
-    return {
-      proposalId: 'invalid',
-      facts: {
-        city: SCENARIO.city,
-        locationLabel: 'Unknown',
-        evidenceStatus: 'illustrative',
-        evidenceSources: [],
-        barrierType: 'unknown',
-        intervention: 'unknown',
-        beforeMeters: null,
-        afterMeters: null,
-        newlyReachableDestinations: null,
-        modelAssumptions: [...SCENARIO.modelAssumptions],
-        originLabel: SCENARIO.originLabel,
-        destinationLabel: SCENARIO.destinationLabel,
-        nextSteps: SCENARIO.label,
-      },
-      draft: {
-        headline: 'Unable to generate proposal',
-        plainLanguageSummary: 'Unknown scenario, barrier, or intervention id.',
-        requestForReview: '',
-        meetingTalkingPoints: [],
-        limitations: 'Invalid ids rejected by client stub.',
-      },
-      aiGenerated: false,
-      warnings: ['Unknown ids — proposal not generated.'],
-      geminiAvailable: false,
-      apiAvailable: false,
-    }
+    return invalidGenerateResponse()
   }
 
   const draft = buildTemplateDraft(facts)
@@ -294,7 +328,7 @@ export async function generateProposal(
         }
       }
     } catch {
-      liveApiReachable = false
+      liveApiReachable = null
       API_STATUS.generateApi = false
     }
   }

@@ -65,6 +65,12 @@ export function compareByIds(input: {
     throw new Error(`Unknown intervention id: ${input.interventionId}`)
   }
 
+  if (intervention.graphChanges.length === 0) {
+    throw new Error(
+      `Intervention ${input.interventionId} has empty graphChanges`,
+    )
+  }
+
   // Canonical graphChanges from the bundled intervention — ids only from client.
   const comparison = compareScenario(basemap, {
     origin: scenario.origin,

@@ -14,6 +14,7 @@ import {
   getBarrier,
   getIntervention,
   getScenario,
+  graphChangesForIntervention,
   scenario as demoScenario,
 } from "./data/dataset.ts";
 
@@ -84,11 +85,19 @@ export function resolveGenerateInput(body: {
     );
   }
 
+  const graphChanges = graphChangesForIntervention(intervention.id);
+  if (graphChanges.length === 0) {
+    throw new ProposalInputError(
+      "intervention graphChanges is empty — cannot compare the demo trip",
+      500,
+    );
+  }
+
   // Canonical graphChanges from the bundled intervention — ignore any client meters.
   const comparison = compareScenario(basemapGeoJSON, {
     origin: scenario.origin,
     destination: scenario.destination,
-    graphChanges: intervention.graphChanges,
+    graphChanges,
   });
 
   const evidenceSources =

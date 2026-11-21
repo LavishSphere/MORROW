@@ -17,6 +17,8 @@ test("client API_STATUS is the shipped outage path", async () => {
     text.includes("Gemini unavailable — template prose only."),
     true,
   );
+  assert.match(text, /liveApiReachable === true/);
+  assert.equal(text.includes("idsMatchDemo"), true);
 });
 
 test("Compare entry stays on compareScenario with ids only", async () => {
