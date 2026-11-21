@@ -3,19 +3,13 @@ import { formatCostUsd } from './format'
 /** Visible label under the cost on the before/after card. */
 export const GEMINI_ESTIMATE_LABEL = 'Gemini estimate'
 
-/**
- * Stand-in amount until the app points this module at a Gemini API call.
- * This is not a live model response and not an engineering quote.
- */
-const STUB_COST_USD = 4800
-
 export type GeminiCostEstimateInput = {
   beforeMeters: number | null
   afterMeters: number | null
 }
 
 export type GeminiCostEstimate = {
-  label: typeof GEMINI_ESTIMATE_LABEL
+  label: string
   amountUsd: number | null
   /** Ready-to-render cost. */
   display: string
@@ -30,17 +24,17 @@ export type GeminiCostEstimateFn = (
 ) => Promise<GeminiCostEstimate>
 
 /**
- * Local stand-in for a Gemini cost estimate.
- * Does not call Gemini. Distances stay on the signature so a later API call can read them.
+ * Local stand-in until a Gemini API call exists.
+ * Does not call Gemini and does not invent a dollar amount.
  */
 export function buildStubGeminiCostEstimate(
   input: GeminiCostEstimateInput,
 ): GeminiCostEstimate {
   void input
   return {
-    label: GEMINI_ESTIMATE_LABEL,
-    amountUsd: STUB_COST_USD,
-    display: formatCostUsd(STUB_COST_USD),
+    label: 'No Gemini estimate',
+    amountUsd: null,
+    display: formatCostUsd(null),
   }
 }
 
