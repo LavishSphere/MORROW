@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
+import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { compareByIds, fetchBarriers, getDemoScenario } from './data/api'
 import { interventionsForBarrier, LOCATIONS } from './data/fixtures'
@@ -86,6 +87,8 @@ export default function App() {
           />
         )}
       </main>
+
+      {mode === 'propose' && <ProposeSheet />}
 
       <div id="mode-toolbar">
         <ModeToolbar

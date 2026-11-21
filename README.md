@@ -87,7 +87,7 @@ Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shap
 - Bottom bar is **Explore | Improve | Compare | Propose**.
 - No Barriers sidebar. The scene fills the remaining width to the right edge.
 - Compare via `@morrow/routing.compareScenario` (`src/data/compare.ts`) stays in the data layer.
-- Propose still calls `POST /api/proposals/generate` when the API is reachable, with a labeled template fallback. That editor is not mounted on the scene.
+- Propose still calls `POST /api/proposals/generate` when the API is reachable, with a labeled template fallback. The editor opens only in Propose mode.
 - Skip link to the mode bar, visible `:focus-visible`, reduced-motion respected.
 
 ### Routing

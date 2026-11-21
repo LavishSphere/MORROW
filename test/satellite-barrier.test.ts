@@ -14,4 +14,7 @@ test("satellite falls back to the illustrative Wellesley barrier", async () => {
   assert.equal(town.includes("Problems detected by AI"), false);
   assert.equal(town.includes("STUB_COST_USD"), false);
   assert.equal(town.includes("4800"), false);
+  assert.match(town, /compareByIds/);
+  assert.match(town, /satellite-town__meters/);
+  assert.match(town, /Not a Gemini estimate/);
 });

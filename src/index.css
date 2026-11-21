@@ -1012,6 +1012,34 @@ code {
   animation: none !important;
 }
 
+.propose-sheet {
+  position: fixed;
+  z-index: 6;
+  top: 3.2rem;
+  right: 12px;
+  width: min(28rem, calc(100% - 24px));
+  max-height: calc(100% - 6.5rem);
+  overflow: auto;
+  padding: 0.75rem;
+  background: rgba(8, 12, 14, 0.92);
+  color: #f4faf7;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.propose-sheet__generate {
+  background: #1488ff;
+  color: #ffffff;
+  border: 0;
+  padding: 0.45rem 0.7rem;
+  font-weight: 700;
+}
+
+.propose-sheet__note {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .empty-state {
   margin: 0;
   padding: 0.85rem 0.9rem;
