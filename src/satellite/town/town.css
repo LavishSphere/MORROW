@@ -118,6 +118,24 @@
   transform: rotate(45deg);
 }
 
+.satellite-pin__label {
+  position: absolute;
+  left: 36px;
+  top: 6px;
+  width: max-content;
+  max-width: 16rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+
 .satellite-pin.is-selected {
   box-shadow: 0 0 0 3px #1488ff;
 }
