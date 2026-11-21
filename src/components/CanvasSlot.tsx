@@ -1,6 +1,7 @@
 import { ShowcaseCanvas } from '../showcase/ShowcaseCanvas'
 import type { LoadedNeighborhood } from '../data/overpass'
 import type { AppMode } from '../types'
+import { PotholePopup } from './PotholePopup'
 
 type Props = {
   mode: AppMode
@@ -8,7 +9,7 @@ type Props = {
   neighborhood: LoadedNeighborhood | null
 }
 
-/** Satellite scene between the top bar and the mode bar. */
+/** Glass city between the top bar and the mode bar. */
 export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
   const place = neighborhood?.place.label ?? 'Wellesley College'
   return (
@@ -17,6 +18,7 @@ export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
       aria-label="Holographic city"
     >
       <ShowcaseCanvas reducedMotion={reducedMotion} barriers={[]} />
+      <PotholePopup />
       <p className="sr-only">
         {place}. Illustrative when the Wellesley scenario is showing. Mode {mode}.
       </p>
