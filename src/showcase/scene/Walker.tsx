@@ -87,7 +87,7 @@ export function Walker({
     const lookWithMouse = (event: MouseEvent) => {
       if (document.pointerLockElement !== gl.domElement) return;
       const glide = reducedMotion ? 1 : 0.65;
-      yaw.current -= event.movementX * 0.002 * glide;
+      yaw.current += event.movementX * 0.002 * glide;
       const next = pitch.current - event.movementY * 0.0018 * glide;
       pitch.current = Math.min(0.85, Math.max(-1.05, next));
     };
@@ -118,10 +118,12 @@ export function Walker({
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.05);
     const glide = reducedMotion ? 16 : 3.2;
-    const forwardX = -Math.sin(yaw.current);
-    const forwardZ = Math.cos(yaw.current);
-    const rightX = forwardZ;
-    const rightZ = -forwardX;
+    lookDirection(yaw.current, 0, direction.current);
+    const forwardX = direction.current.x;
+    const forwardZ = direction.current.z;
+    // Camera-right on the ground: W follows the view, D steps to that right.
+    const rightX = -forwardZ;
+    const rightZ = forwardX;
     const inputZ = (keys.current.forward ? 1 : 0) - (keys.current.back ? 1 : 0);
     const inputX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
     const length = Math.hypot(inputX, inputZ) || 1;
