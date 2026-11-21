@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
 import { ImprovePage } from './components/ImprovePage'
 import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
+import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
+import { useChromeInsets } from './components/useChromeInsets'
 import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
 import type { LoadedNeighborhood } from './data/overpass'
 import { getBarrier, interventionsForBarrier } from './data/fixtures'
@@ -14,6 +16,16 @@ import type { AppMode, Barrier, SurfaceView } from './types'
 export default function App() {
   const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
+  // The page shown in the left panel. It outlives a switch back to Explore
+  // so the panel can slide away with its content still inside.
+  const [panelMode, setPanelMode] = useState<AppMode | null>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useChromeInsets(shellRef)
+  const changeMode = (next: AppMode) => {
+    setMode(next)
+    if (next !== 'explore') setPanelMode(next)
+  }
+  const panelOpen = mode !== 'explore'
   const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
@@ -60,7 +72,10 @@ export default function App() {
     : []
 
   return (
-    <div className={`app-shell app-shell--city${reducedMotion ? ' is-reduced-motion' : ''}`}>
+    <div
+      ref={shellRef}
+      className={`app-shell app-shell--city${panelOpen ? ' has-panel' : ''}${reducedMotion ? ' is-reduced-motion' : ''}`}
+    >
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes
       </a>
@@ -106,22 +121,24 @@ export default function App() {
             }}
           />
         )}
-        {mode === 'improve' && (
-          <ImprovePage
-            barrier={selectedBarrier}
-            interventions={interventions}
-            selectedId={selectedInterventionId}
-            onSelect={setSelectedInterventionId}
-          />
-        )}
-        {mode === 'compare' && <CompareSheet />}
-        {mode === 'propose' && <ProposeSheet />}
+        <OverlayPanel open={panelOpen} contentKey={panelMode}>
+          {panelMode === 'improve' && (
+            <ImprovePage
+              barrier={selectedBarrier}
+              interventions={interventions}
+              selectedId={selectedInterventionId}
+              onSelect={setSelectedInterventionId}
+            />
+          )}
+          {panelMode === 'compare' && <CompareSheet />}
+          {panelMode === 'propose' && <ProposeSheet />}
+        </OverlayPanel>
       </main>
 
       <div id="mode-toolbar">
         <ModeToolbar
           mode={mode}
-          onModeChange={setMode}
+          onModeChange={changeMode}
           reducedMotion={reducedMotion}
         />
       </div>

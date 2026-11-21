@@ -1297,25 +1297,137 @@ code {
   color: #14211c;
 }
 
-.app-shell--city .mode-page {
-  position: absolute;
-  z-index: 7;
-  top: 4.6rem;
-  left: 1.15rem;
-  bottom: 5.2rem;
-  width: min(24rem, calc(100% - 2.3rem));
-  height: auto;
-  padding: 1.2rem 1.25rem 1.35rem;
-  border-radius: 18px;
-  background: rgba(250, 252, 250, 0.94);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
-  overflow: auto;
+/* —— Left overlay panel ——
+   Every mode page lives in one card on the left, between the measured
+   bottom of the top bar (--chrome-top) and the top of the mode bar
+   (--chrome-bottom). It slides in from the left; pages cross-fade. */
+.app-shell--city {
+  --overlay-gap: 0.85rem;
+  --overlay-left: 1.15rem;
+  --overlay-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.app-shell--city .propose-sheet {
-  left: auto;
-  right: 1.15rem;
-  width: min(38rem, calc(100% - 2.3rem));
+.overlay-panel {
+  position: absolute;
+  z-index: 7;
+  top: calc(var(--chrome-top, 4.6rem) + var(--overlay-gap));
+  left: var(--overlay-left);
+  width: min(27rem, calc(100% - 2 * var(--overlay-left)));
+  max-height: calc(
+    100% - var(--chrome-top, 4.6rem) - var(--chrome-bottom, 5.2rem) -
+      2 * var(--overlay-gap)
+  );
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: rgba(250, 252, 250, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.34),
+    0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(calc(-100% - 2 * var(--overlay-left))) scale(0.98);
+  transform-origin: left center;
+  transition:
+    transform 480ms var(--overlay-ease),
+    opacity 280ms ease,
+    visibility 0s linear 480ms;
+}
+
+.overlay-panel.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition:
+    transform 560ms var(--overlay-ease),
+    opacity 320ms ease,
+    visibility 0s;
+}
+
+.overlay-panel__body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1.25rem 1.3rem 1.4rem;
+  animation: overlay-page-in 420ms var(--overlay-ease) both;
+}
+
+/* Children rise in one after another. */
+.overlay-panel__body .mode-page > * {
+  animation: overlay-rise 520ms var(--overlay-ease) both;
+}
+.overlay-panel__body .mode-page > :nth-child(2) { animation-delay: 50ms; }
+.overlay-panel__body .mode-page > :nth-child(3) { animation-delay: 100ms; }
+.overlay-panel__body .mode-page > :nth-child(4) { animation-delay: 150ms; }
+.overlay-panel__body .mode-page > :nth-child(n + 5) { animation-delay: 200ms; }
+
+@keyframes overlay-page-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes overlay-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Mode pages are plain content inside the card. */
+.overlay-panel .mode-page {
+  position: static;
+  width: auto;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.overlay-panel .compare-sheet__meters,
+.overlay-panel .propose-brief__meters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.overlay-panel .compare-sheet__meters dd,
+.overlay-panel .propose-brief__meters dd {
+  font-size: 1.45rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.overlay-panel .option-list__item,
+.overlay-panel .propose-sheet__generate {
+  transition:
+    transform 180ms var(--overlay-ease),
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.overlay-panel .option-list__item:hover,
+.overlay-panel .propose-sheet__generate:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 560px) {
+  .app-shell--city {
+    --overlay-left: 0.75rem;
+  }
+
+  .overlay-panel {
+    width: calc(100% - 2 * var(--overlay-left));
+    transform: translateY(1.5rem);
+  }
 }
 
 .app-shell--city .satellite-town__bar {
@@ -1347,10 +1459,42 @@ code {
   opacity: 0.75;
 }
 
+/* Explore labels: left side, inside the band between the two bars.
+   They step aside when the panel slides over them. */
+.app-shell--city .satellite-town__meters,
+.app-shell--city .satellite-town__caption {
+  left: var(--overlay-left);
+  max-width: min(27rem, calc(100% - 2 * var(--overlay-left)));
+  padding: 0.5rem 0.85rem;
+  background: rgba(12, 20, 17, 0.62);
+  color: #f7faf8;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  text-shadow: none;
+  backdrop-filter: blur(14px);
+  transition:
+    opacity 320ms ease,
+    transform 480ms var(--overlay-ease),
+    visibility 0s;
+}
+
 .app-shell--city .satellite-town__meters {
-  top: 4.6rem;
+  top: calc(var(--chrome-top, 4.6rem) + var(--overlay-gap));
 }
 
 .app-shell--city .satellite-town__caption {
-  bottom: 5.8rem;
+  bottom: calc(var(--chrome-bottom, 5.2rem) + var(--overlay-gap));
 }
+
+.app-shell--city.has-panel .satellite-town__meters,
+.app-shell--city.has-panel .satellite-town__caption {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-1.5rem);
+  transition:
+    opacity 220ms ease,
+    transform 380ms var(--overlay-ease),
+    visibility 0s linear 380ms;
+}
+
