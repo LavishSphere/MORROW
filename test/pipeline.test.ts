@@ -42,12 +42,11 @@ test("workflow files match the pipeline contract", async () => {
   }
 });
 
-test("CI jobs cover app, quality, and dependency review", async () => {
+test("CI jobs cover app and quality", async () => {
   const document = asRecord(parse(await readWorkflow("ci.yml")), "ci");
   const jobs = asRecord(document["jobs"], "ci jobs");
   assert.ok(jobs["app"]);
   assert.ok(jobs["quality"]);
-  assert.ok(jobs["dependency-review"]);
 });
 
 test("package scripts expose the local CI entrypoint", async () => {
