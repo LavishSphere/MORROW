@@ -64,7 +64,7 @@ export default function App() {
 
   return (
     <div
-      className={`app-shell min-h-full w-full bg-black text-center text-white${reducedMotion ? ' is-reduced-motion' : ''}`}
+      className={`app-shell min-h-full w-full${reducedMotion ? ' is-reduced-motion' : ''}`}
     >
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes

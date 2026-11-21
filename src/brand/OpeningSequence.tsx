@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "./LogoMark";
-import { BRAND_BLACK, BRAND_WHITE, TAGLINE, WORDMARK } from "./palette";
+import { TAGLINE, WORDMARK } from "./palette";
 
 /**
  * How long the scene camera should take to descend after the lockup.
@@ -68,8 +68,8 @@ const OPENING_CSS = `
   box-sizing: border-box;
   margin: 0;
   padding: 8vh 6vw 10vh;
-  background: ${BRAND_BLACK};
-  color: ${BRAND_WHITE};
+  background: #e7fcff;
+  color: #173f48;
   overflow: hidden;
   pointer-events: auto;
 }
@@ -88,7 +88,7 @@ const OPENING_CSS = `
 .morrow-word,
 .morrow-line {
   margin: 0;
-  color: ${BRAND_WHITE};
+  color: #173f48;
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 600;
 }
@@ -203,7 +203,7 @@ export function OpeningSequence({
 
   return (
     <div
-      className={`${rootClass} flex flex-col items-center justify-center bg-black text-center text-white`}
+      className={`${rootClass} flex flex-col items-center justify-center text-center`}
       role="region"
       aria-label={`${WORDMARK}. ${TAGLINE}`}
       aria-hidden={phase === "exit" ? true : undefined}
