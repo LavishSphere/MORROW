@@ -217,10 +217,16 @@ function GlowSeg({
   from,
   to,
   width = 0.13,
+  color = ROAD,
+  y = 0.05,
+  glow = 1.15,
 }: {
   from: readonly [number, number];
   to: readonly [number, number];
   width?: number;
+  color?: string;
+  y?: number;
+  glow?: number;
 }) {
   const dx = to[0] - from[0];
   const dz = to[1] - from[1];
@@ -228,18 +234,18 @@ function GlowSeg({
   if (len < 0.2) return null;
   return (
     <mesh
-      position={[(from[0] + to[0]) / 2, 0.05, (from[1] + to[1]) / 2]}
+      position={[(from[0] + to[0]) / 2, y, (from[1] + to[1]) / 2]}
       rotation={[0, Math.atan2(dx, dz), 0]}
       receiveShadow
       raycast={() => null}
     >
       <boxGeometry args={[width, 0.045, len]} />
       <meshStandardMaterial
-        color={ROAD}
-        emissive={ROAD}
-        emissiveIntensity={1.15}
-        roughness={0.14}
-        toneMapped={false}
+        color={color}
+        emissive={color}
+        emissiveIntensity={glow}
+        roughness={0.35}
+        toneMapped={glow > 0.4}
       />
     </mesh>
   );
@@ -293,14 +299,244 @@ function BlockStreet({ x, z, w, d }: Pick<Lot, "x" | "z" | "w" | "d">) {
   );
 }
 
-function Avenues() {
-  const width = 1.15;
+function quad(
+  a: readonly [number, number],
+  b: readonly [number, number],
+  c: readonly [number, number],
+  steps: number,
+) {
+  const points: [number, number][] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const u = 1 - t;
+    points.push([
+      u * u * a[0] + 2 * u * t * b[0] + t * t * c[0],
+      u * u * a[1] + 2 * u * t * b[1] + t * t * c[1],
+    ]);
+  }
+  return points;
+}
+
+function ellipse(cx: number, cz: number, rx: number, rz: number, steps: number) {
+  const points: [number, number][] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const angle = (i / steps) * Math.PI * 2;
+    points.push([cx + Math.cos(angle) * rx, cz + Math.sin(angle) * rz]);
+  }
+  return points;
+}
+
+const BOULEVARD = quad([-62, -24], [2, 28], [64, 4], 24);
+const SWEEP = quad([-56, 36], [6, -18], [60, 30], 22);
+const CRESCENT = quad([-34, -10], [4, 32], [36, -4], 16);
+const LOOP = ellipse(9, 7, 24, 15, 32);
+
+function Ribbon({
+  points,
+  width,
+  color = ROAD,
+  y = 0.05,
+  glow = 1.15,
+}: {
+  points: readonly (readonly [number, number])[];
+  width: number;
+  color?: string;
+  y?: number;
+  glow?: number;
+}) {
   return (
     <group>
-      <GlowSeg from={[-62, -6]} to={[62, -6]} width={width} />
-      <GlowSeg from={[-62, 22]} to={[62, 22]} width={width} />
-      <GlowSeg from={[-18, -58]} to={[-18, 58]} width={width} />
-      <GlowSeg from={[28, -58]} to={[28, 58]} width={width} />
+      {points.slice(0, -1).map((from, index) => (
+        <GlowSeg
+          key={index}
+          from={from}
+          to={points[index + 1] ?? from}
+          width={width}
+          color={color}
+          y={y}
+          glow={glow}
+        />
+      ))}
+    </group>
+  );
+}
+
+function Pothole({ x, z }: { x: number; z: number }) {
+  return (
+    <mesh position={[x, 0.09, z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+      <circleGeometry args={[0.72, 8]} />
+      <meshStandardMaterial color="#061820" roughness={1} />
+    </mesh>
+  );
+}
+
+function CurvedRoads() {
+  const holes = [4, 9, 15, 20].map((index) => beside(BOULEVARD, index, 0.15));
+  return (
+    <group>
+      <Ribbon points={BOULEVARD} width={3.4} color="#12343c" y={0.03} glow={0.15} />
+      <Ribbon points={BOULEVARD} width={0.16} y={0.07} />
+      <Ribbon points={SWEEP} width={2.6} color="#12343c" y={0.03} glow={0.15} />
+      <Ribbon points={SWEEP} width={0.14} y={0.07} />
+      <Ribbon points={CRESCENT} width={2.2} color="#12343c" y={0.03} glow={0.12} />
+      <Ribbon points={LOOP} width={2.1} color="#12343c" y={0.03} glow={0.12} />
+      {holes.map((spot) => (
+        <Pothole key={`hole-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
+      ))}
+    </group>
+  );
+}
+
+function beside(points: readonly (readonly [number, number])[], index: number, dist: number) {
+  const prev = points[Math.max(0, index - 1)] ?? points[index]!;
+  const next = points[Math.min(points.length - 1, index + 1)] ?? points[index]!;
+  const dx = next[0] - prev[0];
+  const dz = next[1] - prev[1];
+  const len = Math.hypot(dx, dz) || 1;
+  const here = points[index] ?? prev;
+  return {
+    x: here[0] + (-dz / len) * dist,
+    z: here[1] + (dx / len) * dist,
+    rot: Math.atan2(dx, dz),
+  };
+}
+
+function Hydrant({ x, z, rot }: { x: number; z: number; rot: number }) {
+  return (
+    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
+      <mesh position={[0, 0.42, 0]} castShadow>
+        <cylinderGeometry args={[0.22, 0.26, 0.84, 8]} />
+        <meshStandardMaterial color="#f3c2b4" emissive="#e08978" emissiveIntensity={0.35} roughness={0.45} />
+      </mesh>
+      <mesh position={[0, 0.92, 0]} castShadow>
+        <cylinderGeometry args={[0.14, 0.18, 0.22, 8]} />
+        <meshStandardMaterial color="#fff6f2" roughness={0.4} />
+      </mesh>
+      <mesh position={[0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
+        <meshStandardMaterial color="#fff6f2" />
+      </mesh>
+      <mesh position={[-0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
+        <meshStandardMaterial color="#fff6f2" />
+      </mesh>
+    </group>
+  );
+}
+
+function Lamp({ x, z }: { x: number; z: number }) {
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, 1.45, 0]} castShadow>
+        <cylinderGeometry args={[0.05, 0.08, 2.9, 6]} />
+        <meshStandardMaterial color="#f4ffff" emissive="#d8fbff" emissiveIntensity={0.35} />
+      </mesh>
+      <mesh position={[0.34, 2.85, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.035, 0.035, 0.7, 6]} />
+        <meshStandardMaterial color="#f4ffff" />
+      </mesh>
+      <mesh position={[0.62, 2.72, 0]}>
+        <sphereGeometry args={[0.22, 10, 8]} />
+        <meshStandardMaterial color="#fff3c4" emissive="#ffe08a" emissiveIntensity={1.6} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+function Bench({ x, z, rot }: { x: number; z: number; rot: number }) {
+  return (
+    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
+      <mesh position={[0, 0.42, 0]} castShadow>
+        <boxGeometry args={[1.5, 0.08, 0.42]} />
+        <meshStandardMaterial color="#f7fbff" roughness={0.55} />
+      </mesh>
+      <mesh position={[0, 0.68, -0.17]} castShadow>
+        <boxGeometry args={[1.5, 0.42, 0.06]} />
+        <meshStandardMaterial color="#d7eef4" roughness={0.5} />
+      </mesh>
+      {[-0.58, 0.58].map((leg) => (
+        <mesh key={leg} position={[leg, 0.2, 0]}>
+          <boxGeometry args={[0.08, 0.4, 0.36]} />
+          <meshStandardMaterial color="#9fd0da" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Crosswalk({ x, z, rot }: { x: number; z: number; rot: number }) {
+  return (
+    <group position={[x, 0.07, z]} rotation={[0, rot, 0]}>
+      {[-0.7, -0.28, 0.14, 0.56].map((along) => (
+        <mesh key={along} position={[0, 0, along]} raycast={() => null}>
+          <boxGeometry args={[1.7, 0.02, 0.16]} />
+          <meshBasicMaterial color="#ffffff" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Shelter({ x, z, rot }: { x: number; z: number; rot: number }) {
+  return (
+    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[2.2, 2.1, 0.9]} />
+        <meshStandardMaterial
+          color={GLASS}
+          emissive={GLASS_GLOW}
+          emissiveIntensity={0.45}
+          transparent
+          opacity={0.55}
+          roughness={0.15}
+        />
+      </mesh>
+      <mesh position={[0, 2.28, 0]}>
+        <boxGeometry args={[2.4, 0.08, 1.05]} />
+        <meshStandardMaterial color="#f4ffff" />
+      </mesh>
+      <mesh position={[0, 0.38, 0.1]}>
+        <boxGeometry args={[1.8, 0.1, 0.4]} />
+        <meshStandardMaterial color="#f7fbff" />
+      </mesh>
+    </group>
+  );
+}
+
+function Bin({ x, z }: { x: number; z: number }) {
+  return (
+    <mesh position={[x, 0.45, z]} castShadow>
+      <cylinderGeometry args={[0.22, 0.2, 0.9, 8]} />
+      <meshStandardMaterial color="#1f6f7c" roughness={0.6} />
+    </mesh>
+  );
+}
+
+function StreetLife() {
+  const hydrants = [2, 6, 10, 14, 18, 22].map((index) => beside(BOULEVARD, index, 1.7));
+  const lamps = [1, 4, 7, 10, 13, 16, 19].map((index) => beside(SWEEP, index, -1.8));
+  const benches = [2, 6, 10, 14].map((index) => beside(CRESCENT, index, 1.55));
+  const walks = [5, 12, 19].map((index) => beside(BOULEVARD, index, 0));
+  const stop = beside(BOULEVARD, 11, -2.4);
+  const bins = [8, 16].map((index) => beside(LOOP, index, 1.5));
+  return (
+    <group>
+      {hydrants.map((spot) => (
+        <Hydrant key={`hydrant-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
+      ))}
+      {lamps.map((spot) => (
+        <Lamp key={`lamp-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
+      ))}
+      {benches.map((spot) => (
+        <Bench key={`bench-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
+      ))}
+      {walks.map((spot) => (
+        <Crosswalk key={`walk-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
+      ))}
+      <Shelter x={stop.x} z={stop.z} rot={stop.rot} />
+      {bins.map((spot) => (
+        <Bin key={`bin-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
+      ))}
     </group>
   );
 }
@@ -308,10 +544,11 @@ function Avenues() {
 function Roads() {
   return (
     <group>
-      <Avenues />
+      <CurvedRoads />
       {CITY.lots.map((lot) => (
         <BlockStreet key={`street-${lot.x}-${lot.z}`} x={lot.x} z={lot.z} w={lot.w} d={lot.d} />
       ))}
+      <StreetLife />
     </group>
   );
 }
