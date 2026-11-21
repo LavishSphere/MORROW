@@ -1,3 +1,4 @@
+import { LogoMark } from '../brand/LogoMark'
 import { formatMeters } from '../satellite/stats/format'
 import { EvidenceBadge } from './EvidenceBadge'
 import type { DraftProposal, ProposalFacts } from '../types'
@@ -131,6 +132,7 @@ export function ProposalEditor({
       {/* Printable seven-section brief — facts are authoritative */}
       <article id="proposal-print" className="proposal-print">
         <header className="proposal-print__banner">
+          <LogoMark className="proposal-print__mark" />
           <p className="proposal-print__brand">MORROW</p>
           <h2>{draft.headline || 'Community accessibility proposal'}</h2>
           <p className="proposal-print__sub">Make tomorrow possible.</p>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "./LogoMark";
-import { BRAND_BLACK, LOGO_BLUE, TAGLINE, WORDMARK } from "./palette";
+import { BRAND_BLACK, BRAND_WHITE, TAGLINE, WORDMARK } from "./palette";
 
 /**
  * How long the scene camera should take to descend after the lockup.
@@ -69,7 +69,7 @@ const OPENING_CSS = `
   margin: 0;
   padding: 8vh 6vw 10vh;
   background: ${BRAND_BLACK};
-  color: ${LOGO_BLUE};
+  color: ${BRAND_WHITE};
   overflow: hidden;
   pointer-events: auto;
 }
@@ -80,16 +80,15 @@ const OPENING_CSS = `
 .morrow-opening--reduced.morrow-opening--exit {
   animation-duration: ${REDUCED_FADE_MS}ms;
 }
-.morrow-mark {
+.morrow-opening .morrow-mark {
   display: block;
   width: min(36vmin, 220px);
   height: auto;
-  overflow: visible;
 }
 .morrow-word,
 .morrow-line {
   margin: 0;
-  color: ${LOGO_BLUE};
+  color: ${BRAND_WHITE};
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 600;
 }
@@ -107,30 +106,21 @@ const OPENING_CSS = `
   letter-spacing: 0.06em;
   line-height: 1.3;
 }
-.morrow-opening--motion .morrow-stroke {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation-name: morrow-stroke-in;
-  animation-duration: ${STROKE_IN_MS}ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  animation-fill-mode: both;
+.morrow-opening--motion .morrow-mark {
+  animation: morrow-mark-in ${STROKE_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
 }
-.morrow-opening--motion .morrow-stroke-1 { animation-delay: 80ms; }
-.morrow-opening--motion .morrow-stroke-2 { animation-delay: 260ms; }
-.morrow-opening--motion .morrow-stroke-3 { animation-delay: 440ms; }
 .morrow-opening--motion .morrow-word {
   animation: morrow-rise ${WORD_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) ${WORD_DELAY_MS}ms both;
 }
 .morrow-opening--motion .morrow-line {
   animation: morrow-rise ${LINE_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) ${LINE_DELAY_MS}ms both;
 }
-@keyframes morrow-stroke-in {
-  0% {
+@keyframes morrow-mark-in {
+  from {
     opacity: 0;
-    transform: translate3d(0, -46vh, 0) scale(0.42);
+    transform: translate3d(0, 0.6rem, 0);
   }
-  38% { opacity: 1; }
-  100% {
+  to {
     opacity: 1;
     transform: none;
   }
@@ -213,7 +203,7 @@ export function OpeningSequence({
 
   return (
     <div
-      className={rootClass}
+      className={`${rootClass} flex flex-col items-center justify-center bg-black text-center text-white`}
       role="region"
       aria-label={`${WORDMARK}. ${TAGLINE}`}
       aria-hidden={phase === "exit" ? true : undefined}

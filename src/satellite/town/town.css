@@ -15,7 +15,9 @@
   z-index: 4;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  text-align: center;
+  flex-wrap: nowrap;
   gap: 16px;
   min-height: 64px;
   padding: 10px 22px;
@@ -23,13 +25,23 @@
 }
 
 .satellite-town__mark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   margin: 0;
-  color: #1488ff;
+  color: #ffffff;
   font-family: var(--font-display, "Bricolage Grotesque", Georgia, serif);
   font-size: 26px;
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
+}
+
+.satellite-town__mark-shape {
+  display: block;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: none;
 }
 
 .satellite-town__source,
@@ -41,14 +53,29 @@
   color: #ffffff;
 }
 
+.satellite-town__notes {
+  position: absolute;
+  z-index: 5;
+  left: 22px;
+  right: 22px;
+  top: 72px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  pointer-events: none;
+  text-align: center;
+}
+
 .satellite-town__source {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 14px;
   font-weight: 600;
+  text-shadow: 0 1px 2px #000000;
 }
 
 .satellite-town__next {
-  border: 2px solid #1488ff;
+  flex: none;
+  border: 2px solid #ffffff;
   border-radius: 6px;
   background: #000000;
   padding: 8px 16px;
@@ -186,11 +213,6 @@
 }
 
 .satellite-town__meters {
-  position: absolute;
-  z-index: 6;
-  left: 16px;
-  top: 16px;
-  max-width: 28rem;
   margin: 0;
   color: #ffffff;
   font-size: 14px;
@@ -200,16 +222,28 @@
 }
 
 .satellite-town__credit {
-  position: absolute;
-  z-index: 4;
-  left: 22px;
-  top: 98px;
   margin: 0;
   font-size: 11px;
   text-shadow: 0 1px 2px #000000;
 }
 
 @media (max-width: 720px) {
+  .satellite-town__mark {
+    min-width: 0;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+  }
+
+  .satellite-town__mark-shape {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .satellite-town__next {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
   .satellite-town__photos img {
     height: 96px;
   }

@@ -1,6 +1,8 @@
-import type { SVGProps } from "react";
-import { LOGO_BLUE } from "./palette";
-import { LOGO_STROKES } from "./logoPaths";
+import type { ImgHTMLAttributes } from "react";
+import blueMark from "./morrow-logo-blue.png";
+import whiteMark from "./morrow-logo-white.png";
+
+export type LogoTone = "blue" | "white";
 
 export type LogoMarkProps = {
   /** Accessible name when the mark is not decorative. */
@@ -10,42 +12,37 @@ export type LogoMarkProps = {
    * wordmark next to it already says MORROW.
    */
   decorative?: boolean;
-} & Omit<SVGProps<SVGSVGElement>, "title">;
+  /**
+   * `blue` is the brand mark. `white` is the same shape for a light lockup.
+   */
+  tone?: LogoTone;
+} & Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "alt">;
+
+const MARK_SRC: Record<LogoTone, string> = {
+  blue: blueMark,
+  white: whiteMark,
+};
 
 /**
- * The MORROW mark: three rounded strokes. Each stroke carries
- * `morrow-stroke` so the opening can fly them in one at a time.
+ * The MORROW mark is the supplied logo shape. It is not redrawn.
  */
 export function LogoMark({
   title = "MORROW",
   decorative = false,
+  tone = "blue",
   className,
   ...rest
 }: LogoMarkProps) {
   const classes = ["morrow-mark", className].filter(Boolean).join(" ");
 
   return (
-    <svg
-      viewBox="0 0 100 100"
+    <img
+      src={MARK_SRC[tone]}
+      alt={decorative ? "" : title}
       className={classes}
-      role={decorative ? "presentation" : "img"}
-      aria-label={decorative ? undefined : title}
       aria-hidden={decorative ? true : undefined}
-      focusable="false"
+      draggable={false}
       {...rest}
-    >
-      {decorative ? null : <title>{title}</title>}
-      {LOGO_STROKES.map((d, index) => (
-        <path
-          key={d}
-          className={`morrow-stroke morrow-stroke-${index + 1}`}
-          d={d}
-          fill={LOGO_BLUE}
-          stroke={LOGO_BLUE}
-          strokeWidth={0.7}
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
+    />
   );
 }

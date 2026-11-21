@@ -63,7 +63,9 @@ export default function App() {
     : []
 
   return (
-    <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
+    <div
+      className={`app-shell min-h-full w-full bg-black text-center text-white${reducedMotion ? ' is-reduced-motion' : ''}`}
+    >
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes
       </a>
@@ -85,19 +87,7 @@ export default function App() {
         aria-labelledby={`mode-tab-${mode}`}
       >
         {mode === 'explore' && surfaceView === 'canvas' && (
-          <>
-            <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
-            <div className="dream-sky" aria-hidden="true">
-              <span className="dream-sky__cloud dream-sky__cloud--one" />
-              <span className="dream-sky__cloud dream-sky__cloud--two" />
-              <span className="dream-sky__cloud dream-sky__cloud--three" />
-              <span className="dream-sky__cloud dream-sky__cloud--four" />
-              <span className="dream-sky__sparkle dream-sky__sparkle--a" />
-              <span className="dream-sky__sparkle dream-sky__sparkle--b" />
-              <span className="dream-sky__sparkle dream-sky__sparkle--c" />
-              <span className="dream-sky__glow" />
-            </div>
-          </>
+          <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
         )}
         {mode === 'explore' && surfaceView === 'list' && (
           <ListFallback

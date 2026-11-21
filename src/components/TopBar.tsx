@@ -1,3 +1,4 @@
+import { LogoMark } from '../brand/LogoMark'
 import { LocationSelector } from './LocationSelector'
 import type { LocationOption, SurfaceView } from '../types'
 
@@ -21,9 +22,12 @@ export function TopBar({
   onSurfaceViewChange,
 }: Props) {
   return (
-    <header className="top-bar">
+    <header className="top-bar flex w-full flex-col items-center justify-center text-center">
       <div className="top-bar__brand-block">
-        <p className="top-bar__wordmark">MORROW</p>
+        <div className="top-bar__lockup">
+          <LogoMark decorative className="top-bar__mark" />
+          <p className="top-bar__wordmark">MORROW</p>
+        </div>
         <p className="top-bar__promise">Make tomorrow possible.</p>
       </div>
 

@@ -16,7 +16,7 @@ type Props = {
 export function ModeToolbar({ mode, onModeChange, reducedMotion }: Props) {
   return (
     <nav
-      className={`mode-toolbar${reducedMotion ? ' is-reduced' : ''}`}
+      className={`mode-toolbar flex w-full justify-center${reducedMotion ? ' is-reduced' : ''}`}
       aria-label="App modes"
     >
       <div className="mode-toolbar__track" role="tablist" aria-orientation="horizontal">

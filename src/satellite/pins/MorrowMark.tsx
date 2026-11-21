@@ -1,11 +1,17 @@
+import { LogoMark } from "../../brand/LogoMark";
 import "./pins.css";
 
 export type MorrowMarkProps = {
   className?: string;
 };
 
-/** The MORROW wordmark. Logo blue, and the only blue text in this overlay. */
+/** Blue logo shape plus the white MORROW word. */
 export function MorrowMark({ className }: MorrowMarkProps) {
   const classes = ["satellite-pins__mark", className].filter(Boolean).join(" ");
-  return <p className={classes}>MORROW</p>;
+  return (
+    <p className={classes}>
+      <LogoMark decorative className="satellite-pins__mark-shape" />
+      <span>MORROW</span>
+    </p>
+  );
 }

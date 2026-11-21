@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -32,7 +33,7 @@ function geojsonAsJson(): Plugin {
 
 export default defineConfig({
   base: pagesBase(),
-  plugins: [geojsonAsJson(), react()],
+  plugins: [geojsonAsJson(), react(), tailwindcss()],
   server: {
     host: '127.0.0.1',
     port: 5173,
