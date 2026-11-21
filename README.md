@@ -31,10 +31,10 @@ npm run build && npm run preview
 
 ### 90-second path (intended judge loop)
 
-1. Open the public URL. The Wellesley scene fills the window.
-2. A minimal mode bar — **Explore | Improve | Compare | Propose** — sits on the scene. Arrow keys move between modes. There is no sidebar.
+1. Open the public URL. The MORROW wordmark stays in the top bar. **Explore | Improve | Compare | Propose** stays on the bottom bar. Arrow keys move between modes.
+2. There is no Barriers sidebar. The Wellesley scene fills the width to the right edge.
 
-The bundled intervention is `wellesley-intervention-ramp-01`. Compare math remains `@morrow/routing.compareScenario` on `wellesley-demo-01`. Proposal generation remains the API client. Neither is drawn over the canvas. List (2D) is not mounted.
+The bundled intervention is `wellesley-intervention-ramp-01`. Compare math remains `@morrow/routing.compareScenario` on `wellesley-demo-01`. Proposal generation remains the API client. List (2D) is the top-bar alternate to the canvas.
 
 ## What the fallbacks do
 
@@ -83,10 +83,11 @@ Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shap
 
 ## Accessible Interface
 
-- The Wellesley scene is the whole window. The only control is the mode bar: **Explore | Improve | Compare | Propose**.
-- No sidebar, location selector, or list pane on the canvas.
+- Top bar keeps the MORROW wordmark, the Wellesley selector, Canvas / List (2D), and reduced motion.
+- Bottom bar is **Explore | Improve | Compare | Propose**.
+- No Barriers sidebar. The scene fills the remaining width to the right edge.
 - Compare via `@morrow/routing.compareScenario` (`src/data/compare.ts`) stays in the data layer.
-- Propose still calls `POST /api/proposals/generate` when the API is reachable, with a labeled template fallback. That editor is not mounted on the scene.
+- Propose still calls `POST /api/proposals/generate` when the API is reachable, with a labeled template fallback. The editor opens only in Propose mode.
 - Skip link to the mode bar, visible `:focus-visible`, reduced-motion respected.
 
 ### Routing

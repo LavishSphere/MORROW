@@ -6,14 +6,12 @@ type Props = {
   reducedMotion: boolean
 }
 
-/** Full-bleed Wellesley scene. Mode chrome stays off this surface. */
+/** Wellesley scene between the top bar and the mode bar. */
 export function CanvasSlot({ mode, reducedMotion }: Props) {
   return (
     <section
-      id="stage"
       className={`canvas-slot${reducedMotion ? ' is-reduced' : ''}`}
-      role="tabpanel"
-      aria-labelledby={`mode-tab-${mode}`}
+      aria-label="Satellite view"
     >
       <SatelliteTown reducedMotion={reducedMotion} />
       <p className="sr-only">
