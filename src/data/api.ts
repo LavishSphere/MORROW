@@ -1,12 +1,16 @@
+import { compareByIds, type CompareResult } from './compare'
 import { BARRIERS, getBarrier, getIntervention, SCENARIO } from './fixtures'
 import type { Barrier, Intervention, Scenario } from '../types'
+
+export type { CompareResult }
+export { compareByIds }
 
 export const API_STATUS = {
   barriersApi: false,
   generateApi: false,
   gemini: false,
   tigerData: false,
-  morrowRouting: false,
+  morrowRouting: true,
 } as const
 
 export type BarriersResult = {

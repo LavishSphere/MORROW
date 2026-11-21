@@ -4,12 +4,6 @@
 
 WHACK 2026 · Better Worlds (Social Impact)
 
-Public civic demo — no login. Showcase: Wellesley, MA.
-
-## Front-end stack
-
-Accessible Interface uses **Vite + React + TypeScript** at the repo root (npm workspaces with `packages/*`).
-
 ## Run locally
 
 ```bash
@@ -19,22 +13,18 @@ npm run dev
 
 Typically `http://localhost:5173`.
 
-```bash
-npm run build
-npm run preview
-npm run lint
+## This PR — Compare
+
+Wires **Compare** to Sophia’s `@morrow/routing`:
+
+```ts
+import { compareIntervention } from '@morrow/routing'
+// see src/data/compare.ts — ids only from the client
 ```
 
-## Context panel (Explore / Improve)
+Demo graph: `src/data/demoGraph.ts`. Do not vendor a second routing package.
 
-- Full-bleed **canvas slot** (3D reserved)
-- Compact Wellesley (featured) location selector
-- Bottom toolbar: **Explore | Improve | Compare | Propose** (keyboard focusable)
-- Reduced-motion toggle
-- Bundled Wellesley fixtures
-- Context panel: barrier list, evidence badges, intervention options
-- Explore / Improve wired to bundled fixtures (API unavailable label)
-- Compare / Propose placeholders for follow-up PRs
+Propose / PDF / List(2D) land in follow-up PRs.
 
 ## Docs
 

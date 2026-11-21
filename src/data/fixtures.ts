@@ -1,3 +1,4 @@
+import { MODELED_IMPACT_ASSUMPTIONS } from '@morrow/routing'
 import type { Barrier, Intervention, LocationOption, Scenario } from '../types'
 
 export const LOCATIONS: LocationOption[] = [
@@ -54,11 +55,7 @@ export const SCENARIO: Scenario = {
   destinationId: 'library',
   barrierId: 'wellesley-crossing-01',
   interventionId: 'int-ramp-01',
-  modelAssumptions: [
-    'Demonstration-only street graph',
-    'No site inspection or engineering feasibility assessment',
-    'Results are modeled impact, not a claim of real-world infrastructure improvement',
-  ],
+  modelAssumptions: [...MODELED_IMPACT_ASSUMPTIONS],
 }
 
 export function getBarrier(id: string) {
