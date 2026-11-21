@@ -106,7 +106,7 @@ export function handleHealth(
     tigerData: tigerLive(),
     databaseUrlConfigured: databaseUrlConfigured(),
     tigerError: tigerLive() ? null : tigerLastError(),
-    mastra: false,
+    mastra: true,
     vultr: process.env.MORROW_HOSTED_ON?.trim().toLowerCase() === "vultr",
   });
 }

@@ -82,7 +82,7 @@ Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run de
 | `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
 | `VITE_API_BASE` | No | Front-end API base (no trailing slash). Empty = same-origin / proxy. Required for GitHub Pages → hosted API. |
 
-Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). For Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin after Vultr (or another host) is up — see [`docs/deploy-api-vultr.md`](docs/deploy-api-vultr.md). Details: [`packages/api/README.md`](packages/api/README.md).
+Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). Generate runs the Mastra proposal workflow. For Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin after Vultr (or another host) is up — see [`docs/deploy-api-vultr.md`](docs/deploy-api-vultr.md). Details: [`packages/api/README.md`](packages/api/README.md).
 
 ## Accessible Interface
 

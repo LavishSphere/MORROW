@@ -5,6 +5,7 @@ import {
   tigerLive,
 } from "./data/tiger.ts";
 import { listenApiServer } from "./server.ts";
+import { mastraConfigured } from "./workflow/proposal.ts";
 
 export { createApiServer, listenApiServer } from "./server.ts";
 export { buildTemplateDraft } from "./draft/template.ts";
@@ -17,6 +18,11 @@ export {
   seedBarriersFromBundled,
   tigerLive,
 } from "./data/tiger.ts";
+export {
+  mastraConfigured,
+  proposalWorkflow,
+  runProposalWorkflow,
+} from "./workflow/proposal.ts";
 
 const isMain =
   process.argv[1] &&
@@ -42,6 +48,6 @@ if (isMain) {
   );
   const hosted = process.env.MORROW_HOSTED_ON?.trim() || "local";
   console.log(
-    `[@morrow/api] host=${hosted} tigerLive=${tigerLive()} | Vultr runbook: docs/deploy-api-vultr.md`,
+    `[@morrow/api] host=${hosted} tigerLive=${tigerLive()} mastra=${mastraConfigured()} | Vultr runbook: docs/deploy-api-vultr.md`,
   );
 }

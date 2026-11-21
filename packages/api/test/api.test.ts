@@ -45,6 +45,7 @@ test("GET /api/health reports template-only without Gemini key", async () => {
   assert.equal(record.geminiConfigured, false);
   assert.equal(record.tigerData, false);
   assert.equal(record.databaseUrlConfigured, false);
+  assert.equal(record.mastra, true);
   assert.equal(record.vultr, false);
 });
 
@@ -109,6 +110,8 @@ test("POST /api/proposals/generate uses template without GEMINI_API_KEY", async 
     aiGenerated: boolean;
     geminiAvailable: boolean;
     apiAvailable: boolean;
+    mastra: boolean;
+    workflowSteps: string[];
     facts: ProposalFacts;
     draft: { headline: string };
     warnings: string[];
@@ -116,6 +119,15 @@ test("POST /api/proposals/generate uses template without GEMINI_API_KEY", async 
   assert.equal(record.aiGenerated, false);
   assert.equal(record.geminiAvailable, false);
   assert.equal(record.apiAvailable, true);
+  assert.equal(record.mastra, true);
+  assert.deepEqual(record.workflowSteps, [
+    "validate-ids",
+    "load-evidence",
+    "collect-route-metrics",
+    "generate-draft",
+    "check-draft",
+    "return-proposal",
+  ]);
   assert.ok(record.proposalId.length > 8);
   // Before may be null when the demo trip is unreachable until the intervention.
   assert.ok(
