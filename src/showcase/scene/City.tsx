@@ -245,43 +245,73 @@ function GlowSeg({
   );
 }
 
-function CircuitGrid() {
-  const lanes: number[] = [];
-  for (let i = -48; i <= 48; i += 12) lanes.push(i);
+function RoadCorner({
+  x,
+  z,
+  rotation,
+  radius,
+  width,
+}: {
+  x: number;
+  z: number;
+  rotation: number;
+  radius: number;
+  width: number;
+}) {
+  return (
+    <mesh position={[x, 0.05, z]} rotation={[-Math.PI / 2, 0, rotation]} raycast={() => null}>
+      <torusGeometry args={[radius, width / 2, 8, 10, Math.PI / 2]} />
+      <meshStandardMaterial
+        color={ROAD}
+        emissive={ROAD}
+        emissiveIntensity={1.05}
+        roughness={0.2}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+/** Streets that bend around each block. Not a graph-paper grid. */
+function BlockStreet({ x, z, w, d }: Pick<Lot, "x" | "z" | "w" | "d">) {
+  const pad = 2.4;
+  const hw = w / 2 + pad;
+  const hd = d / 2 + pad;
+  const radius = 1.35;
+  const width = 0.72;
   return (
     <group>
-      {lanes.map((lane) =>
-        lanes.slice(0, -1).map((start, index) => {
-          const end = lanes[index + 1] ?? start;
-          const skipX = hash(lane, start) < 0.16;
-          const skipZ = hash(start, lane) < 0.16;
-          return (
-            <group key={`${lane}-${start}`}>
-              {!skipX && <GlowSeg from={[lane, start]} to={[lane, end]} />}
-              {!skipZ && <GlowSeg from={[start, lane]} to={[end, lane]} />}
-            </group>
-          );
-        }),
-      )}
-      {lanes.map((x) =>
-        lanes.map((z) => (
-          <mesh
-            key={`dot-${x}-${z}`}
-            position={[x, 0.05, z]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            raycast={() => null}
-          >
-            <torusGeometry args={[0.28, 0.05, 6, 10]} />
-            <meshStandardMaterial
-              color={ROAD}
-              emissive={ROAD}
-              emissiveIntensity={1.05}
-              roughness={0.14}
-              toneMapped={false}
-            />
-          </mesh>
-        )),
-      )}
+      <GlowSeg from={[x - hw + radius, z - hd]} to={[x + hw - radius, z - hd]} width={width} />
+      <GlowSeg from={[x - hw + radius, z + hd]} to={[x + hw - radius, z + hd]} width={width} />
+      <GlowSeg from={[x - hw, z - hd + radius]} to={[x - hw, z + hd - radius]} width={width} />
+      <GlowSeg from={[x + hw, z - hd + radius]} to={[x + hw, z + hd - radius]} width={width} />
+      <RoadCorner x={x - hw + radius} z={z - hd + radius} rotation={Math.PI} radius={radius} width={width} />
+      <RoadCorner x={x + hw - radius} z={z - hd + radius} rotation={Math.PI / 2} radius={radius} width={width} />
+      <RoadCorner x={x + hw - radius} z={z + hd - radius} rotation={0} radius={radius} width={width} />
+      <RoadCorner x={x - hw + radius} z={z + hd - radius} rotation={-Math.PI / 2} radius={radius} width={width} />
+    </group>
+  );
+}
+
+function Avenues() {
+  const width = 1.15;
+  return (
+    <group>
+      <GlowSeg from={[-62, -6]} to={[62, -6]} width={width} />
+      <GlowSeg from={[-62, 22]} to={[62, 22]} width={width} />
+      <GlowSeg from={[-18, -58]} to={[-18, 58]} width={width} />
+      <GlowSeg from={[28, -58]} to={[28, 58]} width={width} />
+    </group>
+  );
+}
+
+function Roads() {
+  return (
+    <group>
+      <Avenues />
+      {CITY.lots.map((lot) => (
+        <BlockStreet key={`street-${lot.x}-${lot.z}`} x={lot.x} z={lot.z} w={lot.w} d={lot.d} />
+      ))}
     </group>
   );
 }
@@ -320,7 +350,7 @@ export function City() {
         <planeGeometry args={[180, 180]} />
         <meshStandardMaterial color={GROUND} roughness={0.95} metalness={0.08} />
       </mesh>
-      <CircuitGrid />
+      <Roads />
       {CITY.lots.map((lot) => (
         <HoloBuilding key={`b-${lot.x}-${lot.z}`} {...lot} />
       ))}
