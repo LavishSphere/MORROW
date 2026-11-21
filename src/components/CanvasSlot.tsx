@@ -1,4 +1,4 @@
-import { CartoonCity } from '../city/CartoonCity'
+import { SatelliteTown } from '../satellite/town/SatelliteTown'
 import type { AppMode } from '../types'
 
 type Props = {
@@ -11,9 +11,9 @@ export function CanvasSlot({ mode, reducedMotion }: Props) {
   return (
     <section
       className={`canvas-slot${reducedMotion ? ' is-reduced' : ''}`}
-      aria-label="Cartoon city"
+      aria-label="Satellite view"
     >
-      <CartoonCity reducedMotion={reducedMotion} />
+      <SatelliteTown reducedMotion={reducedMotion} />
       <p className="sr-only">
         Wellesley College, Tower Court to Clapp Library. Illustrative. Mode{' '}
         {mode}.
