@@ -8,7 +8,8 @@ export const PAVEMENT = ROAD_HALF + SIDEWALK_WIDTH;
 export const CITY_LIMIT = 54;
 export const WALK_LIMIT = 70;
 
-export const SPAWN = { x: 6.3, z: 18, yaw: Math.PI };
+/** Sidewalk just north of the crossing, looking south at the curb. */
+export const SPAWN = { x: 6.15, z: 13.4, yaw: Math.PI };
 
 export type Block = {
   x: number;
@@ -27,24 +28,24 @@ export type Obstacle = {
 };
 
 export const BUILDINGS: readonly Block[] = [
-  { x: 14, z: 16, w: 8, d: 10, h: 11, color: "#d7d1c6" },
-  { x: 23, z: 14, w: 6.5, d: 8, h: 20, color: "#b7c3ce" },
-  { x: 17, z: 25, w: 11, d: 5.5, h: 7, color: "#cbb8a2" },
-  { x: 15, z: -15, w: 9, d: 9, h: 13, color: "#e4e0d8" },
-  { x: 24, z: -22, w: 6, d: 11, h: 28, color: "#9aa7b5" },
-  { x: 16, z: -25, w: 12, d: 5, h: 6.5, color: "#d2c3ae" },
-  { x: -14, z: -16, w: 8, d: 8, h: 9, color: "#ddd6cc" },
-  { x: -23, z: -14, w: 6.5, d: 10, h: 15, color: "#c3b8aa" },
-  { x: -16, z: -25, w: 12, d: 5, h: 6, color: "#e7d7c4" },
-  { x: 48, z: 4, w: 8, d: 14, h: 34, color: "#c5ced6" },
-  { x: 47, z: 24, w: 7, d: 10, h: 18, color: "#d9d4cb" },
-  { x: 47, z: -18, w: 8, d: 12, h: 16, color: "#b9c2c8" },
-  { x: -48, z: 10, w: 8, d: 16, h: 26, color: "#d4cfc6" },
-  { x: -47, z: -16, w: 7, d: 11, h: 14, color: "#c8beb2" },
-  { x: 8, z: 48, w: 12, d: 7, h: 22, color: "#d8dee4" },
-  { x: -14, z: 47, w: 10, d: 7, h: 12, color: "#e2dbd2" },
-  { x: 2, z: -48, w: 14, d: 7, h: 24, color: "#c9d0d6" },
-  { x: 22, z: -47, w: 8, d: 6, h: 10, color: "#ddd4c8" },
+  { x: 14, z: 16, w: 8, d: 10, h: 11, color: "#1c2633" },
+  { x: 23, z: 14, w: 6.5, d: 8, h: 20, color: "#243447" },
+  { x: 17, z: 25, w: 11, d: 5.5, h: 7, color: "#1a2836" },
+  { x: 15, z: -15, w: 9, d: 9, h: 13, color: "#222c3a" },
+  { x: 24, z: -22, w: 6, d: 11, h: 28, color: "#2a3a4e" },
+  { x: 16, z: -25, w: 12, d: 5, h: 6.5, color: "#1e2a38" },
+  { x: -14, z: -16, w: 8, d: 8, h: 9, color: "#243140" },
+  { x: -23, z: -14, w: 6.5, d: 10, h: 15, color: "#1a2430" },
+  { x: -16, z: -25, w: 12, d: 5, h: 6, color: "#2c3a4a" },
+  { x: 48, z: 4, w: 8, d: 14, h: 34, color: "#1b2836" },
+  { x: 47, z: 24, w: 7, d: 10, h: 18, color: "#243447" },
+  { x: 47, z: -18, w: 8, d: 12, h: 16, color: "#1e2c3c" },
+  { x: -48, z: 10, w: 8, d: 16, h: 26, color: "#223044" },
+  { x: -47, z: -16, w: 7, d: 11, h: 14, color: "#1a2634" },
+  { x: 8, z: 48, w: 12, d: 7, h: 22, color: "#2a3848" },
+  { x: -14, z: 47, w: 10, d: 7, h: 12, color: "#1c2834" },
+  { x: 2, z: -48, w: 14, d: 7, h: 24, color: "#243446" },
+  { x: 22, z: -47, w: 8, d: 6, h: 10, color: "#1a2432" },
 ];
 
 export const TREES: readonly (readonly [number, number])[] = [

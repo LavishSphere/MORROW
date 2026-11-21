@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { INTERVENTION_RAMP_ID, footprintSource } from "../layout";
-import { scene } from "../palette";
+import { LOGO_BLUE } from "../palette";
 import { City } from "./City";
 import { Grass } from "./Grass";
 import { Sky } from "./Space";
@@ -30,24 +30,25 @@ export function TownScene({
 
   return (
     <group name={`footprints-${source}`}>
-      <color attach="background" args={[scene.sky]} />
-      <fog attach="fog" args={[scene.fog, 48, 150]} />
-      <hemisphereLight args={["#d5e4f5", "#6d7a48", 0.62]} />
+      <color attach="background" args={["#02060c"]} />
+      <fog attach="fog" args={["#071018", 28, 120]} />
+      <hemisphereLight args={["#16324f", "#0c1210", 0.35]} />
       <directionalLight
-        position={[32, 44, 18]}
-        intensity={2.6}
+        position={[18, 22, -8]}
+        intensity={1.35}
+        color={"#d7e6ff"}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-camera-near={1}
-        shadow-camera-far={150}
-        shadow-camera-left={-55}
-        shadow-camera-right={55}
-        shadow-camera-top={55}
-        shadow-camera-bottom={-55}
+        shadow-camera-far={90}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
         shadow-bias={-0.0004}
       />
-      <directionalLight position={[-22, 16, -12]} intensity={0.38} />
+      <directionalLight position={[-8, 6, 12]} intensity={0.85} color={LOGO_BLUE} />
       <Sky />
       <Grass />
       <City />
