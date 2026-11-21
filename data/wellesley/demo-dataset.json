@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "locationId": "wellesley-showcase",
+  "honesty": {
+    "basemap": "OpenStreetMap footprints for rendering and graph building only. Not a barrier inventory. Missing OSM tags are not evidence of inaccessibility.",
+    "barriers": "The seeded Wellesley barrier in this bundle is illustrative — a simulation for the hackathon demo, not a verified defect at Wellesley College.",
+    "routing": "Before/after distances are modeled on a demonstration pedestrian graph. No site inspection or engineering feasibility assessment."
+  },
+  "bbox": {
+    "west": -71.3085,
+    "south": 42.291,
+    "east": -71.3005,
+    "north": 42.2968,
+    "crs": "EPSG:4326",
+    "label": "Wellesley College showcase (Central Street / College Road)",
+    "center": [-71.3045, 42.2939]
+  },
+  "basemapPath": "data/wellesley/basemap.geojson",
+  "barriers": [
+    {
+      "id": "wellesley-barrier-campus-path-01",
+      "coordinates": [-71.3078763, 42.2931263],
+      "type": "missing_ramp",
+      "evidenceStatus": "illustrative",
+      "description": "Illustrative missing curb ramp where a campus footway meets a service drive near College Road, blocking a direct wheelchair-accessible path between Tower Court and Clapp Library.",
+      "source": "MORROW Phase-1 illustrative seed (not a field-verified defect)",
+      "locationLabel": "Footway near College Road (Tower Court → Clapp Library)",
+      "city": "Wellesley, MA"
+    }
+  ],
+  "interventions": [
+    {
+      "id": "wellesley-intervention-ramp-01",
+      "barrierId": "wellesley-barrier-campus-path-01",
+      "type": "install_ramp",
+      "description": "Install an accessible curb ramp and short connector so the blocked footway edge becomes wheelchair-accessible.",
+      "graphChanges": [
+        {
+          "edgeId": "osm-way-543827744",
+          "accessible": true,
+          "weight": 42
+        },
+        {
+          "edgeId": "osm-way-543827745",
+          "accessible": true,
+          "weight": 55
+        }
+      ]
+    }
+  ],
+  "scenario": {
+    "id": "wellesley-demo-01",
+    "label": "Tower Court area to Clapp Library (illustrative)",
+    "city": "Wellesley, MA",
+    "origin": [-71.3083, 42.29255],
+    "destination": [-71.3065, 42.29155],
+    "originLabel": "Near Tower Court / Claflin / Severance",
+    "destinationLabel": "Clapp Library",
+    "barrierId": "wellesley-barrier-campus-path-01",
+    "interventionId": "wellesley-intervention-ramp-01",
+    "evidenceStatus": "illustrative",
+    "graphChanges": [
+      {
+        "edgeId": "osm-way-543827744",
+        "accessible": true,
+        "weight": 42
+      },
+      {
+        "edgeId": "osm-way-543827745",
+        "accessible": true,
+        "weight": 55
+      }
+    ],
+    "assumptions": [
+      "Demonstration-only street and footway graph derived from OpenStreetMap",
+      "Barrier is illustrative — not a verified Wellesley College defect",
+      "No site inspection or engineering feasibility assessment",
+      "Modeled distances are for comparison within this demo graph only"
+    ]
+  }
+}
