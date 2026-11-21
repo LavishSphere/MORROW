@@ -12,7 +12,7 @@ export type RouteGeometry = {
 };
 
 export type ShowcaseCanvasProps = {
-  /** Optional extract. Phase 1 still draws invented footprints. */
+  /** Ashsmith Wellesley FeatureCollection. Defaults to bundled basemap.geojson. */
   geoJson?: unknown;
   barriers: readonly Barrier[];
   selectedBarrierId?: string | null;
