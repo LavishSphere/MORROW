@@ -35,13 +35,82 @@ function streetPath(
     .join(' ')
 }
 
+const CAR_COLORS = ['#f7f4ee', '#1a1a1a', '#d24a3a', '#2c6b4a', '#e2a31b', '#3d5a80']
+
+function polylineLength(
+  points: [number, number][],
+  project: (lng: number, lat: number) => { x: number; y: number },
+): number {
+  let total = 0
+  let previous = project(points[0][0], points[0][1])
+  for (let index = 1; index < points.length; index += 1) {
+    const next = project(points[index][0], points[index][1])
+    total += Math.hypot(next.x - previous.x, next.y - previous.y)
+    previous = next
+  }
+  return total
+}
+
+function poseAlong(
+  points: [number, number][],
+  project: (lng: number, lat: number) => { x: number; y: number },
+  fraction: number,
+): { x: number; y: number; angle: number } | null {
+  const placed = points.map((point) => project(point[0], point[1]))
+  const lengths: number[] = []
+  let total = 0
+  for (let index = 1; index < placed.length; index += 1) {
+    const length = Math.hypot(
+      placed[index].x - placed[index - 1].x,
+      placed[index].y - placed[index - 1].y,
+    )
+    lengths.push(length)
+    total += length
+  }
+  if (total < 1) return null
+  let remaining = total * Math.min(0.8, Math.max(0.2, fraction))
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index]
+    if (remaining <= length || index === lengths.length - 1) {
+      const span = length === 0 ? 0 : Math.min(1, remaining / length)
+      const from = placed[index]
+      const to = placed[index + 1]
+      return {
+        x: from.x + (to.x - from.x) * span,
+        y: from.y + (to.y - from.y) * span,
+        angle: (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI,
+      }
+    }
+    remaining -= length
+  }
+  return null
+}
+
+function CarBody({ color }: { color: string }) {
+  return (
+    <>
+      <rect className="satellite-town__car-body" x={-8} y={-3.5} width={16} height={7} rx={2} fill={color} />
+      <rect x={-1.5} y={-2.2} width={5} height={4.4} rx={1} fill="rgba(186, 230, 240, 0.9)" />
+    </>
+  )
+}
+
 function StreetLayer({
   ways,
   project,
+  reducedMotion,
 }: {
   ways: readonly (OsmWay | BasemapWay)[]
   project: (lng: number, lat: number) => { x: number; y: number }
+  reducedMotion: boolean
 }) {
+  const traffic = ways
+    .filter((way) => way.kind === 'road' && way.points.length >= 2)
+    .map((way) => ({ way, length: polylineLength(way.points, project) }))
+    .filter((row) => row.length >= 48)
+    .sort((left, right) => right.length - left.length)
+    .slice(0, 8)
+
   return (
     <svg className="satellite-town__streets" aria-hidden="true">
       {ways.map((way) => (
@@ -51,6 +120,35 @@ function StreetLayer({
           className={way.kind === 'building' ? 'satellite-town__building' : 'satellite-town__road'}
         />
       ))}
+      {traffic.map((row, index) => {
+        const path = streetPath(row.way.points, project)
+        const color = CAR_COLORS[index % CAR_COLORS.length]
+        if (reducedMotion) {
+          const pose = poseAlong(row.way.points, project, 0.25 + (index % 4) * 0.15)
+          if (!pose) return null
+          return (
+            <g
+              key={`car-${row.way.id}`}
+              className="satellite-town__car"
+              transform={`translate(${pose.x} ${pose.y}) rotate(${pose.angle})`}
+            >
+              <CarBody color={color} />
+            </g>
+          )
+        }
+        return (
+          <g key={`car-${row.way.id}`} className="satellite-town__car">
+            <CarBody color={color} />
+            <animateMotion
+              dur={`${9 + (index % 4) * 2}s`}
+              begin={`-${index * 1.4}s`}
+              repeatCount="indefinite"
+              rotate="auto"
+              path={path}
+            />
+          </g>
+        )
+      })}
     </svg>
   )
 }
@@ -173,6 +271,7 @@ function TownFrame({
             <StreetLayer
               ways={away ? neighborhood.ways : wellesleyStreets}
               project={project}
+              reducedMotion={reducedMotion}
             />
             {away
               ? null
