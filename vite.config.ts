@@ -18,6 +18,13 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
+    proxy: {
+      // Forward /api/* to @morrow/api when running locally (npm run api:dev).
+      '/api': {
+        target: process.env.VITE_API_PROXY ?? 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: '127.0.0.1',
