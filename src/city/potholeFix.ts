@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { DraftProposal } from '../types'
+import type { DraftProposal } from '../types.ts'
 
 export type PotholeIssue = {
   id: string
