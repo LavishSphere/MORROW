@@ -9,9 +9,9 @@ This plan assigns the work in the [MORROW Whack 2026 project plan](MORROW_WHACK_
 | AI, integrations, and data | **Ashsmith Khayrul** | OpenStreetMap and municipal data, evidence labels, Gemini drafting, Mastra, Tiger Data/PostGIS, the proposal API, optional Vultr |
 | 3D Showcase | Name not assigned | Wellesley neighborhood scene, camera and lighting, intervention animation, route highlight |
 | Accessible Interface | **Caroline Hu** | Web app shell, Explore / Improve / Compare / Propose, keyboard and 2D access, proposal editor and PDF |
-| Routing and Reliability | Name not assigned | Pedestrian routing and measured before/after results, static public demo, judge-flow rehearsal and backup |
+| Routing and Reliability | **Sophia Zheng** | Pedestrian routing and measured before/after results, static public demo, judge-flow rehearsal and backup |
 
-The three unnamed seats stay identified by those role titles until real names exist. Ashsmith Khayrul's lane stays intact: AI, integrations, and data gathering are not split onto the other seats.
+The 3D Showcase seat stays identified by that role title until a real name exists. Ashsmith Khayrul's lane stays intact: AI, integrations, and data gathering are not split onto the other seats. Caroline Hu owns Accessible Interface. Sophia Zheng owns Routing and Reliability. That seat does not take data gathering or the model.
 
 The project plan contains no hardware, device, or fabrication work. There is no hardware seat.
 
@@ -98,13 +98,13 @@ This seat owns the public web application around the canvas: React and TypeScrip
 
 The production front-end build, the four-mode flow, the PDF, and a keyboard path through the same 90-second story. Empty and failure states ship in that build.
 
-## Routing and Reliability
+## Sophia Zheng — Routing and Reliability
 
-This seat owns the calculation that makes an intervention true, and the operational gate that makes the demo submittable. The graph stays small, as the plan describes: edge lengths, wheelchair-accessibility constraints, and Dijkstra or A*.
+Sophia owns the calculation that makes an intervention true, and the operational gate that makes the demo submittable. The graph stays small, as the plan describes: edge lengths, wheelchair-accessibility constraints, and Dijkstra or A*.
 
 ### Deliverables
 
-- A weighted walkable graph built from Ashsmith's Wellesley extract and the intervention `graphChanges`. This seat does not collect OpenStreetMap data and does not assign evidence labels.
+- A weighted walkable graph built from Ashsmith's Wellesley extract and the intervention `graphChanges`. Sophia does not collect OpenStreetMap data and does not assign evidence labels.
 - The accessible shortest path before a change and after it. Compare modeled distance and route geometry. At P1, add a reachable-destination count across more than one destination.
 - One complete scenario and one intervention that edits edges. Tests fail if the before/after figures are constants.
 - A pure module the generate endpoint calls on the server, and that the browser calls for the live preview. The same path runs on the bundled dataset when Tiger Data is down.
@@ -121,7 +121,7 @@ The routing module and its tests, the public URL, the phase-5 log, and the backu
 
 ## Phases
 
-| Phase | 3D Showcase | Accessible Interface | Routing and Reliability | Ashsmith Khayrul |
+| Phase | 3D Showcase | Caroline Hu | Sophia Zheng | Ashsmith Khayrul |
 |---|---|---|---|---|
 | 1. Foundation | Scene block-in on the published bounding box; lock the model to the GeoJSON when it lands | App shell, toolbar, no login, production build | Static host and public URL; algorithm running on the starter graph | Starter set: extract, attribution, types, one scenario |
 | 2. Actual usefulness | Clickable barrier, route light, visible change for the one intervention | Scenario controls and Compare bound to engine output | Recomputed before/after for one trip and one intervention | Ids and `graphChanges` held stable |
@@ -164,10 +164,10 @@ Ashsmith starter set (bbox, GeoJSON, attribution, types, one scenario)
 
 | From | Artifact | Why Ashsmith needs it |
 |---|---|---|
-| Routing and Reliability | Pure routing module and tests | The generate endpoint recomputes before Gemini runs |
-| Accessible Interface | A client that calls generate with ids only, and that can show template drafts and unavailable states | The API remains the authority, and fallbacks are visible |
+| Sophia Zheng | Pure routing module and tests | The generate endpoint recomputes before Gemini runs |
+| Caroline Hu | A client that calls generate with ids only, and that can show template drafts and unavailable states | The API remains the authority, and fallbacks are visible |
 | 3D Showcase | Selection events carrying barrier and intervention ids, and a scene that follows dataset coordinates | Spatial queries and saved proposals key off those ids |
-| Routing and Reliability | Public URL, drill notes, and backup recording | A sponsor claim is made for a demo that has survived the outage drills |
+| Sophia Zheng | Public URL, drill notes, and backup recording | A sponsor claim is made for a demo that has survived the outage drills |
 
 ## What Ashsmith hands the other seats
 
@@ -183,19 +183,19 @@ Ashsmith starter set (bbox, GeoJSON, attribution, types, one scenario)
 
 API keys, prompts, and database URLs stay on Ashsmith's server. They are not part of these handoffs.
 
-## Balance across the three unnamed seats
+## Balance across the product seats
 
-Each unnamed seat owns one part of the demo the project plan treats as essential:
+Each of these seats owns one part of the demo the project plan treats as essential:
 
 - **3D Showcase** owns the Wellesley scene and the visible transformation (the picture in phases 1, 2, and 4).
-- **Accessible Interface** owns the judge-facing product and the takeaway document (the app throughout, and the proposal in phase 3).
-- **Routing and Reliability** owns the two gates that decide whether the demo is real and ready: a calculated change (phase 2) and an unassisted, rehearsed, backed-up public demo (phases 1 and 5). The routing work is the plan's small graph algorithm. The reliability work starts in earnest once that algorithm is in place, so the seat stays occupied for the whole hackathon while data gathering and the model remain with Ashsmith.
+- **Caroline Hu** (Accessible Interface) owns the judge-facing product and the takeaway document (the app throughout, and the proposal in phase 3).
+- **Sophia Zheng** (Routing and Reliability) owns the two gates that decide whether the demo is real and ready: a calculated change (phase 2) and an unassisted, rehearsed, backed-up public demo (phases 1 and 5). The routing work is the plan's small graph algorithm. The reliability work starts in earnest once that algorithm is in place, so the seat stays occupied for the whole hackathon while data gathering and the model remain with Ashsmith.
 
 Ashsmith's lane is the data pipeline plus the sponsor stack, kept whole. If the schedule slips, cut in the project plan's order, and keep the proposal and the route engine:
 
 - 3D Showcase drops extra animation and any second city.
 - Accessible Interface drops the split-screen compare and extra-city controls, and keeps one keyboard path, the facts-based PDF, and the four modes.
-- Routing and Reliability drops multi-destination reachability (P1) and keeps a single computed before/after.
+- Sophia drops multi-destination reachability (P1) and keeps a single computed before/after.
 - Ashsmith drops Vultr, then Mastra, then live Tiger Data, and keeps the packaged dataset, Gemini as the first sponsor integration, and the template fallback. Wellesley data gathering stays. Other cities drop.
 
 Every seat follows the plan's honesty rules: show evidence status, call results modeled, keep route math in the routing module, and describe an illustrative Wellesley scenario as a simulation.
@@ -204,9 +204,9 @@ Every seat follows the plan's honesty rules: show evidence status, call results 
 
 The team can submit when the project plan's definition of done holds on the public URL:
 
-- The link opens with no help (**Routing and Reliability**).
+- The link opens with no help (**Sophia Zheng**, Routing and Reliability).
 - The Wellesley scene makes the issue understandable (**3D Showcase**).
-- A judge can apply at least one intervention (**Accessible Interface** with **3D Showcase**).
-- Before/after results are computed (**Routing and Reliability**) from Ashsmith's scenario data.
-- A credible proposal exports, including when Gemini is unavailable (**Ashsmith Khayrul** and **Accessible Interface**).
-- The document is something a resident could bring to a local conversation: evidence and draft text from **Ashsmith Khayrul**, measured outcome from **Routing and Reliability**, and the exported artifact from **Accessible Interface**.
+- A judge can apply at least one intervention (**Caroline Hu** with **3D Showcase**).
+- Before/after results are computed (**Sophia Zheng**) from Ashsmith's scenario data.
+- A credible proposal exports, including when Gemini is unavailable (**Ashsmith Khayrul** and **Caroline Hu**).
+- The document is something a resident could bring to a local conversation: evidence and draft text from **Ashsmith Khayrul**, measured outcome from **Sophia Zheng**, and the exported artifact from **Caroline Hu**.
