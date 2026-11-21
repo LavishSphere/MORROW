@@ -15,9 +15,12 @@
     "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit && tsc -b"
   },
   "dependencies": {
+    "@morrow/routing": "*",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "@morrow/routing": "*"
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
