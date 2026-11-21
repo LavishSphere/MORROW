@@ -15,7 +15,7 @@ export type { CompareResult }
 /**
  * Client boundary for Ashsmith APIs + Sophia routing.
  * Barriers/generate/Gemini remain unavailable stubs (ids only).
- * Compare uses @morrow/routing.compareIntervention on the demo graph.
+ * Compare uses @morrow/routing.compareScenario on the bundled Wellesley graph.
  */
 
 export const API_STATUS = {
