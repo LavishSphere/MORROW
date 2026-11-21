@@ -161,6 +161,11 @@
   stroke-width: 1.5;
 }
 
+.satellite-town__car-body {
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 0.6;
+}
+
 .satellite-town__leader {
   position: absolute;
   inset: 0;
