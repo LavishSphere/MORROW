@@ -54,6 +54,7 @@ export function Street({
           onClick={(event) => {
             event.stopPropagation();
             onSelectBarrier?.(BARRIER_CURB_ID);
+            onSelectIntervention?.(INTERVENTION_RAMP_ID);
           }}
           onPointerOver={(event) => {
             event.stopPropagation();

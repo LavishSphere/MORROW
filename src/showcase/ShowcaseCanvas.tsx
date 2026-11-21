@@ -3,11 +3,11 @@ import * as THREE from "three";
 import { OpeningSequence } from "../brand/OpeningSequence";
 import { BarrierMarkers } from "../route/BarrierMarkers";
 import { RouteRibbon } from "../route/RouteRibbon";
-import { CURB_POSITION, RAMP_POSITION } from "./layout";
+import { BARRIER_CURB_ID, CURB_POSITION, INTERVENTION_RAMP_ID, RAMP_POSITION } from "./layout";
 import { TownScene } from "./scene/TownScene";
 import type { ShowcaseCanvasProps } from "./types";
 
-const OPENING_LOOK: [number, number, number] = [6.3, 1.35, 15.8];
+const OPENING_LOOK: [number, number, number] = [6.15, 1.5, 11.2];
 
 export function ShowcaseCanvas({
   geoJson,
@@ -28,7 +28,7 @@ export function ShowcaseCanvas({
     >
       <Canvas
         shadows
-        camera={{ fov: 58, near: 0.08, far: 400, position: [6.3, 1.84, 22.2] }}
+        camera={{ fov: 78, near: 0.05, far: 400, position: [6.15, 1.76, 13.4] }}
         dpr={[1, 1.75]}
         gl={{
           antialias: true,
@@ -55,7 +55,10 @@ export function ShowcaseCanvas({
           <BarrierMarkers
             selectedBarrierId={selectedBarrierId}
             selectedInterventionId={selectedInterventionId}
-            onSelectBarrier={(id) => onSelectBarrier?.(id)}
+            onSelectBarrier={(id) => {
+              onSelectBarrier?.(id);
+              if (id === BARRIER_CURB_ID) onSelectIntervention?.(INTERVENTION_RAMP_ID);
+            }}
             onSelectIntervention={(id) => onSelectIntervention?.(id)}
             curbPosition={barriers[0]?.position ?? CURB_POSITION}
             rampPosition={RAMP_POSITION}
@@ -64,7 +67,8 @@ export function ShowcaseCanvas({
         </TownScene>
       </Canvas>
       <OpeningSequence reducedMotion={reducedMotion} />
-      <p className="walk-hint">Click the street, then WASD to walk. Shift runs. Mouse looks. Esc releases the mouse.</p>
+      <p className="map-mark">MORROW</p>
+      <p className="walk-hint">Click to look · WASD along the street · Click the curb and it becomes a ramp</p>
       <p className="sr-only" role="status">
         {selectedBarrierId ? `Barrier ${selectedBarrierId} selected.` : "No barrier selected."}{" "}
         {selectedInterventionId
