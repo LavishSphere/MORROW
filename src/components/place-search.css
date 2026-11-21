@@ -1,0 +1,51 @@
+.place-search {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 16rem;
+  pointer-events: auto;
+}
+
+.place-search__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(247, 250, 248, 0.7);
+}
+
+.place-search__row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.place-search__input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(12, 20, 17, 0.55);
+  color: #f7faf8;
+}
+
+.place-search__go,
+.place-search__back {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(12, 20, 17, 0.55);
+  color: #f7faf8;
+  font-weight: 700;
+}
+
+.place-search__go:disabled {
+  opacity: 0.5;
+}
+
+.place-search__status {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(247, 250, 248, 0.72);
+}

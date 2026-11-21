@@ -1,4 +1,6 @@
 import { LocationSelector } from './LocationSelector'
+import { PlaceSearch } from './PlaceSearch'
+import type { LoadedNeighborhood } from '../data/overpass'
 import type { LocationOption, SurfaceView } from '../types'
 
 type Props = {
@@ -9,6 +11,8 @@ type Props = {
   onReducedMotionChange: (value: boolean) => void
   surfaceView: SurfaceView
   onSurfaceViewChange: (view: SurfaceView) => void
+  onPlace: (neighborhood: LoadedNeighborhood) => void
+  onShowcase: () => void
 }
 
 export function TopBar({
@@ -19,6 +23,8 @@ export function TopBar({
   onReducedMotionChange,
   surfaceView,
   onSurfaceViewChange,
+  onPlace,
+  onShowcase,
 }: Props) {
   return (
     <header className="top-bar">
@@ -28,6 +34,7 @@ export function TopBar({
       </div>
 
       <div className="top-bar__controls">
+        <PlaceSearch onLoad={onPlace} onShowcase={onShowcase} />
         <LocationSelector
           locations={locations}
           selectedId={selectedLocationId}
