@@ -55,6 +55,6 @@ test("Vite loads .geojson as JSON modules, not asset URLs", async () => {
     "assetsInclude must not treat .geojson as URL-only assets",
   );
   const compare = await readFile("src/data/compare.ts", "utf8");
-  assert.match(compare, /from ['\"].*basemap\.geojson['\"]/);
+  assert.match(compare, /from ['"].*basemap\.geojson['"]/);
   assert.match(compare, /compareScenario\(basemap/);
 });
