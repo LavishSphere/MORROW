@@ -14,7 +14,7 @@ Public civic-planning demo. **No login. No judge account.**
 
 `https://lavishsphere.github.io/MORROW/` redirects there. Prefer the custom-domain link: the github.io URL currently 301s to HTTP.
 
-On screen: Wellesley street view. Opening copy says “Make tomorrow possible.” WASD glides on streets and sidewalks. Scroll zooms. Click the curb and it becomes a ramp.
+On screen: a top-down satellite of the Wellesley showcase. **See next problem** moves between places from the AI detection pass. Body text is white. The Gemini cost estimate stays in `src/satellite/stats`.
 
 Local fallback (same app, no login):
 
@@ -107,6 +107,7 @@ Do not vendor a second routing package.
 - [Project plan](docs/MORROW_WHACK_2026_Project_Plan.md) — vision, demo flow, sponsors, and phase gates
 - [Team plan](docs/team-plan.md) — four-person seat assignments and handoffs
 - [Project context](docs/project-context.md) — short north-star brief for the team
+- [Satellite town](docs/satellite-town.md) — top-down camera, AI-detected problems, and where stats live
 - [Vultr API host runbook](docs/deploy-api-vultr.md) — GHCR image → Vultr → `VITE_API_BASE` for Pages (blocked until Vultr credentials exist)
 
 ## Phase-1 starter data (Wellesley)

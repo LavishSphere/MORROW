@@ -1,0 +1,193 @@
+.satellite-town {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000000;
+  color: #ffffff;
+  font-family: var(--font-body, "Source Sans 3", "Segoe UI", sans-serif);
+}
+
+.satellite-town__bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 22px;
+  background: #000000;
+}
+
+.satellite-town__mark {
+  margin: 0;
+  color: #1488ff;
+  font-family: var(--font-display, "Bricolage Grotesque", Georgia, serif);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+}
+
+.satellite-town__source,
+.satellite-town__credit,
+.satellite-town__card,
+.satellite-town__next,
+.satellite-town__stats,
+.satellite-town__stats * {
+  color: #ffffff;
+}
+
+.satellite-town__source {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.satellite-town__next {
+  border: 2px solid #1488ff;
+  border-radius: 6px;
+  background: #000000;
+  padding: 8px 16px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.satellite-town__next:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.satellite-town__next:focus-visible,
+.satellite-pin:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+}
+
+.satellite-town__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.satellite-pin {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.satellite-pin__diamond {
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  width: 18px;
+  height: 18px;
+  background: #1488ff;
+  transform: rotate(45deg);
+}
+
+.satellite-pin.is-selected {
+  box-shadow: 0 0 0 3px #1488ff;
+}
+
+.satellite-town__leader {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.satellite-town__card {
+  position: absolute;
+  z-index: 4;
+  left: 28px;
+  right: 28px;
+  bottom: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-radius: 10px;
+  background: #000000;
+}
+
+.satellite-town__photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.satellite-town__photos figure {
+  position: relative;
+  margin: 0;
+}
+
+.satellite-town__photos img {
+  display: block;
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  object-position: center 40%;
+}
+
+.satellite-town__photos figcaption {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  padding: 6px 10px 8px;
+  background: #000000;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.satellite-town__photos figcaption span {
+  font-size: 15px;
+}
+
+.satellite-town__stats {
+  min-height: 52px;
+}
+
+.satellite-town__credit {
+  position: absolute;
+  z-index: 4;
+  left: 22px;
+  top: 98px;
+  margin: 0;
+  font-size: 11px;
+  text-shadow: 0 1px 2px #000000;
+}
+
+@media (max-width: 720px) {
+  .satellite-town__photos img {
+    height: 96px;
+  }
+
+  .satellite-town__card {
+    left: 12px;
+    right: 12px;
+  }
+}
