@@ -45,3 +45,16 @@ test("Pages deploy uses a relative Vite base", async () => {
   const vite = await readFile("vite.config.ts", "utf8");
   assert.match(vite, /process\.env\.VITE_BASE/);
 });
+
+test("Vite loads .geojson as JSON modules, not asset URLs", async () => {
+  const vite = await readFile("vite.config.ts", "utf8");
+  assert.match(vite, /geojson-as-json/);
+  assert.equal(
+    vite.includes("assetsInclude"),
+    false,
+    "assetsInclude must not treat .geojson as URL-only assets",
+  );
+  const compare = await readFile("src/data/compare.ts", "utf8");
+  assert.match(compare, /from ['"].*basemap\.geojson['"]/);
+  assert.match(compare, /compareScenario\(basemap/);
+});
