@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   PATCH_DESCRIPTION,
+  draftForPothole,
   potholeById,
   usePotholeFix,
 } from '../city/potholeFix'
@@ -26,7 +27,13 @@ export function ProposeSheet() {
   const intervention = getDemoIntervention()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<GenerateProposalResponse | null>(null)
+  const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
   const [draft, setDraft] = useState<DraftProposal | null>(null)
+
+  useEffect(() => {
+    if (!baseDraft) return
+    setDraft(draftForPothole(baseDraft, hole, patched))
+  }, [baseDraft, hole, patched])
 
   let beforeMeters: number | null = null
   let afterMeters: number | null = null
@@ -51,7 +58,8 @@ export function ProposeSheet() {
         interventionId: scenario.interventionId,
       })
       setResult(next)
-      setDraft(next.draft)
+      setBaseDraft(next.draft)
+      setDraft(draftForPothole(next.draft, hole, patched))
     } finally {
       setLoading(false)
     }

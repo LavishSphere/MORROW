@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import type { DraftProposal } from '../types'
 
 export type PotholeIssue = {
   id: string
@@ -14,6 +15,28 @@ export const POTHOLES: readonly PotholeIssue[] = [
 
 export const PATCH_DESCRIPTION =
   'Fill and compact this illustrative pothole so the lane is even.'
+
+/** Fold the clicked pothole into a generated draft. The route text stays as generated. */
+export function draftForPothole(
+  draft: DraftProposal,
+  hole: PotholeIssue | null,
+  patched: boolean,
+): DraftProposal {
+  if (!hole) return draft
+  const status = patched ? 'Patched in this demo.' : 'Not patched yet.'
+  return {
+    ...draft,
+    headline: `Review a patch for ${hole.label}`,
+    plainLanguageSummary: `${hole.label}. ${status} ${PATCH_DESCRIPTION} This boulevard pothole is illustrative, not a surveyed defect, and it does not change the modeled route. ${draft.plainLanguageSummary}`,
+    requestForReview: `${status} ${PATCH_DESCRIPTION} ${draft.requestForReview}`,
+    meetingTalkingPoints: [
+      `${hole.label}. ${status}`,
+      PATCH_DESCRIPTION,
+      ...draft.meetingTalkingPoints,
+    ],
+    limitations: `${draft.limitations} The boulevard pothole is illustrative and is not part of the modeled route distance.`,
+  }
+}
 
 type PotholeState = {
   selectedId: string | null
