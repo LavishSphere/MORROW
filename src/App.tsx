@@ -87,6 +87,16 @@ export default function App() {
             }}
           />
         )}
+        <div className="dream-sky" aria-hidden="true">
+          <span className="dream-sky__cloud dream-sky__cloud--one" />
+          <span className="dream-sky__cloud dream-sky__cloud--two" />
+          <span className="dream-sky__cloud dream-sky__cloud--three" />
+          <span className="dream-sky__cloud dream-sky__cloud--four" />
+          <span className="dream-sky__sparkle dream-sky__sparkle--a" />
+          <span className="dream-sky__sparkle dream-sky__sparkle--b" />
+          <span className="dream-sky__sparkle dream-sky__sparkle--c" />
+          <span className="dream-sky__glow" />
+        </div>
       </main>
 
       {mode === 'compare' && <CompareSheet />}
