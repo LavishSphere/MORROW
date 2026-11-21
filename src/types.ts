@@ -33,8 +33,9 @@ export type Scenario = {
   label: string
   originLabel: string
   destinationLabel: string
-  originId: string
-  destinationId: string
+  /** WGS84 lon/lat for compareScenario snapping. */
+  origin: [number, number]
+  destination: [number, number]
   barrierId: string
   interventionId: string
   modelAssumptions: string[]
