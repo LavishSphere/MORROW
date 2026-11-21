@@ -6,7 +6,7 @@ import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
-import { compareByIds, fetchBarriers, getDemoScenario } from './data/api'
+import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
 import {
   getBarrier,
   interventionsForBarrier,
@@ -50,7 +50,7 @@ export default function App() {
   }, [])
 
   const compare = selectedInterventionId
-    ? compareByIds({
+    ? tryCompareByIds({
         scenarioId: scenario.id,
         interventionId: selectedInterventionId,
       })
