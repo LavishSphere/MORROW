@@ -1,5 +1,6 @@
 import { EvidenceBadge } from './EvidenceBadge'
-import type { AppMode, Barrier, Intervention } from '../types'
+import type { CompareResult } from '../data/api'
+import type { AppMode, Barrier, Intervention, Scenario } from '../types'
 
 type Props = {
   mode: AppMode
@@ -7,9 +8,18 @@ type Props = {
   selectedBarrier: Barrier | null
   interventions: Intervention[]
   selectedIntervention: Intervention | null
+  scenario: Scenario
   dataNote: string
+  compare: CompareResult | null
   onSelectBarrier: (id: string) => void
   onSelectIntervention: (id: string) => void
+}
+
+function formatDelta(delta: number | null): string {
+  if (delta == null) return 'n/a'
+  if (delta === 0) return '0 m'
+  const sign = delta > 0 ? '+' : '−'
+  return `${sign}${Math.abs(delta)} m`
 }
 
 function barrierTypeLabel(type: Barrier['type']): string {
@@ -29,7 +39,9 @@ export function ContextPanel({
   selectedBarrier,
   interventions,
   selectedIntervention,
+  scenario,
   dataNote,
+  compare,
   onSelectBarrier,
   onSelectIntervention,
 }: Props) {
@@ -89,22 +101,7 @@ export function ContextPanel({
             <div className="detail-block">
               <h3>Evidence</h3>
               <p>{selectedBarrier.description}</p>
-              {selectedBarrier.sourceTitle ? (
-                <p>
-                  Source:{' '}
-                  {selectedBarrier.sourceUrl ? (
-                    <a
-                      href={selectedBarrier.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {selectedBarrier.sourceTitle}
-                    </a>
-                  ) : (
-                    selectedBarrier.sourceTitle
-                  )}
-                </p>
-              ) : (
+              {!selectedBarrier.sourceTitle && (
                 <p className="muted">
                   No external source — illustrative scenario.
                 </p>
@@ -126,32 +123,26 @@ export function ContextPanel({
                 Interventions for{' '}
                 <strong>{selectedBarrier.locationLabel}</strong>
               </p>
-              {interventions.length === 0 ? (
-                <p className="empty-state">
-                  No interventions for this barrier yet.
-                </p>
-              ) : (
-                <ul className="option-list">
-                  {interventions.map((opt) => {
-                    const active = selectedIntervention?.id === opt.id
-                    return (
-                      <li key={opt.id}>
-                        <button
-                          type="button"
-                          className={`option-list__item${active ? ' is-active' : ''}`}
-                          aria-pressed={active}
-                          onClick={() => onSelectIntervention(opt.id)}
-                        >
-                          <span className="option-list__name">
-                            {opt.description}
-                          </span>
-                          <span className="option-list__meta">{opt.type}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+              <ul className="option-list">
+                {interventions.map((opt) => {
+                  const active = selectedIntervention?.id === opt.id
+                  return (
+                    <li key={opt.id}>
+                      <button
+                        type="button"
+                        className={`option-list__item${active ? ' is-active' : ''}`}
+                        aria-pressed={active}
+                        onClick={() => onSelectIntervention(opt.id)}
+                      >
+                        <span className="option-list__name">
+                          {opt.description}
+                        </span>
+                        <span className="option-list__meta">{opt.type}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
             </>
           )}
         </div>
@@ -159,10 +150,67 @@ export function ContextPanel({
 
       {mode === 'compare' && (
         <div className="context-panel__body">
-          <p className="empty-state">
-            Before/after routing lands in the Compare PR (
-            <code>compareIntervention</code>).
+          <p className="context-panel__lead">
+            Modeled before / after via{' '}
+            <code>@morrow/routing.compareIntervention</code> for scenario{' '}
+            <code>{scenario.id}</code>
+            {selectedIntervention
+              ? ` · intervention ${selectedIntervention.id}`
+              : ''}
+            {compare ? ` · source: ${compare.source}` : ''}.
           </p>
+          {compare ? (
+            <>
+              <dl className="metrics">
+                <div>
+                  <dt>Trip</dt>
+                  <dd>
+                    {scenario.originLabel} → {scenario.destinationLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Before</dt>
+                  <dd>
+                    {compare.beforeMeters == null
+                      ? 'unreachable'
+                      : `${compare.beforeMeters} m`}
+                    <span className="metrics__sub">
+                      edges: {compare.before.edgeIds.join(', ') || '—'}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>After</dt>
+                  <dd>
+                    {compare.afterMeters == null
+                      ? 'unreachable'
+                      : `${compare.afterMeters} m`}
+                    <span className="metrics__sub">
+                      edges: {compare.after.edgeIds.join(', ') || '—'} · geometry{' '}
+                      {compare.after.geometry.length} pts
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Delta</dt>
+                  <dd>
+                    {formatDelta(compare.deltaMeters)} (after − before)
+                    {compare.becameReachable ? ' · became reachable' : ''}
+                  </dd>
+                </div>
+              </dl>
+              <div className="detail-block">
+                <h3>Assumptions</h3>
+                <ul>
+                  {compare.assumptions.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : (
+            <p className="empty-state">Select an intervention in Improve first.</p>
+          )}
         </div>
       )}
 
