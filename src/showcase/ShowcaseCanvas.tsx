@@ -1,17 +1,18 @@
 import { Canvas } from "@react-three/fiber";
+import { useCallback, useState } from "react";
 import * as THREE from "three";
-import { OpeningSequence } from "../brand/OpeningSequence";
-import { BarrierMarkers } from "../route/BarrierMarkers";
+import {
+  OpeningSequence,
+  type DescentSignal,
+} from "../brand/OpeningSequence";
 import { RouteRibbon } from "../route/RouteRibbon";
-import { BARRIER_CURB_ID, CURB_POSITION, INTERVENTION_RAMP_ID, RAMP_POSITION } from "./layout";
+import basemap from "../../data/wellesley/basemap.geojson";
 import { TownScene } from "./scene/TownScene";
 import type { ShowcaseCanvasProps } from "./types";
 
-const OPENING_LOOK: [number, number, number] = [6.15, 1.5, 11.2];
-
 export function ShowcaseCanvas({
-  geoJson,
-  barriers,
+  geoJson = basemap,
+  barriers = [],
   selectedBarrierId = null,
   selectedInterventionId = null,
   routeGeometry,
@@ -19,25 +20,44 @@ export function ShowcaseCanvas({
   onSelectBarrier,
   onSelectIntervention,
 }: ShowcaseCanvasProps) {
+  const [descendSignal, setDescendSignal] = useState<{
+    durationMs: number;
+    token: number;
+  } | null>(null);
+
+  const handleDescend = useCallback((signal: DescentSignal) => {
+    setDescendSignal({
+      durationMs: signal.durationMs,
+      token: Date.now(),
+    });
+  }, []);
+
   return (
     <div
       className="showcase"
       data-selected-barrier={selectedBarrierId ?? ""}
       data-selected-intervention={selectedInterventionId ?? ""}
       data-reduced-motion={reducedMotion ? "reduce" : "no-preference"}
+      data-footprint="geojson"
+      data-barrier-count={barriers.length}
     >
       <Canvas
         shadows
-        camera={{ fov: 72, near: 0.05, far: 400, position: [6.15, 1.76, 13.4] }}
+        camera={{
+          fov: 42,
+          near: 0.1,
+          far: 220,
+          position: [2.4, 22, 17],
+        }}
         dpr={[1, 1.75]}
         gl={{
           antialias: true,
           alpha: false,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.12,
+          toneMappingExposure: 1.08,
         }}
         onCreated={({ camera }) => {
-          camera.lookAt(...OPENING_LOOK);
+          camera.lookAt(0, 0.35, 0);
         }}
       >
         <TownScene
@@ -45,6 +65,7 @@ export function ShowcaseCanvas({
           selectedBarrierId={selectedBarrierId}
           selectedInterventionId={selectedInterventionId}
           reducedMotion={reducedMotion}
+          descendSignal={descendSignal}
           onSelectBarrier={onSelectBarrier}
           onSelectIntervention={onSelectIntervention}
         >
@@ -52,23 +73,13 @@ export function ShowcaseCanvas({
             routeGeometry={routeGeometry?.points}
             reducedMotion={reducedMotion}
           />
-          <BarrierMarkers
-            selectedBarrierId={selectedBarrierId}
-            selectedInterventionId={selectedInterventionId}
-            onSelectBarrier={(id) => {
-              onSelectBarrier?.(id);
-              if (id === BARRIER_CURB_ID) onSelectIntervention?.(INTERVENTION_RAMP_ID);
-            }}
-            onSelectIntervention={(id) => onSelectIntervention?.(id)}
-            curbPosition={barriers[0]?.position ?? CURB_POSITION}
-            rampPosition={RAMP_POSITION}
-            heading={-Math.PI / 2}
-          />
         </TownScene>
       </Canvas>
-      <OpeningSequence reducedMotion={reducedMotion} />
+      <OpeningSequence reducedMotion={reducedMotion} onDescend={handleDescend} />
       <p className="map-mark">MORROW</p>
-      <p className="walk-hint">Click to look · WASD glides on streets · Scroll zooms · Click the curb and it becomes a ramp</p>
+      <p className="walk-hint">
+        Drag to orbit · Scroll zooms · Click the curb to install the ramp
+      </p>
       <p className="sr-only" role="status">
         {selectedBarrierId ? `Barrier ${selectedBarrierId} selected.` : "No barrier selected."}{" "}
         {selectedInterventionId

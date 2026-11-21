@@ -12,12 +12,15 @@
   ],
   "scripts": {
     "dev": "vite",
+    "api": "npm run start -w @morrow/api",
+    "api:dev": "npm run dev -w @morrow/api",
+    "api:seed": "npm run seed -w @morrow/api --",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint:md": "markdownlint-cli2",
     "lint": "oxlint && eslint .",
-    "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit && tsc -b && tsc -p tsconfig.scripts.json --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts packages/routing/test/*.test.ts",
+    "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit && tsc -p packages/api/tsconfig.json --noEmit && tsc -b && tsc -p tsconfig.scripts.json --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts packages/routing/test/*.test.ts packages/api/test/*.test.ts",
     "audit": "npm audit --audit-level=high",
     "quality": "bash scripts/quality.sh",
     "ci": "npm run lint:md && npm run lint && npm run typecheck && npm test && npm run build && npm run audit"

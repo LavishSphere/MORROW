@@ -264,8 +264,8 @@ export function ContextPanel({
       {mode === 'propose' && (
         <div className="context-panel__body">
           <p className="context-panel__lead">
-            Editable advocacy draft. Client sends ids only to the generate stub;
-            metrics and evidence badges render from the returned facts object.
+            Editable advocacy draft. Client sends ids only; the live generate API
+            (when reachable) or a labeled bundled template returns facts for PDF.
           </p>
           <div className="proposal-editor__actions" style={{ marginBottom: '0.75rem' }}>
             <button
