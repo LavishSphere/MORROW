@@ -31,7 +31,7 @@ export function ModeToolbar({ mode, onModeChange, reducedMotion }: Props) {
               id={`mode-tab-${item.id}`}
               className={`mode-toolbar__btn${selected ? ' is-active' : ''}`}
               aria-selected={selected}
-              aria-controls="context-panel"
+              aria-controls="stage"
               tabIndex={selected ? 0 : -1}
               title={item.hint}
               onClick={() => onModeChange(item.id)}

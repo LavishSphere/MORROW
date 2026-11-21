@@ -31,13 +31,10 @@ npm run build && npm run preview
 
 ### 90-second path (intended judge loop)
 
-1. Open the public URL. Wellesley is the only live location.
-2. **Explore** — pick the illustrative curb-ramp barrier (`wellesley-barrier-campus-path-01`). The evidence badge stays **illustrative**.
-3. **Improve** — apply the bundled intervention (`wellesley-intervention-ramp-01`).
-4. **Compare** — before/after meters come from `@morrow/routing.compareScenario` on `wellesley-demo-01`, not constants.
-5. **Propose** — Generate, edit the draft, **Export PDF**. Gemini is not required.
+1. Open the public URL. The Wellesley scene fills the window.
+2. A minimal mode bar — **Explore | Improve | Compare | Propose** — sits on the scene. Arrow keys move between modes. There is no sidebar.
 
-The Accessible Interface chrome for those four modes (toolbar, context panel, **List (2D)**) lives in `src/components/`. The street-view App currently fills the window; List (2D) is the fallback when that chrome is mounted.
+The bundled intervention is `wellesley-intervention-ramp-01`. Compare math remains `@morrow/routing.compareScenario` on `wellesley-demo-01`. Proposal generation remains the API client. Neither is drawn over the canvas. List (2D) is not mounted.
 
 ## What the fallbacks do
 
@@ -49,7 +46,7 @@ This is the outage path. It is also the path that ships today. Flags live in `sr
 | Gemini | Template proposal prose. Labeled unavailable. `aiGenerated` is false. |
 | Generate HTTP API | Same template, built in the browser from routing facts. |
 | Vultr / any backend | The static Pages (or local) app. No server required for the judge loop. |
-| 3D canvas | **List (2D)** — same barriers, same modeled meters (`src/components/ListFallback.tsx`). |
+| 3D canvas | The Wellesley scene is the page. The mode bar stays. |
 | Public Pages URL | `npm run dev` or `npm run preview` on a laptop. |
 
 Routing does **not** fall back to fake numbers. Compare always calls `compareScenario` on the checked-in GeoJSON. Results are **modeled**. The Wellesley barrier is **`illustrative`**.
@@ -86,13 +83,11 @@ Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shap
 
 ## Accessible Interface
 
-- 3D Showcase: React Three Fiber miniature of Wellesley from `data/wellesley/basemap.geojson`, opening lockup (“Make tomorrow possible”), clickable curb → ramp, orbit camera after descent
-- Wellesley selector + four modes (`src/components/`)
-- Explore / Improve context panel with evidence badges
-- Compare via `@morrow/routing.compareScenario` (`src/data/compare.ts`)
-- Propose: calls live `POST /api/proposals/generate` when the API is reachable; otherwise a **labeled** bundled template. Export PDF uses server/client `facts` (7 sections). Gemini is not required.
-- **List (2D)** fallback, skip links, visible `:focus-visible`, reduced-motion respected
-- When the API is down, barrier / generate / Gemini surfaces stay labeled **unavailable**
+- The Wellesley scene is the whole window. The only control is the mode bar: **Explore | Improve | Compare | Propose**.
+- No sidebar, location selector, or list pane on the canvas.
+- Compare via `@morrow/routing.compareScenario` (`src/data/compare.ts`) stays in the data layer.
+- Propose still calls `POST /api/proposals/generate` when the API is reachable, with a labeled template fallback. That editor is not mounted on the scene.
+- Skip link to the mode bar, visible `:focus-visible`, reduced-motion respected.
 
 ### Routing
 
