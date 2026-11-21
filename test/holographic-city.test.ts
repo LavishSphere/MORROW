@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-test("the unused holographic city still builds from glass blocks", async () => {
+test("explore canvas mounts the holographic glass city", async () => {
+  const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
   const town = await readFile("src/showcase/scene/TownScene.tsx", "utf8");
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const canvas = await readFile("src/showcase/ShowcaseCanvas.tsx", "utf8");
   const sky = await readFile("src/showcase/scene/Space.tsx", "utf8");
+  assert.match(slot, /ShowcaseCanvas/);
+  assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(town, /<City \/>/);
   assert.match(city, /HoloBuilding/);
+  assert.match(city, /function Paved/);
   assert.match(city, /function Roads/);
   assert.match(city, /function CurvedRoads/);
   assert.match(city, /function Pothole/);
