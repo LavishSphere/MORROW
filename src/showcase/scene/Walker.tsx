@@ -8,6 +8,7 @@ import {
   WALK_LIMIT,
   onStreet,
   overlaps,
+  streetRoute,
   surfaceY,
   type Obstacle,
 } from "./cityData";
@@ -39,12 +40,26 @@ function damp(current: number, target: number, lambda: number, step: number) {
   return current + (target - current) * (1 - Math.exp(-lambda * step));
 }
 
+function wrapAngle(delta: number) {
+  return Math.atan2(Math.sin(delta), Math.cos(delta));
+}
+
+function dampAngle(current: number, target: number, lambda: number, step: number) {
+  return current + wrapAngle(target - current) * (1 - Math.exp(-lambda * step));
+}
+
 export function Walker({
   reducedMotion,
   rampOpen,
+  glideToken = 0,
+  glideTo = null,
+  onCycle,
 }: {
   reducedMotion: boolean;
   rampOpen: boolean;
+  glideToken?: number;
+  glideTo?: { x: number; z: number; yaw: number } | null;
+  onCycle?: (direction: -1 | 1) => void;
 }) {
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
@@ -65,13 +80,17 @@ export function Walker({
   const direction = useRef(new THREE.Vector3());
   const lookAt = useRef(new THREE.Vector3());
   const desiredLook = useRef(new THREE.Vector3());
+  const glide = useRef<{ points: { x: number; z: number }[]; index: number; yaw: number } | null>(null);
+  const seenGlide = useRef(0);
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.code === "KeyW" || event.code === "ArrowUp") keys.current.forward = true;
       if (event.code === "KeyS" || event.code === "ArrowDown") keys.current.back = true;
-      if (event.code === "KeyA" || event.code === "ArrowLeft") keys.current.left = true;
-      if (event.code === "KeyD" || event.code === "ArrowRight") keys.current.right = true;
+      if (event.code === "KeyA") keys.current.left = true;
+      if (event.code === "KeyD") keys.current.right = true;
+      if (!event.repeat && (event.code === "ArrowLeft" || event.code === "BracketLeft")) onCycle?.(-1);
+      if (!event.repeat && (event.code === "ArrowRight" || event.code === "BracketRight")) onCycle?.(1);
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") keys.current.run = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
         event.preventDefault();
@@ -80,44 +99,70 @@ export function Walker({
     const up = (event: KeyboardEvent) => {
       if (event.code === "KeyW" || event.code === "ArrowUp") keys.current.forward = false;
       if (event.code === "KeyS" || event.code === "ArrowDown") keys.current.back = false;
-      if (event.code === "KeyA" || event.code === "ArrowLeft") keys.current.left = false;
-      if (event.code === "KeyD" || event.code === "ArrowRight") keys.current.right = false;
+      if (event.code === "KeyA") keys.current.left = false;
+      if (event.code === "KeyD") keys.current.right = false;
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") keys.current.run = false;
     };
-    const lookWithMouse = (event: MouseEvent) => {
-      if (document.pointerLockElement !== gl.domElement) return;
-      const glide = reducedMotion ? 1 : 0.65;
-      yaw.current += event.movementX * 0.002 * glide;
-      const next = pitch.current - event.movementY * 0.0018 * glide;
+    const drag = { x: 0, y: 0, moved: false, active: false };
+    const lookScale = reducedMotion ? 1 : 0.9;
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      drag.active = true;
+      drag.moved = false;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!drag.active) return;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      drag.moved = true;
+      gl.domElement.style.cursor = "grabbing";
+      yaw.current += dx * 0.0024 * lookScale;
+      const next = pitch.current - dy * 0.0018 * lookScale;
       pitch.current = Math.min(0.85, Math.max(-1.05, next));
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+    };
+    const pointerUp = () => {
+      drag.active = false;
+      gl.domElement.style.cursor = "grab";
+    };
+    const swallowDragClick = (event: MouseEvent) => {
+      if (!drag.moved) return;
+      drag.moved = false;
+      event.stopImmediatePropagation();
+      event.preventDefault();
     };
     const zoom = (event: WheelEvent) => {
       event.preventDefault();
       const next = fovTarget.current + event.deltaY * 0.035;
       fovTarget.current = Math.min(MAX_FOV, Math.max(MIN_FOV, next));
     };
-    const lock = () => {
-      if (document.pointerLockElement !== gl.domElement) {
-        void gl.domElement.requestPointerLock();
-      }
-    };
+    gl.domElement.style.cursor = "grab";
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    window.addEventListener("mousemove", lookWithMouse);
+    gl.domElement.addEventListener("pointerdown", pointerDown);
+    window.addEventListener("pointermove", pointerMove);
+    window.addEventListener("pointerup", pointerUp);
+    gl.domElement.addEventListener("click", swallowDragClick, true);
     gl.domElement.addEventListener("wheel", zoom, { passive: false });
-    gl.domElement.addEventListener("click", lock);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
-      window.removeEventListener("mousemove", lookWithMouse);
+      gl.domElement.removeEventListener("pointerdown", pointerDown);
+      window.removeEventListener("pointermove", pointerMove);
+      window.removeEventListener("pointerup", pointerUp);
+      gl.domElement.removeEventListener("click", swallowDragClick, true);
       gl.domElement.removeEventListener("wheel", zoom);
-      gl.domElement.removeEventListener("click", lock);
+      gl.domElement.style.cursor = "";
     };
-  }, [gl, reducedMotion]);
+  }, [gl, onCycle, reducedMotion]);
 
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.05);
-    const glide = reducedMotion ? 16 : 3.2;
+    const response = reducedMotion ? 16 : 4.8;
     lookDirection(yaw.current, 0, direction.current);
     const forwardX = direction.current.x;
     const forwardZ = direction.current.z;
@@ -128,12 +173,9 @@ export function Walker({
     const inputX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
     const length = Math.hypot(inputX, inputZ) || 1;
     const moving = inputX !== 0 || inputZ !== 0;
-    const speed = keys.current.run ? 3.1 : 1.35;
+    const speed = keys.current.run ? 8.4 : 4.6;
     const targetX = moving ? ((forwardX * inputZ + rightX * inputX) / length) * speed : 0;
     const targetZ = moving ? ((forwardZ * inputZ + rightZ * inputX) / length) * speed : 0;
-    velocity.current.x = damp(velocity.current.x, targetX, glide, step);
-    velocity.current.z = damp(velocity.current.z, targetZ, glide, step);
-
     const curb: Obstacle[] = rampOpen
       ? []
       : [
@@ -144,6 +186,57 @@ export function Walker({
             d: CURB_SIZE[2],
           },
         ];
+    if (glideTo && glideToken !== seenGlide.current) {
+      seenGlide.current = glideToken;
+      if (glideToken > 0) {
+        glide.current = {
+          points: streetRoute(place.current, glideTo),
+          index: 0,
+          yaw: glideTo.yaw,
+        };
+        velocity.current.x = 0;
+        velocity.current.z = 0;
+      }
+    }
+    if (glide.current && moving) glide.current = null;
+
+    if (glide.current) {
+      const path = glide.current;
+      const dest = path.points[Math.min(path.index + 1, path.points.length - 1)];
+      const dx = dest.x - place.current.x;
+      const dz = dest.z - place.current.z;
+      const dist = Math.hypot(dx, dz);
+      const glideSpeed = reducedMotion ? 80 : 12;
+      if (dist < 0.18) {
+        place.current.x = dest.x;
+        place.current.z = dest.z;
+        path.index += 1;
+        if (path.index >= path.points.length - 1) {
+          yaw.current = dampAngle(yaw.current, path.yaw, reducedMotion ? 20 : 4, step);
+          if (Math.abs(wrapAngle(path.yaw - yaw.current)) < 0.05 || reducedMotion) {
+            yaw.current = path.yaw;
+            glide.current = null;
+          }
+        }
+      } else {
+        const stepDist = Math.min(dist, glideSpeed * step);
+        const nx = place.current.x + (dx / dist) * stepDist;
+        const nz = place.current.z + (dz / dist) * stepDist;
+        if (!blocked(nx, nz, curb)) {
+          place.current.x = nx;
+          place.current.z = nz;
+          yaw.current = dampAngle(yaw.current, Math.atan2(-dx, dz), reducedMotion ? 20 : 6, step);
+        } else {
+          glide.current = null;
+        }
+      }
+      velocity.current.x = 0;
+      velocity.current.z = 0;
+    }
+
+    velocity.current.x = damp(velocity.current.x, glide.current ? 0 : targetX, response, step);
+    velocity.current.z = damp(velocity.current.z, glide.current ? 0 : targetZ, response, step);
+
     const tryX = place.current.x + velocity.current.x * step;
     const tryZ = place.current.z + velocity.current.z * step;
     if (!blocked(tryX, place.current.z, curb)) place.current.x = tryX;

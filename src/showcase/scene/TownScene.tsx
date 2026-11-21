@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { INTERVENTION_RAMP_ID, footprintSource } from "../layout";
 import { LOGO_BLUE } from "../palette";
 import { City } from "./City";
+import { FixMarks } from "./FixMarks";
 import { Grass } from "./Grass";
 import { Sky } from "./Space";
 import { Street } from "./Street";
@@ -14,6 +15,11 @@ type TownSceneProps = {
   reducedMotion: boolean;
   onSelectBarrier?: (id: string) => void;
   onSelectIntervention?: (id: string) => void;
+  glideToken?: number;
+  glideTo?: { x: number; z: number; yaw: number } | null;
+  onCycle?: (direction: -1 | 1) => void;
+  spotIndex?: number;
+  onActivateSpot?: (index: number) => void;
   children?: ReactNode;
 };
 
@@ -24,6 +30,11 @@ export function TownScene({
   reducedMotion,
   onSelectBarrier,
   onSelectIntervention,
+  glideToken,
+  glideTo,
+  onCycle,
+  spotIndex = 0,
+  onActivateSpot,
   children,
 }: TownSceneProps) {
   const source = footprintSource(geoJson);
@@ -59,9 +70,13 @@ export function TownScene({
         onSelectIntervention={onSelectIntervention}
       />
       {children}
+      <FixMarks activeIndex={spotIndex} onActivate={onActivateSpot} />
       <Walker
         reducedMotion={reducedMotion}
         rampOpen={selectedInterventionId === INTERVENTION_RAMP_ID}
+        glideToken={glideToken}
+        glideTo={glideTo}
+        onCycle={onCycle}
       />
     </group>
   );

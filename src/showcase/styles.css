@@ -22,6 +22,7 @@ body {
 .showcase canvas {
   display: block;
   touch-action: none;
+  cursor: grab;
 }
 
 .map-mark {
@@ -36,6 +37,39 @@ body {
   font-weight: 700;
   letter-spacing: 0.28em;
   pointer-events: none;
+}
+
+.fix-nav {
+  position: absolute;
+  top: 28px;
+  right: 32px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #1488ff;
+  font-family: "Bricolage Grotesque", "Avenir Next", sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.fix-nav button {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #1488ff;
+  background: #000000;
+  color: #1488ff;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.fix-nav button:hover,
+.fix-nav button:focus-visible {
+  background: #1488ff;
+  color: #000000;
 }
 
 .walk-hint {

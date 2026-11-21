@@ -11,6 +11,46 @@ export const WALK_LIMIT = 70;
 /** Sidewalk just north of the crossing, looking south at the curb. */
 export const SPAWN = { x: 6.15, z: 13.4, yaw: Math.PI };
 
+export type FixSpot = {
+  id: string;
+  label: string;
+  x: number;
+  z: number;
+  yaw: number;
+};
+
+/** Standing spots on streets or sidewalks. The first is the curb that becomes a ramp. */
+export const FIX_SPOTS: readonly FixSpot[] = [
+  { id: "barrier-curb-1", label: "Missing curb ramp", x: 6.15, z: 12.2, yaw: Math.PI },
+  { id: "barrier-curb-west", label: "West crossing curb", x: -6.2, z: -10, yaw: 0 },
+  { id: "barrier-gap-east", label: "Sidewalk gap", x: 18, z: 6.3, yaw: -Math.PI / 2 },
+];
+
+function sharesRoad(a: { x: number; z: number }, b: { x: number; z: number }): boolean {
+  const vertical = ROAD_XS.some(
+    (center) => Math.abs(a.x - center) < PAVEMENT && Math.abs(b.x - center) < PAVEMENT,
+  );
+  const horizontal = ROAD_ZS.some(
+    (center) => Math.abs(a.z - center) < PAVEMENT && Math.abs(b.z - center) < PAVEMENT,
+  );
+  return vertical || horizontal;
+}
+
+/** Street polyline between two points that are already on a road or sidewalk. */
+export function streetRoute(
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+): { x: number; z: number }[] {
+  const aligned = Math.abs(from.x - to.x) < 1.5 || Math.abs(from.z - to.z) < 1.5;
+  if (aligned && sharesRoad(from, to)) return [from, to];
+  const corner = [
+    { x: from.x, z: to.z },
+    { x: to.x, z: from.z },
+  ].find((point) => onStreet(point.x, point.z));
+  if (corner) return [from, corner, to];
+  return [from, { x: from.x, z: 0 }, { x: to.x, z: 0 }, to];
+}
+
 export type Block = {
   x: number;
   z: number;
