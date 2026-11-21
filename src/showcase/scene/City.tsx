@@ -111,6 +111,28 @@ function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: n
 
 const CITY = buildCity();
 
+function WindowPane({
+  position,
+  size,
+  lit,
+}: {
+  position: [number, number, number];
+  size: [number, number, number];
+  lit: boolean;
+}) {
+  return (
+    <mesh position={position} raycast={() => null}>
+      <boxGeometry args={size} />
+      <meshStandardMaterial
+        color={lit ? "#e9fdff" : "#0d4552"}
+        emissive={lit ? "#c8f7ff" : "#1c7f8e"}
+        emissiveIntensity={lit ? 1.05 : 0.4}
+        roughness={0.12}
+      />
+    </mesh>
+  );
+}
+
 function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
   const fill = wire ? 0.55 : 0.9 + glow * 0.15;
   const floors = Math.min(7, Math.max(3, Math.floor(h / 2.1)));
@@ -140,39 +162,33 @@ function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
         </mesh>
       ))}
       {Array.from({ length: floors }, (_, row) =>
-        ([-0.3, 0, 0.3] as const).map((nx) => {
-          const lit = (row + (nx > 0 ? 1 : 0)) % 3 === 0;
+        ([-0.3, 0, 0.3] as const).map((along, slot) => {
           const paneH = Math.max(0.32, (h / floors) * 0.42);
+          const y = story(row) - paneH * 0.7;
+          const lit = (row + slot) % 3 === 0;
+          const litOpposite = (row + slot + 1) % 3 === 0;
           return (
-            <group key={`win-${row}-${nx}`}>
-              <mesh position={[nx * w, story(row) - paneH * 0.7, d / 2 + 0.03]} raycast={() => null}>
-                <boxGeometry args={[w * 0.2, paneH, 0.03]} />
-                <meshStandardMaterial
-                  color={lit ? "#e9fdff" : "#0d4552"}
-                  emissive={lit ? "#c8f7ff" : "#1c7f8e"}
-                  emissiveIntensity={lit ? 1.15 : 0.4}
-                  roughness={0.12}
-                />
-              </mesh>
-              <mesh position={[w / 2 + 0.03, story(row) - paneH * 0.7, nx * d]} raycast={() => null}>
-                <boxGeometry args={[0.03, paneH, d * 0.2]} />
-                <meshStandardMaterial
-                  color={lit ? "#e9fdff" : "#0d4552"}
-                  emissive={lit ? "#c8f7ff" : "#1c7f8e"}
-                  emissiveIntensity={lit ? 0.9 : 0.35}
-                  roughness={0.12}
-                />
-              </mesh>
+            <group key={`win-${row}-${along}`}>
+              <WindowPane position={[along * w, y, d / 2 + 0.03]} size={[w * 0.2, paneH, 0.03]} lit={lit} />
+              <WindowPane position={[along * w, y, -d / 2 - 0.03]} size={[w * 0.2, paneH, 0.03]} lit={litOpposite} />
+              <WindowPane position={[w / 2 + 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={lit} />
+              <WindowPane position={[-w / 2 - 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={litOpposite} />
             </group>
           );
         }),
       )}
-      {([-1, 1] as const).map((side) => (
-        <mesh key={`mullion-${side}`} position={[side * w * 0.22, 0.38 + h / 2, d / 2 + 0.02]} raycast={() => null}>
-          <boxGeometry args={[0.05, h * 0.96, 0.04]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      ))}
+      {([-1, 1] as const).flatMap((side) =>
+        ([1, -1] as const).map((face) => (
+          <mesh
+            key={`mullion-${side}-${face}`}
+            position={[side * w * 0.22, 0.38 + h / 2, face * (d / 2 + 0.02)]}
+            raycast={() => null}
+          >
+            <boxGeometry args={[0.05, h * 0.96, 0.04]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+        )),
+      )}
       <mesh position={[0, 0.38 + h + 0.06, 0]} raycast={() => null}>
         <boxGeometry args={[w * 1.04, 0.1, d * 1.04]} />
         <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.45} />
