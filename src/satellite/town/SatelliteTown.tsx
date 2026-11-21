@@ -1,12 +1,12 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
+import { compareByIds } from '../../data/compare'
 import { SatelliteStage } from '../camera/SatelliteStage'
 import { useTownCamera } from '../camera/useTownCamera'
 import {
   type AiDetection,
   type AiDetectedProblem,
   type PinsModule,
-  type StatsModule,
 } from './contract'
 import curbUrl from './curb.jpg'
 import rampUrl from './ramp.jpg'
@@ -15,12 +15,8 @@ import './town.css'
 const pinModules = import.meta.glob<PinsModule>('../pins/index.ts', {
   eager: true,
 })
-const statsModules = import.meta.glob<StatsModule>('../stats/index.ts', {
-  eager: true,
-})
 
 const pinsModule = Object.values(pinModules)[0]
-const statsModule = Object.values(statsModules)[0]
 
 /** The checked-in Wellesley barrier. Not a model finding. */
 function illustrativeDetection(): AiDetection {
@@ -40,6 +36,11 @@ function illustrativeDetection(): AiDetection {
     selectProblem() {},
     sourceLabel: 'Illustrative Wellesley scenario, not an AI detection',
   }
+}
+
+function formatMeters(meters: number | null): string {
+  if (meters === null) return 'unreachable'
+  return `${Math.round(meters)} m`
 }
 
 function detectionFromPins(): AiDetection | null {
@@ -106,7 +107,16 @@ function TownFrame({
   const placesLeft = detection.problems.filter(
     (problem) => problem.id !== detection.selectedId,
   ).length
-  const Stats = statsModule?.SatelliteStats
+  const modeled = useMemo(() => {
+    try {
+      return compareByIds({
+        scenarioId: demoDataset.scenario.id,
+        interventionId: demoDataset.scenario.interventionId,
+      })
+    } catch {
+      return null
+    }
+  }, [])
 
   return (
     <div className="satellite-town" ref={rootRef}>
@@ -193,7 +203,14 @@ function TownFrame({
           </figure>
         </div>
         <div className="satellite-town__stats">
-          {Stats ? <Stats problemId={detection.selectedId} /> : null}
+          {modeled ? (
+            <p>
+              Modeled route {formatMeters(modeled.beforeMeters)} →{' '}
+              {formatMeters(modeled.afterMeters)}. Not a Gemini estimate.
+            </p>
+          ) : (
+            <p>Modeled route unavailable.</p>
+          )}
         </div>
       </section>
 
