@@ -1,12 +1,51 @@
 import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
+import { ContextPanel } from './components/ContextPanel'
+import { ListFallback } from './components/ListFallback'
+import { ModeToolbar } from './components/ModeToolbar'
+import { TopBar } from './components/TopBar'
+import {
+  compareByIds,
+  type CompareResult,
+  fetchBarriers,
+  generateProposal,
+  getDemoScenario,
+} from './data/api'
+import {
+  getIntervention,
+  interventionsForBarrier,
+  LOCATIONS,
+} from './data/fixtures'
 import { BARRIER_CURB_ID, INTERVENTION_RAMP_ID } from './showcase/layout'
+import type {
+  AppMode,
+  Barrier,
+  DraftProposal,
+  Intervention,
+  ProposalFacts,
+  SurfaceView,
+} from './types'
 
 export default function App() {
-  const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(null)
-  const [selectedInterventionId, setSelectedInterventionId] = useState<string | null>(
-    null,
+  const scenario = getDemoScenario()
+  const [mode, setMode] = useState<AppMode>('explore')
+  const [locationId, setLocationId] = useState('wellesley')
+  const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
+  const [barriers, setBarriers] = useState<Barrier[]>([])
+  const [dataNote, setDataNote] = useState('Loading fixtures…')
+  const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
+    scenario.barrierId,
   )
+  const [selectedInterventionId, setSelectedInterventionId] = useState<
+    string | null
+  >(scenario.interventionId)
+  const [proposalFacts, setProposalFacts] = useState<ProposalFacts | null>(null)
+  const [proposalDraft, setProposalDraft] = useState<DraftProposal | null>(null)
+  const [proposalWarnings, setProposalWarnings] = useState<string[]>([])
+  const [aiGenerated, setAiGenerated] = useState(false)
+  const [geminiAvailable, setGeminiAvailable] = useState(false)
+  const [apiAvailable, setApiAvailable] = useState(false)
+  const [proposalLoading, setProposalLoading] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -19,18 +58,138 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    fetchBarriers().then((result) => {
+      if (cancelled) return
+      setBarriers(result.barriers)
+      setDataNote(result.note)
+      setApiAvailable(result.liveApiAvailable)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const selectedBarrier =
+    barriers.find((b) => b.id === selectedBarrierId) ?? null
+  const interventions = selectedBarrier
+    ? interventionsForBarrier(selectedBarrier.id)
+    : []
+  const selectedIntervention: Intervention | null = selectedInterventionId
+    ? (getIntervention(selectedInterventionId) ?? null)
+    : null
+  const compare: CompareResult | null = selectedInterventionId
+    ? compareByIds({
+        scenarioId: scenario.id,
+        interventionId: selectedInterventionId,
+      })
+    : null
+
+  const handleGenerate = async () => {
+    if (!selectedBarrierId || !selectedInterventionId) return
+    setProposalLoading(true)
+    try {
+      const result = await generateProposal({
+        scenarioId: scenario.id,
+        barrierId: selectedBarrierId,
+        interventionId: selectedInterventionId,
+      })
+      setProposalFacts(result.facts)
+      setProposalDraft(result.draft)
+      setProposalWarnings(result.warnings)
+      setAiGenerated(result.aiGenerated)
+      setGeminiAvailable(result.geminiAvailable)
+      setApiAvailable(result.apiAvailable)
+    } finally {
+      setProposalLoading(false)
+    }
+  }
+
   return (
-    <div className={`app-shell app-shell--street${reducedMotion ? ' is-reduced-motion' : ''}`}>
-      <CanvasSlot
+    <div
+      className={`app-shell app-shell--street${reducedMotion ? ' is-reduced-motion' : ''}`}
+    >
+      <a className="skip-link" href="#context-panel">
+        Skip to context panel
+      </a>
+      <a className="skip-link skip-link--modes" href="#mode-toolbar">
+        Skip to modes
+      </a>
+      <TopBar
+        locations={LOCATIONS}
+        selectedLocationId={locationId}
+        onLocationSelect={setLocationId}
         reducedMotion={reducedMotion}
-        selectedBarrierId={selectedBarrierId}
-        selectedInterventionId={selectedInterventionId}
-        onSelectBarrier={(id) => {
-          setSelectedBarrierId(id || BARRIER_CURB_ID)
-        }}
-        onSelectIntervention={(id) => {
-          setSelectedInterventionId(id || INTERVENTION_RAMP_ID)
-        }}
+        onReducedMotionChange={setReducedMotion}
+        surfaceView={surfaceView}
+        onSurfaceViewChange={setSurfaceView}
+      />
+      <main className="app-shell__main app-shell__main--street">
+        {surfaceView === 'canvas' ? (
+          <CanvasSlot
+            reducedMotion={reducedMotion}
+            selectedBarrierId={selectedBarrierId}
+            selectedInterventionId={selectedInterventionId}
+            onSelectBarrier={(id) => {
+              const next = id || BARRIER_CURB_ID
+              setSelectedBarrierId(next)
+              const opts = interventionsForBarrier(next)
+              setSelectedInterventionId(
+                opts[0]?.id ?? INTERVENTION_RAMP_ID,
+              )
+            }}
+            onSelectIntervention={(id) => {
+              setSelectedInterventionId(id || INTERVENTION_RAMP_ID)
+            }}
+          />
+        ) : (
+          <ListFallback
+            barriers={barriers}
+            selectedBarrierId={selectedBarrierId}
+            compare={compare}
+            onSelectBarrier={(id) => {
+              setSelectedBarrierId(id)
+              const opts = interventionsForBarrier(id)
+              setSelectedInterventionId(opts[0]?.id ?? null)
+            }}
+          />
+        )}
+        <ContextPanel
+          mode={mode}
+          barriers={barriers}
+          selectedBarrier={selectedBarrier}
+          interventions={interventions}
+          selectedIntervention={
+            selectedIntervention?.barrierId === selectedBarrier?.id
+              ? selectedIntervention
+              : null
+          }
+          scenario={scenario}
+          dataNote={dataNote}
+          compare={compare}
+          proposalFacts={proposalFacts}
+          proposalDraft={proposalDraft}
+          proposalWarnings={proposalWarnings}
+          aiGenerated={aiGenerated}
+          geminiAvailable={geminiAvailable}
+          apiAvailable={apiAvailable}
+          proposalLoading={proposalLoading}
+          onSelectBarrier={(id) => {
+            setSelectedBarrierId(id)
+            const opts = interventionsForBarrier(id)
+            setSelectedInterventionId(opts[0]?.id ?? null)
+          }}
+          onSelectIntervention={setSelectedInterventionId}
+          onDraftChange={setProposalDraft}
+          onGenerate={handleGenerate}
+          onExportPdf={() => window.print()}
+        />
+      </main>
+      <ModeToolbar
+        mode={mode}
+        onModeChange={setMode}
+        reducedMotion={reducedMotion}
       />
     </div>
   )

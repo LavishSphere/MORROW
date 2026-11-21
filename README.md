@@ -23,15 +23,33 @@ npm run lint
 npm test
 ```
 
+### Proposal API (optional)
+
+```bash
+npm run api:dev
+```
+
+Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run dev`.
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | No | Server-only. When unset, generate uses the deterministic template. |
+| `GEMINI_MODEL` | No | Defaults to `gemini-2.0-flash`. |
+| `PORT` / `HOST` | No | Defaults `8787` / `127.0.0.1`. |
+| `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
+| `VITE_API_BASE` | No | Front-end API base (no trailing slash). Empty = same-origin / proxy. |
+
+Never put `GEMINI_API_KEY` in `VITE_*` vars. Tiger Data / Mastra / Vultr are not claimed in this build (see WHA-9). Details: [`packages/api/README.md`](packages/api/README.md).
+
 ## Accessible Interface
 
 - Canvas fills the window as an eye-level street view. WASD glides along streets and sidewalks only. Scroll zooms. Click the curb and it becomes a ramp. No floating island and no pedestrians.
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
-- Propose: editable template + Export PDF (7 sections, facts-driven)
+- Propose: calls live `POST /api/proposals/generate` when the API is reachable; otherwise a **labeled** bundled template. Export PDF uses server/client `facts` (7 sections).
 - **List (2D)** fallback, skip links, visible `:focus-visible`, reduced-motion respected
-- Live barrier / generate / Gemini APIs labeled **unavailable**
+- When the API is down, barrier / generate / Gemini surfaces stay labeled **unavailable**
 
 ### Routing
 
