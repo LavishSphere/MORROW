@@ -13,6 +13,8 @@ test("satellite falls back to the illustrative Wellesley barrier", async () => {
   assert.match(town, /typeof pinsModule\?\.useAiDetection !== 'function'/);
   assert.equal(dataset.barriers[0]?.id, "wellesley-barrier-campus-path-01");
   assert.equal(town.includes("Problems detected by AI"), false);
+  assert.equal(town.includes("AI detection is looking"), false);
+  assert.match(town, /placesLeft > 0/);
   assert.equal(town.includes("STUB_COST_USD"), false);
   assert.equal(town.includes("4800"), false);
   assert.match(town, /compareByIds/);
