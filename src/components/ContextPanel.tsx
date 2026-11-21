@@ -193,12 +193,14 @@ export function ContextPanel({
       {mode === 'compare' && (
         <div className="context-panel__body">
           <p className="context-panel__lead">
-            Modeled before / after for scenario <code>{scenario.id}</code>
+            Modeled before / after via{' '}
+            <code>@morrow/routing.compareScenario</code> for scenario{' '}
+            <code>{scenario.id}</code>
             {selectedIntervention
               ? ` · intervention ${selectedIntervention.id}`
               : ''}
             . From Sophia&apos;s{' '}
-            <code>@morrow/routing.compareIntervention</code>
+            <code>@morrow/routing.compareScenario</code>
             {compare
               ? ` · source: ${compare.source}${compare.routingPackageAvailable ? '' : ' (unavailable — mock)'}`
               : ''}
