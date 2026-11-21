@@ -25,7 +25,7 @@ npm test
 
 ## Accessible Interface
 
-- Canvas slot shows the phase-1 floating island town
+- Canvas slot shows a grounded city you can walk through (WASD). No floating island and no pedestrians.
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)

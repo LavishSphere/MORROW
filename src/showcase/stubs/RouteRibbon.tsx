@@ -18,11 +18,11 @@ function tube(points: readonly (readonly [number, number, number])[], radius: nu
 export function RouteRibbon({ routeGeometry, reducedMotion = false }: RouteRibbonProps) {
   const glow = useRef<THREE.MeshBasicMaterial>(null);
   const core = useMemo(
-    () => (routeGeometry && routeGeometry.points.length >= 2 ? tube(routeGeometry.points, 0.045) : null),
+    () => (routeGeometry && routeGeometry.points.length >= 2 ? tube(routeGeometry.points, 0.22) : null),
     [routeGeometry],
   );
   const halo = useMemo(
-    () => (routeGeometry && routeGeometry.points.length >= 2 ? tube(routeGeometry.points, 0.13) : null),
+    () => (routeGeometry && routeGeometry.points.length >= 2 ? tube(routeGeometry.points, 0.55) : null),
     [routeGeometry],
   );
 
