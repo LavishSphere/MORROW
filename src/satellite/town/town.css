@@ -171,6 +171,20 @@
   min-height: 52px;
 }
 
+.satellite-town__meters {
+  position: absolute;
+  z-index: 6;
+  left: 16px;
+  top: 16px;
+  max-width: 28rem;
+  margin: 0;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-shadow: 0 1px 2px #000000;
+}
+
 .satellite-town__credit {
   position: absolute;
   z-index: 4;

@@ -185,6 +185,12 @@ function TownFrame({
               : 'No barrier selected.'}
       </p>
 
+      <p className="satellite-town__meters">
+        {modeled
+          ? `Modeled route ${formatMeters(modeled.beforeMeters)} → ${formatMeters(modeled.afterMeters)}. Not a Gemini estimate.`
+          : 'Modeled route unavailable.'}
+      </p>
+
       <section className="satellite-town__card" aria-label="Selected problem">
         <div className="satellite-town__photos">
           <figure>
@@ -201,16 +207,6 @@ function TownFrame({
               <span>Ramp</span>
             </figcaption>
           </figure>
-        </div>
-        <div className="satellite-town__stats">
-          {modeled ? (
-            <p>
-              Modeled route {formatMeters(modeled.beforeMeters)} →{' '}
-              {formatMeters(modeled.afterMeters)}. Not a Gemini estimate.
-            </p>
-          ) : (
-            <p>Modeled route unavailable.</p>
-          )}
         </div>
       </section>
 
