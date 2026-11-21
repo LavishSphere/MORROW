@@ -1,4 +1,5 @@
 import { MODELED_IMPACT_ASSUMPTIONS } from '@morrow/routing'
+import demoDataset from '../../data/wellesley/demo-dataset.json'
 import type { Barrier, Intervention, LocationOption, Scenario } from '../types'
 
 export const LOCATIONS: LocationOption[] = [
@@ -7,55 +8,46 @@ export const LOCATIONS: LocationOption[] = [
   { id: 'boston', label: 'Boston, MA', available: false },
 ]
 
-export const BARRIERS: Barrier[] = [
-  {
-    id: 'wellesley-crossing-01',
-    coordinates: [-71.3025, 42.2936],
-    type: 'missing_ramp',
-    evidenceStatus: 'illustrative',
-    description:
-      'Illustrative curb gap at a campus-adjacent crossing. Demonstration only — not a verified municipal finding.',
-    locationLabel: 'Wellesley showcase crossing (near campus)',
-  },
-  {
-    id: 'wellesley-path-02',
-    coordinates: [-71.3041, 42.2948],
-    type: 'blocked_path',
-    evidenceStatus: 'illustrative',
-    description:
-      'Illustrative mid-block path interruption on a walkable connector.',
-    locationLabel: 'Wellesley showcase connector path',
-  },
-]
+/** Align UI fixtures with data/wellesley/demo-dataset.json (Ashsmith + Sophia). */
+export const BARRIERS: Barrier[] = demoDataset.barriers.map((b) => ({
+  id: b.id,
+  coordinates: b.coordinates as [number, number],
+  type: b.type as Barrier['type'],
+  evidenceStatus: b.evidenceStatus as Barrier['evidenceStatus'],
+  description: b.description,
+  sourceTitle: b.source,
+  locationLabel: b.locationLabel,
+}))
 
-export const INTERVENTIONS: Intervention[] = [
-  {
-    id: 'int-ramp-01',
-    barrierId: 'wellesley-crossing-01',
-    type: 'install_ramp',
-    description: 'Add an accessible curb connection at the crossing.',
-    graphChanges: [{ edgeId: 'home-ramp', accessible: true }],
-  },
-  {
-    id: 'int-path-02',
-    barrierId: 'wellesley-path-02',
-    type: 'connect_path',
-    description: 'Restore a continuous accessible connector between blocks.',
-    graphChanges: [{ edgeId: 'home-connector', accessible: true }],
-  },
-]
+export const INTERVENTIONS: Intervention[] = demoDataset.interventions.map(
+  (i) => ({
+    id: i.id,
+    barrierId: i.barrierId,
+    type: i.type as Intervention['type'],
+    description: i.description,
+    graphChanges: i.graphChanges.map((c) => ({
+      edgeId: c.edgeId,
+      accessible: c.accessible,
+      ...(c.weight !== undefined ? { weight: c.weight } : {}),
+    })),
+  }),
+)
+
+const s = demoDataset.scenario
 
 export const SCENARIO: Scenario = {
-  id: 'wellesley-demo-01',
-  city: 'Wellesley, MA',
-  label: 'Campus-adjacent accessible trip',
-  originLabel: 'Residential block (demo origin)',
-  destinationLabel: 'Public destination near campus',
-  originId: 'home',
-  destinationId: 'library',
-  barrierId: 'wellesley-crossing-01',
-  interventionId: 'int-ramp-01',
-  modelAssumptions: [...MODELED_IMPACT_ASSUMPTIONS],
+  id: s.id,
+  city: s.city,
+  label: s.label,
+  originLabel: s.originLabel,
+  destinationLabel: s.destinationLabel,
+  origin: s.origin as [number, number],
+  destination: s.destination as [number, number],
+  barrierId: s.barrierId,
+  interventionId: s.interventionId,
+  modelAssumptions: s.assumptions?.length
+    ? [...s.assumptions]
+    : [...MODELED_IMPACT_ASSUMPTIONS],
 }
 
 export function getBarrier(id: string): Barrier | undefined {
