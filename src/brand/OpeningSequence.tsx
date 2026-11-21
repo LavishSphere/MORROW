@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "./LogoMark";
-import { BRAND_BLACK, LOGO_BLUE, TAGLINE, WORDMARK } from "./palette";
+import { BRAND_BLACK, TAGLINE, TEXT_WHITE, WORDMARK } from "./palette";
 
 /**
  * How long the scene camera should take to descend after the lockup.
@@ -69,7 +69,7 @@ const OPENING_CSS = `
   margin: 0;
   padding: 8vh 6vw 10vh;
   background: ${BRAND_BLACK};
-  color: ${LOGO_BLUE};
+  color: ${TEXT_WHITE};
   overflow: hidden;
   pointer-events: auto;
 }
@@ -89,7 +89,7 @@ const OPENING_CSS = `
 .morrow-word,
 .morrow-line {
   margin: 0;
-  color: ${LOGO_BLUE};
+  color: ${TEXT_WHITE};
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-weight: 600;
 }
@@ -107,24 +107,17 @@ const OPENING_CSS = `
   letter-spacing: 0.06em;
   line-height: 1.3;
 }
-.morrow-opening--motion .morrow-stroke {
-  transform-box: fill-box;
+.morrow-opening--motion .morrow-mark {
   transform-origin: center;
-  animation-name: morrow-stroke-in;
-  animation-duration: ${STROKE_IN_MS}ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  animation-fill-mode: both;
+  animation: morrow-mark-in ${STROKE_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
 }
-.morrow-opening--motion .morrow-stroke-1 { animation-delay: 80ms; }
-.morrow-opening--motion .morrow-stroke-2 { animation-delay: 260ms; }
-.morrow-opening--motion .morrow-stroke-3 { animation-delay: 440ms; }
 .morrow-opening--motion .morrow-word {
   animation: morrow-rise ${WORD_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) ${WORD_DELAY_MS}ms both;
 }
 .morrow-opening--motion .morrow-line {
   animation: morrow-rise ${LINE_IN_MS}ms cubic-bezier(0.16, 1, 0.3, 1) ${LINE_DELAY_MS}ms both;
 }
-@keyframes morrow-stroke-in {
+@keyframes morrow-mark-in {
   0% {
     opacity: 0;
     transform: translate3d(0, -46vh, 0) scale(0.42);

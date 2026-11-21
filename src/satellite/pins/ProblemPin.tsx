@@ -1,3 +1,4 @@
+import blueMarkUrl from "../../brand/morrow-logo-blue.png";
 import type { AiDetectedProblem } from "./types";
 import "./pins.css";
 
@@ -26,7 +27,7 @@ export function ProblemPin({ problem, selected, onSelect, buttonRef }: ProblemPi
       }}
     >
       <span className="satellite-pin__ring" aria-hidden="true" />
-      <span className="satellite-pin__diamond" aria-hidden="true" />
+      <img className="satellite-pin__mark" src={blueMarkUrl} alt="" />
       {selected ? (
         <span className="satellite-pin__caption">
           <span className="satellite-pin__kicker">AI-detected</span>

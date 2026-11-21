@@ -1,3 +1,4 @@
+import { LogoMark } from '../brand/LogoMark'
 import { LocationSelector } from './LocationSelector'
 import type { LocationOption, SurfaceView } from '../types'
 
@@ -23,8 +24,11 @@ export function TopBar({
   return (
     <header className="top-bar">
       <div className="top-bar__brand-block">
-        <p className="top-bar__wordmark">MORROW</p>
-        <p className="top-bar__promise">Make tomorrow possible.</p>
+        <LogoMark className="top-bar__mark" decorative />
+        <div>
+          <p className="top-bar__wordmark">MORROW</p>
+          <p className="top-bar__promise">Make tomorrow possible.</p>
+        </div>
       </div>
 
       <div className="top-bar__controls">

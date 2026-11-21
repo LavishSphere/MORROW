@@ -1,6 +1,5 @@
 export { LogoMark } from "./LogoMark";
 export type { LogoMarkProps } from "./LogoMark";
-export { LOGO_STROKES } from "./logoPaths";
 export {
   OpeningSequence,
   OPENING_DESCEND_MS,
@@ -10,6 +9,7 @@ export type { DescentSignal, OpeningSequenceProps } from "./OpeningSequence";
 export {
   BRAND_BLACK,
   LOGO_BLUE,
+  TEXT_WHITE,
   TAGLINE,
   WORDMARK,
   brandPalette,

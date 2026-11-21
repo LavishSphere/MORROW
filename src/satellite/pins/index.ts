@@ -1,4 +1,5 @@
 export { nextProblemId } from "./cycle";
+export { useAiDetection } from "./useAiDetection";
 export { MorrowMark } from "./MorrowMark";
 export type { MorrowMarkProps } from "./MorrowMark";
 export { ProblemPin } from "./ProblemPin";

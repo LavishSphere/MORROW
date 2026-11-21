@@ -1,4 +1,5 @@
 export { BeforeAfterCard } from './BeforeAfterCard'
+export { SatelliteStats } from './SatelliteStats'
 export type { BeforeAfterCardProps } from './BeforeAfterCard'
 export { formatCostUsd, formatImprovement, formatMeters } from './format'
 export {

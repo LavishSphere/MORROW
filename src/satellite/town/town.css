@@ -22,9 +22,22 @@
   background: #000000;
 }
 
+.satellite-town__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.satellite-town__logo {
+  display: block;
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+
 .satellite-town__mark {
   margin: 0;
-  color: #1488ff;
+  color: #ffffff;
   font-family: var(--font-display, "Bricolage Grotesque", Georgia, serif);
   font-size: 26px;
   font-weight: 700;
@@ -48,7 +61,7 @@
 }
 
 .satellite-town__next {
-  border: 2px solid #1488ff;
+  border: 2px solid #ffffff;
   border-radius: 6px;
   background: #000000;
   padding: 8px 16px;
@@ -94,18 +107,24 @@
   cursor: pointer;
 }
 
-.satellite-pin__diamond {
+.satellite-pin__mark {
   position: absolute;
-  left: 13px;
-  top: 13px;
-  width: 18px;
-  height: 18px;
-  background: #1488ff;
-  transform: rotate(45deg);
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.satellite-pin.is-selected .satellite-pin__mark {
+  width: 36px;
+  height: 36px;
 }
 
 .satellite-pin.is-selected {
-  box-shadow: 0 0 0 3px #1488ff;
+  box-shadow: 0 0 0 2px #ffffff;
+  border-radius: 50%;
 }
 
 .satellite-town__leader {

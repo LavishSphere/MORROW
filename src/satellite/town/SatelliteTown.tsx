@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
 import { SatelliteStage } from '../camera/SatelliteStage'
 import { useTownCamera } from '../camera/useTownCamera'
@@ -8,6 +8,7 @@ import {
   type PinsModule,
   type StatsModule,
 } from './contract'
+import blueMarkUrl from '../../brand/morrow-logo-blue.png'
 import curbUrl from './curb.jpg'
 import rampUrl from './ramp.jpg'
 import './town.css'
@@ -78,6 +79,13 @@ function TownFrame({
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
+  const [arrived, setArrived] = useState(reducedMotion)
+
+  useEffect(() => {
+    if (reducedMotion) return
+    const id = window.setTimeout(() => setArrived(true), 900)
+    return () => window.clearTimeout(id)
+  }, [reducedMotion])
 
   useLayoutEffect(() => {
     const node = rootRef.current
@@ -99,7 +107,7 @@ function TownFrame({
   const selected =
     detection.problems.find((problem) => problem.id === detection.selectedId) ?? null
   const frame = useTownCamera(
-    selected ? { lng: selected.longitude, lat: selected.latitude } : null,
+    arrived && selected ? { lng: selected.longitude, lat: selected.latitude } : null,
     reducedMotion,
     viewport,
   )
@@ -126,7 +134,7 @@ function TownFrame({
                   aria-current={isSelected ? 'true' : undefined}
                   onClick={() => detection.selectProblem(problem.id)}
                 >
-                  <span className="satellite-pin__diamond" />
+                  <img className="satellite-pin__mark" src={blueMarkUrl} alt="" />
                 </button>
               )
             })}
@@ -137,7 +145,7 @@ function TownFrame({
                   y1={project(selected.longitude, selected.latitude).y + 22}
                   x2={viewport.width / 2}
                   y2={Math.max(96, viewport.height - 210)}
-                  stroke="#1488FF"
+                  stroke="#FFFFFF"
                   strokeWidth="3"
                 />
               </svg>
@@ -147,11 +155,14 @@ function TownFrame({
       </SatelliteStage>
 
       <header className="satellite-town__bar">
-        <div>
-          <p className="satellite-town__mark">MORROW</p>
-          <p className="satellite-town__source">
-            {detection.sourceLabel || 'Illustrative Wellesley scenario'}
-          </p>
+        <div className="satellite-town__brand">
+          <img className="satellite-town__logo" src={blueMarkUrl} alt="" />
+          <div>
+            <p className="satellite-town__mark">MORROW</p>
+            <p className="satellite-town__source">
+              {detection.sourceLabel || 'Illustrative Wellesley scenario'}
+            </p>
+          </div>
         </div>
         <button
           type="button"

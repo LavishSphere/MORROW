@@ -1,25 +1,25 @@
 :root {
-  --ink: #1a2b2e;
-  --ink-soft: #3d5256;
-  --paper: #f3f6f4;
-  --panel: rgba(247, 250, 248, 0.88);
-  --panel-solid: #f7faf8;
-  --line: rgba(26, 43, 46, 0.12);
-  --moss: #2f5d50;
-  --moss-deep: #1f3f37;
-  --moss-soft: #d7e6df;
-  --sky: #c9d9e2;
-  --ground: #b9c9b8;
-  --amber: #8a6a2f;
-  --amber-soft: #f0e6cc;
-  --slate-badge: #4a5c62;
-  --slate-soft: #e2e8ea;
-  --focus: #1f6f5c;
-  --shadow: 0 10px 40px rgba(26, 43, 46, 0.12);
+  --ink: #ffffff;
+  --ink-soft: #ffffff;
+  --paper: #000000;
+  --panel: rgba(0, 0, 0, 0.92);
+  --panel-solid: #000000;
+  --line: rgba(255, 255, 255, 0.4);
+  --moss: #ffffff;
+  --moss-deep: #ffffff;
+  --moss-soft: #000000;
+  --sky: #000000;
+  --ground: #000000;
+  --amber: #ffffff;
+  --amber-soft: #000000;
+  --slate-badge: #ffffff;
+  --slate-soft: #000000;
+  --focus: #ffffff;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
   --radius: 14px;
   --font-display: 'Bricolage Grotesque', Georgia, serif;
   --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 *,
@@ -37,8 +37,8 @@ body,
 
 body {
   font-family: var(--font-body);
-  color: var(--ink);
-  background: var(--ink);
+  color: #ffffff;
+  background: #000000;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -73,10 +73,7 @@ a {
   min-height: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background:
-    radial-gradient(1200px 600px at 20% 0%, #dce8ee 0%, transparent 55%),
-    radial-gradient(900px 500px at 90% 10%, #cfdccf 0%, transparent 50%),
-    linear-gradient(165deg, #d5e2e8 0%, #c8d5c9 48%, #aebfad 100%);
+  background: #000000;
 }
 
 .app-shell.is-reduced-motion *,
@@ -96,6 +93,18 @@ a {
   padding: 1rem 1.25rem 0.75rem;
   position: relative;
   z-index: 2;
+}
+
+.top-bar__brand-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.top-bar__mark {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
 }
 
 .top-bar__wordmark {
@@ -212,7 +221,7 @@ a {
   position: relative;
   overflow: hidden;
   border-radius: calc(var(--radius) + 4px);
-  border: 1px solid rgba(26, 43, 46, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow: var(--shadow);
   min-height: 420px;
   isolation: isolate;
@@ -230,7 +239,7 @@ a {
   background:
     linear-gradient(180deg, rgba(201, 217, 226, 0.55) 0%, transparent 42%),
     linear-gradient(0deg, rgba(90, 110, 88, 0.35) 0%, transparent 38%),
-    radial-gradient(ellipse at 50% 70%, #8fa894 0%, #6f8a7a 40%, #4d6670 100%);
+    radial-gradient(ellipse at 50% 70%, #000000 0%, #000000 40%, #000000 100%);
 }
 
 .canvas-slot:not(.is-reduced) .canvas-slot__atmosphere {
@@ -398,7 +407,7 @@ a {
 
 .barrier-list__item:hover,
 .option-list__item:hover {
-  border-color: rgba(47, 93, 80, 0.35);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .barrier-list__item.is-active,
@@ -580,7 +589,7 @@ a {
 
 .mode-toolbar__btn.is-active {
   background: var(--moss);
-  color: #f4faf7;
+  color: #000000;
 }
 
 @media (max-width: 560px) {
@@ -601,7 +610,7 @@ a {
 
 code {
   font-size: 0.85em;
-  background: rgba(26, 43, 46, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   padding: 0.05em 0.35em;
   border-radius: 4px;
 }
@@ -645,7 +654,7 @@ code {
 
 .view-toggle button.is-active {
   background: var(--moss);
-  color: #f4faf7;
+  color: #000000;
 }
 
 .view-toggle button:focus-visible {
@@ -657,7 +666,7 @@ code {
   margin: 1rem 0 0;
   padding: 0.55rem 0.75rem;
   border-radius: 10px;
-  background: rgba(26, 43, 46, 0.35);
+  background: rgba(255, 255, 255, 0.12);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -769,7 +778,7 @@ code {
 .btn-primary {
   border: 1px solid var(--moss-deep);
   background: var(--moss);
-  color: #f4faf7;
+  color: #000000;
 }
 
 .btn-primary:disabled {
@@ -807,13 +816,13 @@ code {
   text-transform: uppercase;
   background: var(--moss-soft);
   color: var(--moss-deep);
-  border: 1px solid rgba(31, 63, 55, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .status-pill--warn {
   background: var(--amber-soft);
   color: var(--amber);
-  border-color: rgba(138, 106, 47, 0.35);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .proposal-editor__warnings {
@@ -945,7 +954,7 @@ code {
 
 /* High-contrast labels for evidence + mode chrome */
 .evidence-badge {
-  border: 1px solid rgba(26, 43, 46, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .mode-toolbar__label {
