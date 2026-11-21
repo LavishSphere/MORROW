@@ -5,7 +5,14 @@ import { defineConfig } from 'vite'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
+function pagesBase(): string {
+  const fromEnv = process.env.VITE_BASE
+  if (!fromEnv) return '/'
+  return fromEnv.endsWith('/') ? fromEnv : `${fromEnv}/`
+}
+
 export default defineConfig({
+  base: pagesBase(),
   plugins: [react()],
   assetsInclude: ['**/*.geojson'],
   server: {
