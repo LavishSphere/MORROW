@@ -1,13 +1,11 @@
-import { useFrame } from "@react-three/fiber";
-import { useRef, type ReactNode } from "react";
-import type * as THREE from "three";
-import { footprintSource } from "../layout";
+import type { ReactNode } from "react";
+import { INTERVENTION_RAMP_ID, footprintSource } from "../layout";
 import { LOGO_BLUE } from "../palette";
-import { Buildings } from "./Buildings";
-import { CameraRig } from "./CameraRig";
-import { Island } from "./Island";
-import { Space } from "./Space";
+import { City } from "./City";
+import { Grass } from "./Grass";
+import { Sky } from "./Space";
 import { Street } from "./Street";
+import { Walker } from "./Walker";
 
 type TownSceneProps = {
   geoJson?: unknown;
@@ -28,36 +26,43 @@ export function TownScene({
   onSelectIntervention,
   children,
 }: TownSceneProps) {
-  const island = useRef<THREE.Group>(null);
   const source = footprintSource(geoJson);
 
-  useFrame(({ clock }) => {
-    if (!island.current) return;
-    island.current.position.y = reducedMotion ? 0 : Math.sin(clock.elapsedTime * 0.42) * 0.07;
-  });
-
   return (
-    <>
-      <color attach="background" args={["#000000"]} />
-      <fogExp2 attach="fog" args={["#000000", 0.014]} />
-      <ambientLight intensity={0.32} />
-      <directionalLight position={[7.5, 11, 6.5]} intensity={2.7} />
-      <directionalLight position={[-6, 4, -3]} intensity={0.45} />
-      <directionalLight position={[-4, -3.5, -2]} intensity={1.15} color={LOGO_BLUE} />
-      <pointLight position={[0, -2.7, 0]} color={LOGO_BLUE} intensity={8} distance={16} decay={2} />
-      <Space reducedMotion={reducedMotion} />
-      <CameraRig reducedMotion={reducedMotion} />
-      <group ref={island} name={`footprints-${source}`}>
-        <Island />
-        <Buildings />
-        <Street
-          selectedBarrierId={selectedBarrierId}
-          selectedInterventionId={selectedInterventionId}
-          onSelectBarrier={onSelectBarrier}
-          onSelectIntervention={onSelectIntervention}
-        />
-        {children}
-      </group>
-    </>
+    <group name={`footprints-${source}`}>
+      <color attach="background" args={["#02060c"]} />
+      <fog attach="fog" args={["#071018", 28, 120]} />
+      <hemisphereLight args={["#16324f", "#0c1210", 0.35]} />
+      <directionalLight
+        position={[18, 22, -8]}
+        intensity={1.35}
+        color={"#d7e6ff"}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-near={1}
+        shadow-camera-far={90}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
+        shadow-bias={-0.0004}
+      />
+      <directionalLight position={[-8, 6, 12]} intensity={0.85} color={LOGO_BLUE} />
+      <Sky />
+      <Grass />
+      <City />
+      <Street
+        selectedBarrierId={selectedBarrierId}
+        selectedInterventionId={selectedInterventionId}
+        onSelectBarrier={onSelectBarrier}
+        onSelectIntervention={onSelectIntervention}
+      />
+      {children}
+      <Walker
+        reducedMotion={reducedMotion}
+        rampOpen={selectedInterventionId === INTERVENTION_RAMP_ID}
+      />
+    </group>
   );
 }
