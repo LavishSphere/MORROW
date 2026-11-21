@@ -25,7 +25,7 @@ npm test
 
 ## Accessible Interface
 
-- Canvas slot shows the phase-1 floating island town
+- Canvas fills the window as an eye-level street view. WASD glides along streets and sidewalks only. Scroll zooms. Click the curb and it becomes a ramp. No floating island and no pedestrians.
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
