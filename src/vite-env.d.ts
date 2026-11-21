@@ -9,7 +9,12 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
+/** Parsed GeoJSON FeatureCollection (via vite geojson-as-json plugin). */
 declare module '*.geojson' {
-  const value: unknown
+  const value: {
+    type: 'FeatureCollection'
+    features: unknown[]
+    [key: string]: unknown
+  }
   export default value
 }
