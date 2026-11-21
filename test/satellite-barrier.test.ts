@@ -18,4 +18,6 @@ test("satellite falls back to the illustrative Wellesley barrier", async () => {
   assert.match(town, /compareByIds/);
   assert.match(town, /satellite-town__meters/);
   assert.match(town, /Not a Gemini estimate/);
+  assert.match(town, /from '\.\.\/stats\/format'/);
+  assert.equal(town.includes("return 'unreachable'"), false);
 });
