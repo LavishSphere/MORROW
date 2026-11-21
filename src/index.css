@@ -1034,61 +1034,6 @@ code {
   overflow: hidden;
 }
 
-.dream-sky__glow {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 50% -10%, rgba(255, 182, 230, 0.28) 0%, transparent 48%),
-    radial-gradient(ellipse at 100% 80%, rgba(186, 140, 255, 0.16) 0%, transparent 42%);
-}
-
-.dream-sky__cloud {
-  position: absolute;
-  border-radius: 999px;
-  background: rgba(255, 248, 255, 0.72);
-  filter: blur(2px);
-  box-shadow:
-    28px 8px 0 -4px rgba(255, 248, 255, 0.7),
-    -26px 10px 0 -6px rgba(255, 230, 248, 0.65),
-    8px 16px 0 -2px rgba(243, 217, 255, 0.6);
-}
-
-.dream-sky__cloud--one { width: 120px; height: 38px; top: 7%; left: 8%; }
-.dream-sky__cloud--two { width: 160px; height: 44px; top: 12%; right: 10%; }
-.dream-sky__cloud--three { width: 90px; height: 28px; top: 22%; left: 38%; opacity: 0.85; }
-.dream-sky__cloud--four { width: 70px; height: 22px; top: 5%; right: 28%; opacity: 0.7; }
-
-.dream-sky__sparkle {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(255, 236, 252, 0.95);
-  box-shadow: 0 0 10px 3px rgba(244, 166, 212, 0.7);
-}
-
-.dream-sky__sparkle--a { top: 16%; left: 28%; }
-.dream-sky__sparkle--b { top: 9%; right: 22%; }
-.dream-sky__sparkle--c { top: 26%; right: 40%; }
-
-.app-shell:not(.is-reduced-motion) .dream-sky__cloud--one { animation: cloud-drift 18s ease-in-out infinite alternate; }
-.app-shell:not(.is-reduced-motion) .dream-sky__cloud--two { animation: cloud-drift 22s ease-in-out infinite alternate-reverse; }
-.app-shell:not(.is-reduced-motion) .dream-sky__cloud--three { animation: cloud-drift 16s ease-in-out infinite alternate; }
-.app-shell:not(.is-reduced-motion) .dream-sky__cloud--four { animation: cloud-drift 20s ease-in-out infinite alternate-reverse; }
-.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--a { animation: sparkle-twinkle 2.6s ease-in-out infinite; }
-.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--b { animation: sparkle-twinkle 3.1s ease-in-out infinite 0.4s; }
-.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--c { animation: sparkle-twinkle 2.2s ease-in-out infinite 0.8s; }
-
-@keyframes cloud-drift {
-  from { transform: translateX(0); }
-  to { transform: translateX(28px); }
-}
-
-@keyframes sparkle-twinkle {
-  0%, 100% { opacity: 0.35; transform: scale(0.7); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
-
 .satellite-town__caption {
   padding: 0.4rem 0.85rem;
   background: rgba(255, 240, 250, 0.86);
