@@ -28,7 +28,7 @@ export function LocationSelector({ locations, selectedId, onSelect }: Props) {
         ))}
       </select>
       <p id="location-hint" className="location-selector__hint">
-        Wellesley showcase only in Phase 1.
+        Checked-in Wellesley scenario. A typed city loads OpenStreetMap streets, not a barrier list.
       </p>
     </div>
   )

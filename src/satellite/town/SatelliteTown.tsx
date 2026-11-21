@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
 import { compareByIds } from '../../data/compare'
+import type { LoadedNeighborhood } from '../../data/overpass'
 import { SatelliteStage } from '../camera/SatelliteStage'
 import { formatMeters } from '../stats/format'
 import { useTownCamera } from '../camera/useTownCamera'
@@ -46,17 +47,24 @@ function detectionFromPins(): AiDetection | null {
 
 type Props = {
   reducedMotion: boolean
+  neighborhood: LoadedNeighborhood | null
 }
 
 /**
  * Town satellite. The pin is the checked-in Wellesley barrier unless a pins
- * module actually exports detection. The caption stays visible when the
- * full-bleed layout hides the header bar.
+ * module actually exports detection. A loaded neighborhood replaces that pin
+ * with the OpenStreetMap streets for the place the judge typed.
  */
-export function SatelliteTown({ reducedMotion }: Props) {
+export function SatelliteTown({ reducedMotion, neighborhood }: Props) {
   return (
     <DetectionBridge>
-      {(detection) => <TownFrame detection={detection} reducedMotion={reducedMotion} />}
+      {(detection) => (
+        <TownFrame
+          detection={detection}
+          reducedMotion={reducedMotion}
+          neighborhood={neighborhood}
+        />
+      )}
     </DetectionBridge>
   )
 }
@@ -69,9 +77,11 @@ function DetectionBridge({ children }: { children: (detection: AiDetection) => R
 function TownFrame({
   detection,
   reducedMotion,
+  neighborhood,
 }: {
   detection: AiDetection
   reducedMotion: boolean
+  neighborhood: LoadedNeighborhood | null
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
@@ -93,10 +103,16 @@ function TownFrame({
     return () => observer.disconnect()
   }, [])
 
-  const selected =
-    detection.problems.find((problem) => problem.id === detection.selectedId) ?? null
+  const away = neighborhood != null
+  const selected = away
+    ? null
+    : (detection.problems.find((problem) => problem.id === detection.selectedId) ?? null)
   const frame = useTownCamera(
-    selected ? { lng: selected.longitude, lat: selected.latitude } : null,
+    away
+      ? { lng: neighborhood.place.lng, lat: neighborhood.place.lat }
+      : selected
+        ? { lng: selected.longitude, lat: selected.latitude }
+        : null,
     reducedMotion,
     viewport,
   )
@@ -119,7 +135,32 @@ function TownFrame({
       <SatelliteStage frame={frame}>
         {(project) => (
           <>
-            {detection.problems.map((problem) => {
+            {away ? (
+              <svg className="satellite-town__streets" aria-hidden="true">
+                {neighborhood.ways.map((way) => {
+                  const d = way.points
+                    .map((point, index) => {
+                      const placed = project(point[0], point[1])
+                      return `${index === 0 ? 'M' : 'L'}${placed.x} ${placed.y}`
+                    })
+                    .join(' ')
+                  return (
+                    <path
+                      key={way.id}
+                      d={d}
+                      className={
+                        way.kind === 'building'
+                          ? 'satellite-town__building'
+                          : 'satellite-town__road'
+                      }
+                    />
+                  )
+                })}
+              </svg>
+            ) : null}
+            {away
+              ? null
+              : detection.problems.map((problem) => {
               const point = project(problem.longitude, problem.latitude)
               const isSelected = problem.id === detection.selectedId
               return (
@@ -172,8 +213,9 @@ function TownFrame({
       </header>
 
       <p className="satellite-town__caption">
-        {detection.sourceLabel || 'Illustrative Wellesley scenario'}
-        {selected ? ` · ${selected.title}` : ''}
+        {away
+          ? neighborhood.note
+          : `${detection.sourceLabel || 'Illustrative Wellesley scenario'}${selected ? ` · ${selected.title}` : ''}`}
       </p>
 
       <p className="satellite-town__live" role="status">
@@ -189,9 +231,11 @@ function TownFrame({
       </p>
 
       <p className="satellite-town__meters">
-        {modeled
-          ? `Modeled route ${formatMeters(modeled.beforeMeters)} → ${formatMeters(modeled.afterMeters)}. Not a Gemini estimate.`
-          : 'Modeled route unavailable.'}
+        {away
+          ? 'No modeled route for this place. The Wellesley distances are not a measurement here.'
+          : modeled
+            ? `Modeled route ${formatMeters(modeled.beforeMeters)} → ${formatMeters(modeled.afterMeters)}. Not a Gemini estimate.`
+            : 'Modeled route unavailable.'}
       </p>
 
       <section className="satellite-town__card" aria-label="Selected problem">

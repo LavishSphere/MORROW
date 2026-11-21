@@ -7,6 +7,7 @@ import { ModeToolbar } from './components/ModeToolbar'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
+import type { LoadedNeighborhood } from './data/overpass'
 import {
   getBarrier,
   interventionsForBarrier,
@@ -26,6 +27,7 @@ export default function App() {
   const [selectedInterventionId, setSelectedInterventionId] = useState<
     string | null
   >(scenario.interventionId)
+  const [neighborhood, setNeighborhood] = useState<LoadedNeighborhood | null>(null)
   const [reducedMotion, setReducedMotion] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -76,6 +78,8 @@ export default function App() {
         onReducedMotionChange={setReducedMotion}
         surfaceView={surfaceView}
         onSurfaceViewChange={setSurfaceView}
+        onPlace={setNeighborhood}
+        onShowcase={() => setNeighborhood(null)}
       />
 
       <main
@@ -85,10 +89,18 @@ export default function App() {
         aria-labelledby={`mode-tab-${mode}`}
       >
         {mode === 'explore' && surfaceView === 'canvas' && (
-          <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
+          <CanvasSlot
+            mode={mode}
+            reducedMotion={reducedMotion}
+            neighborhood={neighborhood}
+          />
         )}
         {mode !== 'explore' && (
-          <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
+          <CanvasSlot
+            mode={mode}
+            reducedMotion={reducedMotion}
+            neighborhood={neighborhood}
+          />
         )}
         {mode === 'explore' && surfaceView === 'list' && (
           <ListFallback
