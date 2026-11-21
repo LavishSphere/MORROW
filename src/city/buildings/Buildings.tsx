@@ -4,8 +4,8 @@ import { defaultProjector } from "../../showcase/layout";
 import { parseBasemap } from "../../showcase/scene/parseBasemap";
 import { createExtrudedBuilding } from "../../showcase/scene/ribbonGeometry";
 
-const GLASS = "#9aebff";
-const EDGE = "#f7feff";
+const GLASS = "#ffffff";
+const EDGE = "#1488FF";
 
 type GlassBlock = {
   id: string;
@@ -31,7 +31,7 @@ function createGlassBlocks(): GlassBlock[] {
 
 const GLASS_BLOCKS = createGlassBlocks();
 
-/** Translucent cyan blocks with a white edge glow. */
+/** White blocks with a MORROW-blue edge. */
 export function Buildings() {
   return (
     <group name="buildings">
@@ -40,10 +40,10 @@ export function Buildings() {
           <mesh geometry={block.geometry} castShadow raycast={() => null}>
             <meshStandardMaterial
               color={GLASS}
-              emissive="#7ad7ff"
-              emissiveIntensity={0.5}
+              emissive={EDGE}
+              emissiveIntensity={0.22}
               transparent
-              opacity={0.4}
+              opacity={0.82}
               roughness={0.16}
               metalness={0.12}
               side={THREE.DoubleSide}

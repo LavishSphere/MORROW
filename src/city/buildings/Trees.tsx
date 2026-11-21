@@ -2,19 +2,15 @@ import basemap from "../../../data/wellesley/basemap.geojson";
 import { defaultProjector } from "../../showcase/layout";
 import { parseBasemap } from "../../showcase/scene/parseBasemap";
 
-const LEAF = "#7dcea0";
-const LEAF_GLOW = "#3d9a62";
-const AMBER = "#e2a24a";
-const AMBER_GLOW = "#c9842e";
-const CROWN = "#f0c36a";
-const TRUNK = "#d7efe8";
+const BLUE = "#1488FF";
+const WHITE = "#ffffff";
 
 type Planting = {
   id: string;
   x: number;
   z: number;
   scale: number;
-  golden: boolean;
+  whiteCanopy: boolean;
   lean: number;
 };
 
@@ -60,7 +56,7 @@ function createPlantings(): Planting[] {
       x: spot.x,
       z: spot.z,
       scale: 1.15 + ((index * 17) % 40) / 100,
-      golden: index % 3 === 0,
+      whiteCanopy: index % 3 === 0,
       lean: ((index % 5) - 2) * 0.03,
     };
   });
@@ -68,38 +64,38 @@ function createPlantings(): Planting[] {
 
 const PLANTINGS = createPlantings();
 
-function Canopy({ golden, lean }: { golden: boolean; lean: number }) {
-  const leaf = golden ? AMBER : LEAF;
-  const glow = golden ? AMBER_GLOW : LEAF_GLOW;
+function Canopy({ whiteCanopy, lean }: { whiteCanopy: boolean; lean: number }) {
+  const leaf = whiteCanopy ? WHITE : BLUE;
+  const crown = whiteCanopy ? BLUE : WHITE;
   return (
     <group>
       <mesh position={[0, 0.22, 0]} raycast={() => null}>
         <cylinderGeometry args={[0.045, 0.06, 0.44, 7]} />
-        <meshStandardMaterial color={TRUNK} roughness={0.72} />
+        <meshStandardMaterial color={WHITE} roughness={0.72} />
       </mesh>
       <mesh position={[lean, 0.58, lean * 0.4]} raycast={() => null}>
         <sphereGeometry args={[0.3, 16, 12]} />
-        <meshStandardMaterial color={leaf} emissive={glow} emissiveIntensity={0.28} roughness={0.55} />
+        <meshStandardMaterial color={leaf} emissive={leaf} emissiveIntensity={0.28} roughness={0.55} />
       </mesh>
       <mesh position={[-lean * 0.8, 0.72, 0.04]} raycast={() => null}>
         <sphereGeometry args={[0.18, 14, 10]} />
-        <meshStandardMaterial color={leaf} emissive={glow} emissiveIntensity={0.18} roughness={0.52} />
+        <meshStandardMaterial color={leaf} emissive={leaf} emissiveIntensity={0.18} roughness={0.52} />
       </mesh>
       <mesh position={[lean * 0.4, 0.86, 0]} raycast={() => null}>
         <sphereGeometry args={[0.14, 12, 10]} />
-        <meshStandardMaterial color={CROWN} emissive={AMBER_GLOW} emissiveIntensity={0.45} roughness={0.42} />
+        <meshStandardMaterial color={crown} emissive={crown} emissiveIntensity={0.4} roughness={0.42} />
       </mesh>
     </group>
   );
 }
 
-/** Green trees with amber crowns, planted on each building footprint. */
+/** Blue and white trees planted on each building footprint. */
 export function Trees() {
   return (
     <group name="trees">
       {PLANTINGS.map((planting) => (
         <group key={planting.id} position={[planting.x, 0, planting.z]} scale={planting.scale}>
-          <Canopy golden={planting.golden} lean={planting.lean} />
+          <Canopy whiteCanopy={planting.whiteCanopy} lean={planting.lean} />
         </group>
       ))}
     </group>
