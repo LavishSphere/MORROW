@@ -4,7 +4,35 @@
 
 WHACK 2026 · Better Worlds (Social Impact)
 
-An interactive civic-planning experience that helps anyone visualize a more accessible neighborhood and turn an idea for improvement into a concrete proposal for local decision-makers.
+Public civic demo — no login. Showcase: Wellesley, MA.
+
+## Front-end stack
+
+Accessible Interface uses **Vite + React + TypeScript** at the repo root (npm workspaces with `packages/*`).
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+Typically `http://localhost:5173`.
+
+```bash
+npm run build
+npm run preview
+npm run lint
+```
+
+## App shell
+
+- Full-bleed **canvas slot** (3D reserved)
+- Compact Wellesley (featured) location selector
+- Bottom toolbar: **Explore | Improve | Compare | Propose** (keyboard focusable)
+- Reduced-motion toggle
+- Bundled Wellesley fixtures
+- Placeholder context panel (details in follow-up PRs)
 
 ## Docs
 
@@ -30,3 +58,7 @@ Consumer notes and stable ids: [`data/wellesley/README.md`](data/wellesley/READM
 Basemap data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), extracted via Overpass. Full credit and honesty rules: [`data/wellesley/ATTRIBUTION.md`](data/wellesley/ATTRIBUTION.md).
 
 The seeded Wellesley barrier is **`illustrative`** — a demo simulation, not a verified campus defect. Route results are **modeled**. Always show `evidenceStatus` in the UI and exported proposals.
+
+## Seat
+
+Accessible Interface — Caroline Hu
