@@ -1,12 +1,12 @@
 import type { CompareResult } from '../data/api'
-import type { AppMode } from '../types'
+import type { AppMode, Barrier } from '../types'
 
 type Props = {
   mode: AppMode
+  selectedBarrier: Barrier | null
   reducedMotion: boolean
   locationLabel: string
-  focusLabel?: string
-  compare?: CompareResult | null
+  compare: CompareResult | null
 }
 
 function formatDelta(delta: number | null): string {
@@ -18,9 +18,9 @@ function formatDelta(delta: number | null): string {
 
 export function CanvasSlot({
   mode,
+  selectedBarrier,
   reducedMotion,
   locationLabel,
-  focusLabel,
   compare,
 }: Props) {
   return (
@@ -30,6 +30,7 @@ export function CanvasSlot({
     >
       <div className="canvas-slot__atmosphere" aria-hidden="true" />
       <div className="canvas-slot__grid" aria-hidden="true" />
+
       <div className="canvas-slot__content">
         <p className="canvas-slot__eyebrow">3D canvas reserved</p>
         <h1 className="canvas-slot__brand">MORROW</h1>
@@ -38,12 +39,18 @@ export function CanvasSlot({
         <p className="canvas-slot__note">
           Placeholder for the React Three Fiber Wellesley scene. Mode:{' '}
           <strong>{mode}</strong>
-          {focusLabel ? ` · ${focusLabel}` : ''}
+          {selectedBarrier
+            ? ` · Focus: ${selectedBarrier.locationLabel}`
+            : ' · Select a barrier in Explore'}
         </p>
         {compare && (mode === 'compare' || mode === 'improve') && (
           <p className="canvas-slot__route" aria-live="polite">
             Modeled route: {compare.beforeMeters ?? 'n/a'} m →{' '}
-            {compare.afterMeters ?? 'n/a'} m ({formatDelta(compare.deltaMeters)})
+            {compare.afterMeters ?? 'n/a'} m ({formatDelta(compare.deltaMeters)}
+            )
+            {compare.after.geometry.length > 0
+              ? ` · ${compare.after.geometry.length} geometry points`
+              : ''}
           </p>
         )}
       </div>
