@@ -25,14 +25,16 @@ npm run preview
 npm run lint
 ```
 
-## App shell
+## Context panel (Explore / Improve)
 
 - Full-bleed **canvas slot** (3D reserved)
 - Compact Wellesley (featured) location selector
 - Bottom toolbar: **Explore | Improve | Compare | Propose** (keyboard focusable)
 - Reduced-motion toggle
 - Bundled Wellesley fixtures
-- Placeholder context panel (details in follow-up PRs)
+- Context panel: barrier list, evidence badges, intervention options
+- Explore / Improve wired to bundled fixtures (API unavailable label)
+- Compare / Propose placeholders for follow-up PRs
 
 ## Docs
 

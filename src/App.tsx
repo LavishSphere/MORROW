@@ -1,19 +1,54 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
+import { ContextPanel } from './components/ContextPanel'
 import { ModeToolbar } from './components/ModeToolbar'
-import { ShellPanel } from './components/ShellPanel'
 import { TopBar } from './components/TopBar'
-import { LOCATIONS, SCENARIO } from './data/fixtures'
-import type { AppMode } from './types'
+import { fetchBarriers, getDemoScenario } from './data/api'
+import {
+  getIntervention,
+  interventionsForBarrier,
+  LOCATIONS,
+} from './data/fixtures'
+import type { AppMode, Barrier, Intervention } from './types'
 
 export default function App() {
+  const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
   const [locationId, setLocationId] = useState('wellesley')
+  const [barriers, setBarriers] = useState<Barrier[]>([])
+  const [dataNote, setDataNote] = useState('Loading fixtures…')
+  const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
+    scenario.barrierId,
+  )
+  const [selectedInterventionId, setSelectedInterventionId] = useState<
+    string | null
+  >(scenario.interventionId)
   const [reducedMotion, setReducedMotion] = useState(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false,
   )
+
+  useEffect(() => {
+    let cancelled = false
+    fetchBarriers().then((result) => {
+      if (cancelled) return
+      setBarriers(result.barriers)
+      setDataNote(result.note)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const selectedBarrier =
+    barriers.find((b) => b.id === selectedBarrierId) ?? null
+  const interventions = selectedBarrier
+    ? interventionsForBarrier(selectedBarrier.id)
+    : []
+  const selectedIntervention: Intervention | null = selectedInterventionId
+    ? (getIntervention(selectedInterventionId) ?? null)
+    : null
   const location = LOCATIONS.find((l) => l.id === locationId) ?? LOCATIONS[0]
 
   return (
@@ -36,11 +71,29 @@ export default function App() {
           mode={mode}
           reducedMotion={reducedMotion}
           locationLabel={location.label}
-          focusLabel={`Scenario ${SCENARIO.id}`}
+          focusLabel={
+            selectedBarrier
+              ? `Focus: ${selectedBarrier.locationLabel}`
+              : undefined
+          }
         />
-        <ShellPanel
+        <ContextPanel
           mode={mode}
-          dataNote="Bundled Wellesley fixtures loaded. Context details land in follow-up PRs."
+          barriers={barriers}
+          selectedBarrier={selectedBarrier}
+          interventions={interventions}
+          selectedIntervention={
+            selectedIntervention?.barrierId === selectedBarrier?.id
+              ? selectedIntervention
+              : null
+          }
+          dataNote={dataNote}
+          onSelectBarrier={(id) => {
+            setSelectedBarrierId(id)
+            const opts = interventionsForBarrier(id)
+            setSelectedInterventionId(opts[0]?.id ?? null)
+          }}
+          onSelectIntervention={setSelectedInterventionId}
         />
       </main>
       <ModeToolbar
