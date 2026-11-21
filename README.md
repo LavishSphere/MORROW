@@ -25,7 +25,7 @@ npm test
 
 ## Accessible Interface
 
-- 3D Showcase: React Three Fiber miniature of Wellesley from `data/wellesley/basemap.geojson`, opening lockup (“Make tomorrow possible”), clickable curb → ramp, orbit camera after descent
+- Canvas fills the window with a top-down satellite of the Wellesley showcase. **See next problem** moves between places from the AI detection pass. Improvement stats and the Gemini cost estimate come from `src/satellite/stats`.
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
@@ -46,6 +46,7 @@ Do not vendor a second routing package.
 - [Project plan](docs/MORROW_WHACK_2026_Project_Plan.md) — vision, demo flow, sponsors, and phase gates
 - [Team plan](docs/team-plan.md) — four-person seat assignments and handoffs
 - [Project context](docs/project-context.md) — short north-star brief for the team
+- [Satellite town](docs/satellite-town.md) — top-down camera, AI-detected problems, and where stats live
 
 ## Phase-1 starter data (Wellesley)
 

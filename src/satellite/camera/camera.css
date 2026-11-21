@@ -1,0 +1,30 @@
+.satellite-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000000;
+}
+
+.satellite-stage__world {
+  position: absolute;
+  inset: 0;
+  filter: blur(0);
+  transform: translateZ(0);
+}
+
+.satellite-stage__world.is-moving {
+  filter: blur(1.75px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .satellite-stage__world.is-moving {
+    filter: none;
+  }
+}
+
+.satellite-stage__tile {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
