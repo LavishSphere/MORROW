@@ -18,6 +18,7 @@ const pinModules = import.meta.glob<PinsModule>('../pins/index.ts', {
 })
 
 const pinsModule = Object.values(pinModules)[0]
+const logoWhite = `${import.meta.env.BASE_URL}morrow-logo-white.png`
 
 /** The checked-in Wellesley barrier. Not a model finding. */
 function illustrativeDetection(): AiDetection {
@@ -164,11 +165,20 @@ function TownFrame({
       </div>
 
       <header className="satellite-town__bar">
-        <div>
-          <p className="satellite-town__mark">MORROW</p>
-          <p className="satellite-town__source">
-            {detection.sourceLabel || 'Illustrative Wellesley scenario'}
-          </p>
+        <div className="flex items-center justify-center gap-3">
+          <img
+            src={logoWhite}
+            alt=""
+            width={56}
+            height={56}
+            className="h-14 w-14"
+          />
+          <div className="flex flex-col items-center justify-center">
+            <p className="satellite-town__mark">MORROW</p>
+            <p className="satellite-town__source">
+              {detection.sourceLabel || 'Illustrative Wellesley scenario'}
+            </p>
+          </div>
         </div>
         <button
           type="button"
@@ -178,6 +188,14 @@ function TownFrame({
         >
           See next problem
         </button>
+        <p className="satellite-town__meters w-full text-center">
+          {modeled
+            ? `Modeled route ${formatMeters(modeled.beforeMeters)} → ${formatMeters(modeled.afterMeters)}. Not a Gemini estimate.`
+            : 'Modeled route unavailable.'}
+        </p>
+        <p className="satellite-town__credit w-full text-center">
+          Imagery © Esri, Maxar, Earthstar Geographics
+        </p>
       </header>
 
       <p className="satellite-town__caption">
@@ -195,12 +213,6 @@ function TownFrame({
                 ? `${selected.title}. ${placesLeft} other places in view.`
                 : selected.title
               : 'No barrier selected.'}
-      </p>
-
-      <p className="satellite-town__meters">
-        {modeled
-          ? `Modeled route ${formatMeters(modeled.beforeMeters)} → ${formatMeters(modeled.afterMeters)}. Not a Gemini estimate.`
-          : 'Modeled route unavailable.'}
       </p>
 
       <section className="satellite-town__card" aria-label="Selected problem">
@@ -222,9 +234,6 @@ function TownFrame({
         </div>
       </section>
 
-      <p className="satellite-town__credit">
-        Imagery © Esri, Maxar, Earthstar Geographics
-      </p>
     </div>
   )
 }

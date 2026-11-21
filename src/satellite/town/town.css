@@ -14,11 +14,12 @@
   right: 0;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px 16px;
   min-height: 64px;
-  padding: 10px 22px;
+  padding: 10px 22px 12px;
   background: #000000;
 }
 
@@ -186,27 +187,27 @@
 }
 
 .satellite-town__meters {
-  position: absolute;
+  position: static;
   z-index: 6;
-  left: 16px;
-  top: 16px;
-  max-width: 28rem;
+  flex: 1 0 100%;
+  max-width: none;
   margin: 0;
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
-  text-shadow: 0 1px 2px #000000;
+  text-align: center;
+  text-shadow: none;
 }
 
 .satellite-town__credit {
-  position: absolute;
-  z-index: 4;
-  left: 22px;
-  top: 98px;
+  position: static;
+  z-index: auto;
+  flex: 1 0 100%;
   margin: 0;
   font-size: 11px;
-  text-shadow: 0 1px 2px #000000;
+  text-align: center;
+  text-shadow: none;
 }
 
 @media (max-width: 720px) {
@@ -217,5 +218,12 @@
   .satellite-town__card {
     left: 12px;
     right: 12px;
+  }
+
+  .satellite-town__caption {
+    bottom: 11.5rem;
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }

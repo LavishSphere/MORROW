@@ -15,18 +15,21 @@ export function ImprovePage({
   onSelect,
 }: Props) {
   return (
-    <section className="mode-page" aria-label="Intervention options">
-      <h2>Options</h2>
+    <section
+      className="mode-page mx-auto flex w-full max-w-3xl flex-col items-center justify-center"
+      aria-label="Intervention options"
+    >
+      <h2 className="text-center">Options</h2>
       {!barrier ? (
-        <p className="mode-page__lead">
-          The Wellesley barrier is not loaded yet.
-        </p>
+          <p className="mode-page__lead text-center">
+            The Wellesley barrier is not loaded yet.
+          </p>
       ) : (
         <>
-          <p className="mode-page__lead">
+          <p className="mode-page__lead text-center">
             Interventions for <strong>{barrier.locationLabel}</strong>
           </p>
-          <ul className="option-list">
+          <ul className="option-list w-full">
             {interventions.map((opt) => {
               const active = opt.id === selectedId
               return (

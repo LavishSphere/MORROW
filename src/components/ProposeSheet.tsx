@@ -29,7 +29,10 @@ export function ProposeSheet() {
   }
 
   return (
-    <section className="mode-page propose-sheet" aria-label="Proposal">
+    <section
+      className="mode-page propose-sheet mx-auto flex w-full max-w-3xl flex-col items-center justify-center"
+      aria-label="Proposal"
+    >
       <button
         type="button"
         className="propose-sheet__generate"
@@ -39,18 +42,20 @@ export function ProposeSheet() {
         {loading ? 'Generating…' : 'Generate proposal'}
       </button>
       {result && draft ? (
-        <ProposalEditor
-          facts={result.facts}
-          draft={draft}
-          warnings={result.warnings}
-          aiGenerated={result.aiGenerated}
-          geminiAvailable={result.geminiAvailable}
-          apiAvailable={result.apiAvailable}
-          onChange={setDraft}
-          onExportPdf={() => window.print()}
-        />
+        <div className="flex w-full flex-col items-center justify-center">
+          <ProposalEditor
+            facts={result.facts}
+            draft={draft}
+            warnings={result.warnings}
+            aiGenerated={result.aiGenerated}
+            geminiAvailable={result.geminiAvailable}
+            apiAvailable={result.apiAvailable}
+            onChange={setDraft}
+            onExportPdf={() => window.print()}
+          />
+        </div>
       ) : (
-        <p className="propose-sheet__note">
+        <p className="propose-sheet__note text-center">
           Uses the illustrative Wellesley scenario. If the API is down, the
           draft is the template and Gemini stays labeled unavailable.
         </p>

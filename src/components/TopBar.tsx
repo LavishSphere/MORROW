@@ -1,6 +1,8 @@
 import { LocationSelector } from './LocationSelector'
 import type { LocationOption, SurfaceView } from '../types'
 
+const logoBlue = `${import.meta.env.BASE_URL}morrow-logo-blue.png`
+
 type Props = {
   locations: LocationOption[]
   selectedLocationId: string
@@ -21,13 +23,22 @@ export function TopBar({
   onSurfaceViewChange,
 }: Props) {
   return (
-    <header className="top-bar">
-      <div className="top-bar__brand-block">
-        <p className="top-bar__wordmark">MORROW</p>
-        <p className="top-bar__promise">Make tomorrow possible.</p>
+    <header className="top-bar items-center justify-center">
+      <div className="top-bar__brand-block flex items-center justify-center gap-3">
+        <img
+          src={logoBlue}
+          alt=""
+          width={56}
+          height={56}
+          className="h-14 w-14"
+        />
+        <div className="flex flex-col items-center justify-center">
+          <p className="top-bar__wordmark">MORROW</p>
+          <p className="top-bar__promise">Make tomorrow possible.</p>
+        </div>
       </div>
 
-      <div className="top-bar__controls">
+      <div className="top-bar__controls items-center justify-center">
         <LocationSelector
           locations={locations}
           selectedId={selectedLocationId}
