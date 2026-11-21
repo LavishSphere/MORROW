@@ -65,11 +65,11 @@ export function compareByIds(input: {
     throw new Error(`Unknown intervention id: ${input.interventionId}`)
   }
 
-  // Canonical graphChanges from the demo scenario (osm-way-*); ids only from client.
+  // Canonical graphChanges from the bundled intervention — ids only from client.
   const comparison = compareScenario(basemap, {
     origin: scenario.origin,
     destination: scenario.destination,
-    graphChanges: scenario.graphChanges,
+    graphChanges: intervention.graphChanges,
   })
 
   return {
