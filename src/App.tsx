@@ -7,6 +7,7 @@ import {
   compareByIds,
   type CompareResult,
   fetchBarriers,
+  generateProposal,
   getDemoScenario,
 } from './data/api'
 import {
@@ -14,7 +15,13 @@ import {
   interventionsForBarrier,
   LOCATIONS,
 } from './data/fixtures'
-import type { AppMode, Barrier, Intervention } from './types'
+import type {
+  AppMode,
+  Barrier,
+  DraftProposal,
+  Intervention,
+  ProposalFacts,
+} from './types'
 
 export default function App() {
   const scenario = getDemoScenario()
@@ -28,6 +35,13 @@ export default function App() {
   const [selectedInterventionId, setSelectedInterventionId] = useState<
     string | null
   >(scenario.interventionId)
+  const [proposalFacts, setProposalFacts] = useState<ProposalFacts | null>(null)
+  const [proposalDraft, setProposalDraft] = useState<DraftProposal | null>(null)
+  const [proposalWarnings, setProposalWarnings] = useState<string[]>([])
+  const [aiGenerated, setAiGenerated] = useState(false)
+  const [geminiAvailable, setGeminiAvailable] = useState(false)
+  const [apiAvailable, setApiAvailable] = useState(false)
+  const [proposalLoading, setProposalLoading] = useState(false)
   const [reducedMotion, setReducedMotion] = useState(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -61,6 +75,26 @@ export default function App() {
       })
     : null
   const location = LOCATIONS.find((l) => l.id === locationId) ?? LOCATIONS[0]
+
+  const handleGenerate = async () => {
+    if (!selectedBarrierId || !selectedInterventionId) return
+    setProposalLoading(true)
+    try {
+      const result = await generateProposal({
+        scenarioId: scenario.id,
+        barrierId: selectedBarrierId,
+        interventionId: selectedInterventionId,
+      })
+      setProposalFacts(result.facts)
+      setProposalDraft(result.draft)
+      setProposalWarnings(result.warnings)
+      setAiGenerated(result.aiGenerated)
+      setGeminiAvailable(result.geminiAvailable)
+      setApiAvailable(result.apiAvailable)
+    } finally {
+      setProposalLoading(false)
+    }
+  }
 
   return (
     <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
@@ -102,12 +136,22 @@ export default function App() {
           scenario={scenario}
           dataNote={dataNote}
           compare={compare}
+          proposalFacts={proposalFacts}
+          proposalDraft={proposalDraft}
+          proposalWarnings={proposalWarnings}
+          aiGenerated={aiGenerated}
+          geminiAvailable={geminiAvailable}
+          apiAvailable={apiAvailable}
+          proposalLoading={proposalLoading}
           onSelectBarrier={(id) => {
             setSelectedBarrierId(id)
             const opts = interventionsForBarrier(id)
             setSelectedInterventionId(opts[0]?.id ?? null)
           }}
           onSelectIntervention={setSelectedInterventionId}
+          onDraftChange={setProposalDraft}
+          onGenerate={handleGenerate}
+          onExportPdf={() => window.print()}
         />
       </main>
       <ModeToolbar

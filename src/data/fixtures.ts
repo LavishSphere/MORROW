@@ -58,14 +58,14 @@ export const SCENARIO: Scenario = {
   modelAssumptions: [...MODELED_IMPACT_ASSUMPTIONS],
 }
 
-export function getBarrier(id: string) {
+export function getBarrier(id: string): Barrier | undefined {
   return BARRIERS.find((b) => b.id === id)
 }
 
-export function getIntervention(id: string) {
+export function getIntervention(id: string): Intervention | undefined {
   return INTERVENTIONS.find((i) => i.id === id)
 }
 
-export function interventionsForBarrier(barrierId: string) {
+export function interventionsForBarrier(barrierId: string): Intervention[] {
   return INTERVENTIONS.filter((i) => i.barrierId === barrierId)
 }
