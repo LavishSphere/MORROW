@@ -25,7 +25,7 @@ npm test
 
 ## Accessible Interface
 
-- Canvas fills the window as a street-level view. Click to look around, WASD to walk the sidewalk, and click the curb to turn it into a ramp. No floating island and no pedestrians.
+- Canvas fills the window as an eye-level street view. WASD glides along streets and sidewalks only. Scroll zooms. Click the curb and it becomes a ramp. No floating island and no pedestrians.
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
