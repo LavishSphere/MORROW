@@ -9,6 +9,10 @@ test("the unused holographic city still builds from glass blocks", async () => {
   const sky = await readFile("src/showcase/scene/Space.tsx", "utf8");
   assert.match(town, /<City \/>/);
   assert.match(city, /HoloBuilding/);
+  assert.match(city, /d \/ 2 \+ 0\.03/);
+  assert.match(city, /-d \/ 2 - 0\.03/);
+  assert.match(city, /w \/ 2 \+ 0\.03/);
+  assert.match(city, /-w \/ 2 - 0\.03/);
   assert.match(city, /function Roads/);
   assert.match(city, /function CurvedRoads/);
   assert.match(city, /function Pothole/);
