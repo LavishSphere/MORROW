@@ -22,15 +22,26 @@ export function CompareSheet() {
   }
 
   return (
-    <section className="compare-sheet" aria-label="Modeled comparison">
-      <h2 className="compare-sheet__title">Modeled route</h2>
+    <section className="mode-page compare-sheet" aria-label="Modeled comparison">
+      <h2 className="compare-sheet__title">Before and after</h2>
       {failed ? (
         <p>Modeled route unavailable.</p>
       ) : (
-        <p>
-          {formatMeters(beforeMeters)} → {formatMeters(afterMeters)}.{' '}
-          {formatImprovement(beforeMeters, afterMeters)}. Not a Gemini estimate.
-        </p>
+        <>
+          <dl className="compare-sheet__meters">
+            <div>
+              <dt>Before</dt>
+              <dd>{formatMeters(beforeMeters)}</dd>
+            </div>
+            <div>
+              <dt>After</dt>
+              <dd>{formatMeters(afterMeters)}</dd>
+            </div>
+          </dl>
+          <p>
+            {formatImprovement(beforeMeters, afterMeters)}. Not a Gemini estimate.
+          </p>
+        </>
       )}
       <p className="compare-sheet__note">
         {scenario.originLabel} to {scenario.destinationLabel}. Calculated by

@@ -29,7 +29,7 @@ export function ProposeSheet() {
   }
 
   return (
-    <section className="propose-sheet" aria-label="Proposal">
+    <section className="mode-page propose-sheet" aria-label="Proposal">
       <button
         type="button"
         className="propose-sheet__generate"
