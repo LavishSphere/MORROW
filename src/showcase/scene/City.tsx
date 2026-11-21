@@ -111,57 +111,64 @@ function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: n
 const CITY = buildCity();
 
 function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
-  const fill = wire ? 0.55 : 0.9 + glow * 0.15;
-  const floors = Math.min(7, Math.max(3, Math.floor(h / 2.1)));
-  const crown = stepped ? h * 0.22 : 0;
-  const story = (index: number) => 0.85 + ((h - 1.1) * (index + 1)) / (floors + 1);
+  const fill = wire ? 0.35 : 0.85 + glow * 0.2;
+  const belts = h > 12 ? 3 : h > 7 ? 2 : 1;
+  const crown = stepped ? h * 0.28 : 0;
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, 0.38, 0]} castShadow>
-        <boxGeometry args={[w * 1.14, 0.76, d * 1.14]} />
-        <meshStandardMaterial color="#146e7c" emissive="#7af4ff" emissiveIntensity={0.35} roughness={0.4} />
-      </mesh>
-      <mesh position={[0, 0.38 + h / 2, 0]} castShadow>
+      <mesh position={[0, h / 2, 0]} castShadow>
         <boxGeometry args={[w, h, d]} />
         <meshStandardMaterial
           color={GLASS}
           emissive={GLASS_GLOW}
           emissiveIntensity={fill}
-          roughness={0.18}
-          metalness={0.22}
+          roughness={0.22}
+          metalness={0.18}
         />
         <Edges threshold={15} color={EDGE} />
       </mesh>
-      {Array.from({ length: floors }, (_, index) => (
-        <mesh key={`floor-${index}`} position={[0, story(index), 0]} raycast={() => null}>
-          <boxGeometry args={[w * 1.012, 0.045, d * 1.012]} />
-          <meshBasicMaterial color="#f4ffff" transparent opacity={0.72} />
-        </mesh>
-      ))}
-      {([-1, 1] as const).map((side) => (
-        <mesh key={`mullion-${side}`} position={[side * w * 0.22, 0.38 + h / 2, d / 2 + 0.02]} raycast={() => null}>
-          <boxGeometry args={[0.05, h * 0.96, 0.04]} />
+      {Array.from({ length: belts }, (_, index) => {
+        const y = h * ((index + 1) / (belts + 1));
+        return (
+          <mesh key={`belt-${index}`} position={[0, y, 0]} raycast={() => null}>
+            <boxGeometry args={[w * 1.02, 0.08, d * 1.02]} />
+            <meshBasicMaterial color="#f4ffff" transparent opacity={0.85} />
+          </mesh>
+        );
+      })}
+      {(
+        [
+          [w / 2, d / 2],
+          [w / 2, -d / 2],
+          [-w / 2, d / 2],
+          [-w / 2, -d / 2],
+        ] as const
+      ).map(([cx, cz]) => (
+        <mesh key={`${cx}-${cz}`} position={[cx, h / 2, cz]} raycast={() => null}>
+          <boxGeometry args={[0.08, h, 0.08]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
       ))}
-      <mesh position={[0, 0.38 + h + 0.06, 0]} raycast={() => null}>
-        <boxGeometry args={[w * 1.04, 0.1, d * 1.04]} />
-        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.45} />
-      </mesh>
-      <mesh position={[w * 0.12, 0.38 + h + 0.38, d * 0.08]}>
-        <boxGeometry args={[w * 0.38, 0.42, d * 0.32]} />
-        <meshStandardMaterial color="#d8fbff" emissive="#7af4ff" emissiveIntensity={0.7} roughness={0.3} />
-      </mesh>
       {stepped && (
-        <mesh position={[0, 0.38 + h + crown / 2, 0]} castShadow>
+        <mesh position={[0, h + crown / 2, 0]} castShadow>
           <boxGeometry args={[w * 0.58, crown, d * 0.54]} />
-          <meshStandardMaterial color="#7af4ff" emissive="#d8fbff" emissiveIntensity={1.05} roughness={0.16} />
+          <meshStandardMaterial
+            color="#7af4ff"
+            emissive="#d8fbff"
+            emissiveIntensity={1.2}
+            roughness={0.16}
+            metalness={0.12}
+          />
           <Edges threshold={12} color="#ffffff" />
         </mesh>
       )}
+      <mesh position={[0, h + crown + 0.12, 0]}>
+        <boxGeometry args={[Math.max(0.9, w * 0.34), 0.16, Math.max(0.9, d * 0.34)]} />
+        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.8} />
+      </mesh>
       {h > 14 && (
-        <mesh position={[w * 0.12, 0.38 + h + crown + 0.9, d * 0.08]} raycast={() => null}>
-          <cylinderGeometry args={[0.04, 0.04, 1.4, 6]} />
+        <mesh position={[0, h + crown + 1.1, 0]} raycast={() => null}>
+          <cylinderGeometry args={[0.05, 0.05, 1.8, 6]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
       )}
