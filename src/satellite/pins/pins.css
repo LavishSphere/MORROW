@@ -1,0 +1,177 @@
+/*
+ * Satellite pin chrome.
+ * Logo blue #1488FF is only the MORROW mark and the pins.
+ * Every other piece of text is white.
+ */
+
+.satellite-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #ffffff;
+  font-family: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.satellite-pins__bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  box-sizing: border-box;
+  min-height: 3.5rem;
+  padding: 0.75rem 1.15rem;
+  background: #000000;
+  pointer-events: auto;
+}
+
+.satellite-pins__mark {
+  margin: 0;
+  color: #1488ff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1;
+}
+
+.satellite-pins__next {
+  margin: 0;
+  padding: 0.45rem 0.95rem;
+  border: 2px solid #ffffff;
+  border-radius: 8px;
+  background: #000000;
+  color: #ffffff;
+  font: 600 0.95rem/1 "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.satellite-pins__next:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px #ffffff;
+}
+
+.satellite-pins__next:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.satellite-pins__next:focus-visible,
+.satellite-pin:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+}
+
+.satellite-pins__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.satellite-pin {
+  position: absolute;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.satellite-pin.is-selected {
+  z-index: 2;
+}
+
+.satellite-pin__diamond {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  background: #1488ff;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.satellite-pin:hover .satellite-pin__diamond,
+.satellite-pin:focus-visible .satellite-pin__diamond {
+  width: 16px;
+  height: 16px;
+}
+
+.satellite-pin.is-selected .satellite-pin__diamond {
+  width: 18px;
+  height: 18px;
+}
+
+.satellite-pin__ring {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  border: 3px solid #1488ff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.satellite-pin.is-selected .satellite-pin__ring {
+  display: block;
+}
+
+.satellite-pin__caption {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 14rem;
+  padding: 0.35rem 0.55rem;
+  background: #000000;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.satellite-pin__kicker {
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.satellite-pins__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .satellite-pin__diamond,
+  .satellite-pin__ring,
+  .satellite-pins__next {
+    transition: none;
+  }
+}
