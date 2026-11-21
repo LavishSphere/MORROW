@@ -7,3 +7,5 @@ test-results/
 logs
 *.log
 npm-debug.log*
+.vite
+*.tsbuildinfo
