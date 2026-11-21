@@ -25,7 +25,8 @@ npm test
 
 ## Accessible Interface
 
-- Canvas slot + Wellesley selector + four modes
+- Canvas slot shows the phase-1 floating island town
+- Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
 - Propose: editable template + Export PDF (7 sections, facts-driven)
