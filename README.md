@@ -2,6 +2,12 @@
 
 **Make tomorrow possible.**
 
+WHACK 2026 · Better Worlds (Social Impact)
+
+## Front-end stack
+
+**Vite + React + TypeScript** (repo root, npm workspaces).
+
 ## Run locally
 
 ```bash
@@ -9,12 +15,30 @@ npm install
 npm run dev
 ```
 
-## This PR — Propose + Export PDF
+Typically `http://localhost:5173`.
 
-- Editable template draft (Gemini labeled **unavailable**)
-- **Export PDF** via print styles — seven sections
-- Metrics and evidence badges render from the `facts` object (not invented client prose)
-- Generate stub accepts **ids only**
+```bash
+npm run build && npm run preview
+npm run lint
+npm test
+```
+
+## Accessible Interface
+
+- Canvas slot + Wellesley selector + four modes
+- Explore / Improve context panel with evidence badges
+- Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
+- Propose: editable template + Export PDF (7 sections, facts-driven)
+- **List (2D)** fallback, skip links, visible `:focus-visible`, reduced-motion respected
+- Live barrier / generate / Gemini APIs labeled **unavailable**
+
+### Routing
+
+```ts
+import { compareIntervention } from '@morrow/routing'
+```
+
+Do not vendor a second routing package.
 
 ## Docs
 

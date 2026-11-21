@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { ContextPanel } from './components/ContextPanel'
+import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { TopBar } from './components/TopBar'
 import {
@@ -21,11 +22,13 @@ import type {
   DraftProposal,
   Intervention,
   ProposalFacts,
+  SurfaceView,
 } from './types'
 
 export default function App() {
   const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
+  const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
   const [locationId, setLocationId] = useState('wellesley')
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [dataNote, setDataNote] = useState('Loading fixtures…')
@@ -42,11 +45,10 @@ export default function App() {
   const [geminiAvailable, setGeminiAvailable] = useState(false)
   const [apiAvailable, setApiAvailable] = useState(false)
   const [proposalLoading, setProposalLoading] = useState(false)
-  const [reducedMotion, setReducedMotion] = useState(() =>
-    typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false,
-  )
+  const [reducedMotion, setReducedMotion] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -60,6 +62,13 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReducedMotion(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
   const selectedBarrier =
     barriers.find((b) => b.id === selectedBarrierId) ?? null
   const interventions = selectedBarrier
@@ -68,12 +77,14 @@ export default function App() {
   const selectedIntervention: Intervention | null = selectedInterventionId
     ? (getIntervention(selectedInterventionId) ?? null)
     : null
+
   const compare: CompareResult | null = selectedInterventionId
     ? compareByIds({
         scenarioId: scenario.id,
         interventionId: selectedInterventionId,
       })
     : null
+
   const location = LOCATIONS.find((l) => l.id === locationId) ?? LOCATIONS[0]
 
   const handleGenerate = async () => {
@@ -96,6 +107,10 @@ export default function App() {
     }
   }
 
+  const handleExportPdf = () => {
+    window.print()
+  }
+
   return (
     <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
       <a className="skip-link" href="#context-panel">
@@ -104,25 +119,38 @@ export default function App() {
       <a className="skip-link skip-link--modes" href="#mode-toolbar">
         Skip to modes
       </a>
+
       <TopBar
         locations={LOCATIONS}
         selectedLocationId={locationId}
         onLocationSelect={setLocationId}
         reducedMotion={reducedMotion}
         onReducedMotionChange={setReducedMotion}
+        surfaceView={surfaceView}
+        onSurfaceViewChange={setSurfaceView}
       />
+
       <main className="app-shell__main">
-        <CanvasSlot
-          mode={mode}
-          reducedMotion={reducedMotion}
-          locationLabel={location.label}
-          focusLabel={
-            selectedBarrier
-              ? `Focus: ${selectedBarrier.locationLabel}`
-              : undefined
-          }
-          compare={compare}
-        />
+        {surfaceView === 'canvas' ? (
+          <CanvasSlot
+            mode={mode}
+            selectedBarrier={selectedBarrier}
+            reducedMotion={reducedMotion}
+            locationLabel={location.label}
+            compare={compare}
+          />
+        ) : (
+          <ListFallback
+            barriers={barriers}
+            selectedBarrierId={selectedBarrierId}
+            compare={compare}
+            onSelectBarrier={(id) => {
+              setSelectedBarrierId(id)
+              const opts = interventionsForBarrier(id)
+              setSelectedInterventionId(opts[0]?.id ?? null)
+            }}
+          />
+        )}
         <ContextPanel
           mode={mode}
           barriers={barriers}
@@ -151,14 +179,17 @@ export default function App() {
           onSelectIntervention={setSelectedInterventionId}
           onDraftChange={setProposalDraft}
           onGenerate={handleGenerate}
-          onExportPdf={() => window.print()}
+          onExportPdf={handleExportPdf}
         />
       </main>
-      <ModeToolbar
-        mode={mode}
-        onModeChange={setMode}
-        reducedMotion={reducedMotion}
-      />
+
+      <div id="mode-toolbar">
+        <ModeToolbar
+          mode={mode}
+          onModeChange={setMode}
+          reducedMotion={reducedMotion}
+        />
+      </div>
     </div>
   )
 }
