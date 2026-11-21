@@ -1369,3 +1369,11 @@ code {
   left: auto;
   opacity: 0.75;
 }
+
+.app-shell--city .satellite-town__meters {
+  top: 4.6rem;
+}
+
+.app-shell--city .satellite-town__caption {
+  bottom: 5.8rem;
+}
