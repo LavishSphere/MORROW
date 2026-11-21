@@ -1,6 +1,6 @@
 /**
  * In-memory proposal store for the hackathon demo.
- * Tiger Data persistence is deferred (WHA-9).
+ * When Tiger Data is live, routes also persist via data/tiger.ts.
  */
 
 import { randomUUID } from "node:crypto";

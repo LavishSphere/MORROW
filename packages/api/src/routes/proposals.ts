@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DraftProposal } from "../../../../shared/types.ts";
 import { getProposal, saveProposal } from "../data/proposals.ts";
+import {
+  getProposalFromTiger,
+  saveProposalToTiger,
+  tigerLive,
+} from "../data/tiger.ts";
 import { draftWithGemini, geminiConfigured } from "../draft/gemini.ts";
 import { generateRequestSchema, parseDraftProposal } from "../draft/schema.ts";
 import { buildTemplateDraft } from "../draft/template.ts";
@@ -82,18 +87,34 @@ export async function handleGenerateProposal(
     apiAvailable: true,
   });
 
+  // Best-effort Tiger Data persistence; in-memory remains the session authority.
+  const persisted = await saveProposalToTiger(saved);
+  if (tigerLive() && !persisted) {
+    warnings.push(
+      "Tiger Data proposal save failed — draft kept in memory for this session.",
+    );
+    saved.warnings = [...warnings];
+  }
+
   sendJson(res, 201, saved);
 }
 
-export function handleGetProposal(
+export async function handleGetProposal(
   _req: IncomingMessage,
   res: ServerResponse,
   id: string,
-): void {
-  const proposal = getProposal(id);
-  if (!proposal) {
-    sendJson(res, 404, { error: `Proposal not found: ${id}` });
+): Promise<void> {
+  const memory = getProposal(id);
+  if (memory) {
+    sendJson(res, 200, memory);
     return;
   }
-  sendJson(res, 200, proposal);
+
+  const fromTiger = await getProposalFromTiger(id);
+  if (fromTiger) {
+    sendJson(res, 200, fromTiger);
+    return;
+  }
+
+  sendJson(res, 404, { error: `Proposal not found: ${id}` });
 }
