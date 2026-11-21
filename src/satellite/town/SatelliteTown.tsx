@@ -206,20 +206,23 @@ function TownFrame({
       <section className="satellite-town__card" aria-label="Selected problem">
         <div className="satellite-town__photos">
           <figure>
-            <img src={curbUrl} alt="Vertical curb blocking the crosswalk" />
+            <img src={curbUrl} alt="Illustrative photo of a vertical curb" />
             <figcaption>
               Before
               <span>Curb</span>
             </figcaption>
           </figure>
           <figure>
-            <img src={rampUrl} alt="Curb cut as a ramp into the crosswalk" />
+            <img src={rampUrl} alt="Illustrative photo of a curb ramp" />
             <figcaption>
               After
               <span>Ramp</span>
             </figcaption>
           </figure>
         </div>
+        <p className="satellite-town__photo-note">
+          Illustrative photos, not a site inspection of this location.
+        </p>
       </section>
 
       <p className="satellite-town__credit">

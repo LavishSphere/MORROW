@@ -181,6 +181,13 @@
   font-size: 15px;
 }
 
+.satellite-town__photo-note {
+  margin: 0;
+  color: #d7d7d7;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .satellite-town__stats {
   min-height: 52px;
 }
