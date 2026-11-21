@@ -1,4 +1,5 @@
 import { Edges, Sparkles } from "@react-three/drei";
+import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
 
 const GLASS = "#3ec8d8";
 const GLASS_GLOW = "#7af4ff";
@@ -317,16 +318,47 @@ function shift(
   };
 }
 
-function Pothole({ x, z }: { x: number; z: number }) {
+function Pothole({ id, x, z }: { id: string; x: number; z: number }) {
+  const fix = usePotholeFix();
+  const patched = fix.patchedIds.includes(id);
+  const selected = fix.selectedId === id;
   return (
     <group position={[x, 0.1, z]}>
       <mesh rotation={[-Math.PI / 2, 0, 0.2]} raycast={() => null}>
         <circleGeometry args={[0.95, 8]} />
-        <meshStandardMaterial color="#7af4ff" emissive="#7af4ff" emissiveIntensity={0.35} />
+        <meshStandardMaterial
+          color={patched ? "#d7fff4" : "#7af4ff"}
+          emissive={patched ? "#9ee7d8" : "#7af4ff"}
+          emissiveIntensity={patched ? 0.15 : 0.35}
+        />
       </mesh>
       <mesh position={[0.05, 0.01, -0.04]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <circleGeometry args={[0.55, 7]} />
-        <meshStandardMaterial color="#062830" roughness={1} />
+        <circleGeometry args={[patched ? 0.7 : 0.55, 7]} />
+        <meshStandardMaterial color={patched ? "#9ad7c8" : "#062830"} roughness={1} />
+      </mesh>
+      {selected ? (
+        <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+          <ringGeometry args={[1.05, 1.25, 20]} />
+          <meshBasicMaterial color="#f7faf8" />
+        </mesh>
+      ) : null}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.06, 0]}
+        onClick={(event) => {
+          event.stopPropagation();
+          selectPothole(id);
+        }}
+        onPointerOver={(event) => {
+          event.stopPropagation();
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "";
+        }}
+      >
+        <circleGeometry args={[1.2, 16]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -391,9 +423,11 @@ function CurvedRoads() {
       {BOULEVARD.slice(0, -1).map((from, index) => (
         <Paved key={`bend-${index}`} from={from} to={BOULEVARD[index + 1] ?? from} width={3.8} />
       ))}
-      {holes.map((spot) => (
-        <Pothole key={`hole-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
-      ))}
+      {holes.map((spot, index) => {
+        const hole = POTHOLES[index];
+        if (!hole) return null;
+        return <Pothole key={hole.id} id={hole.id} x={spot.x} z={spot.z} />;
+      })}
     </group>
   );
 }

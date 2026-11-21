@@ -1,3 +1,4 @@
+import { potholeById, usePotholeFix } from '../city/potholeFix'
 import { compareByIds, getDemoScenario } from '../data/api'
 import { formatImprovement, formatMeters } from '../satellite/stats/format'
 
@@ -6,6 +7,9 @@ import { formatImprovement, formatMeters } from '../satellite/stats/format'
  * There is no cost line here. A dollar figure would be a Gemini stub.
  */
 export function CompareSheet() {
+  const fix = usePotholeFix()
+  const hole = potholeById(fix.selectedId)
+  const patched = hole ? fix.patchedIds.includes(hole.id) : false
   const scenario = getDemoScenario()
   let beforeMeters: number | null = null
   let afterMeters: number | null = null
@@ -23,6 +27,28 @@ export function CompareSheet() {
 
   return (
     <section className="mode-page compare-sheet" aria-label="Modeled comparison">
+      {hole && (
+        <>
+          <h2 className="compare-sheet__title">{hole.label}</h2>
+          <dl className="compare-sheet__meters">
+            <div>
+              <dt>Before</dt>
+              <dd>Open</dd>
+            </div>
+            <div>
+              <dt>After</dt>
+              <dd>{patched ? 'Patched' : 'Open'}</dd>
+            </div>
+          </dl>
+          <p>
+            {patched
+              ? 'The lane is even in this demo.'
+              : 'Still open. Patch it from the city or from Improve.'}{' '}
+            Not a Gemini estimate. This patch does not change the modeled route
+            below.
+          </p>
+        </>
+      )}
       <h2 className="compare-sheet__title">Before and after</h2>
       {failed ? (
         <p>Modeled route unavailable.</p>
