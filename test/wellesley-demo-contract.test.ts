@@ -74,7 +74,7 @@ test("client compare and API facts both pass intervention graphChanges to compar
   const client = readFileSync("src/data/compare.ts", "utf8");
   const api = readFileSync("packages/api/src/facts.ts", "utf8");
   assert.match(client, /graphChanges:\s*intervention\.graphChanges/);
-  assert.match(api, /graphChanges:\s*intervention\.graphChanges/);
+  assert.match(api, /graphChangesForIntervention\(intervention\.id\)/);
   assert.equal(client.includes("graphChanges: scenario.graphChanges"), false);
   assert.equal(api.includes("graphChanges: scenario.graphChanges"), false);
 });
@@ -83,4 +83,11 @@ test("scripts typecheck allows .ts imports so tests can load @morrow/routing", (
   const scripts = readFileSync("tsconfig.scripts.json", "utf8");
   assert.match(scripts, /"allowImportingTsExtensions":\s*true/);
   assert.match(scripts, /test\/\*\*\/\*\.ts/);
+});
+
+test("client and API reject empty intervention graphChanges", () => {
+  const client = readFileSync("src/data/compare.ts", "utf8");
+  const api = readFileSync("packages/api/src/facts.ts", "utf8");
+  assert.match(client, /graphChanges\.length === 0/);
+  assert.match(api, /graphChanges\.length === 0/);
 });

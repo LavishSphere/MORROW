@@ -5,7 +5,7 @@ import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
-import { compareByIds, fetchBarriers, getDemoScenario } from './data/api'
+import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
 import { interventionsForBarrier, LOCATIONS } from './data/fixtures'
 import type { AppMode, Barrier, SurfaceView } from './types'
 
@@ -44,17 +44,12 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  let compare = null
-  if (selectedInterventionId) {
-    try {
-      compare = compareByIds({
+  const compare = selectedInterventionId
+    ? tryCompareByIds({
         scenarioId: scenario.id,
         interventionId: selectedInterventionId,
       })
-    } catch {
-      compare = null
-    }
-  }
+    : null
 
   return (
     <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
