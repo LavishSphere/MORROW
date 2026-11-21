@@ -1,11 +1,12 @@
+import { formatMeters } from '../satellite/stats/format'
 import type { DraftProposal, ProposalFacts } from '../types'
 
 /** Deterministic template when Gemini is unavailable (always, in this UI PR). */
 export function buildTemplateDraft(facts: ProposalFacts): DraftProposal {
   const before =
-    facts.beforeMeters == null ? 'an inaccessible detour' : `${facts.beforeMeters} m`
+    facts.beforeMeters == null ? 'an inaccessible detour' : formatMeters(facts.beforeMeters)
   const after =
-    facts.afterMeters == null ? 'a shorter accessible path' : `${facts.afterMeters} m`
+    facts.afterMeters == null ? 'a shorter accessible path' : formatMeters(facts.afterMeters)
 
   return {
     headline: `Review a modeled accessibility improvement near ${facts.locationLabel}`,

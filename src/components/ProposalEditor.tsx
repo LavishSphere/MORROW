@@ -54,81 +54,6 @@ export function ProposalEditor({
         </span>
       </div>
 
-      {warnings.length > 0 && (
-        <ul className="proposal-editor__warnings">
-          {warnings.map((w) => (
-            <li key={w}>{w}</li>
-          ))}
-        </ul>
-      )}
-
-      <div className="proposal-editor__actions">
-        <button type="button" className="btn-primary" onClick={onExportPdf}>
-          Export PDF
-        </button>
-        <p className="muted">
-          Opens the print dialog — choose “Save as PDF”. Official metrics and
-          evidence come from the facts object below, not the editable prose.
-        </p>
-      </div>
-
-      <div className="proposal-editor__fields">
-        <label>
-          Headline
-          <input
-            type="text"
-            value={draft.headline}
-            onChange={(e) => onChange({ ...draft, headline: e.target.value })}
-          />
-        </label>
-        <label>
-          Resident summary
-          <textarea
-            rows={4}
-            value={draft.plainLanguageSummary}
-            onChange={(e) =>
-              onChange({ ...draft, plainLanguageSummary: e.target.value })
-            }
-          />
-        </label>
-        <label>
-          Request for review
-          <textarea
-            rows={3}
-            value={draft.requestForReview}
-            onChange={(e) =>
-              onChange({ ...draft, requestForReview: e.target.value })
-            }
-          />
-        </label>
-        <fieldset>
-          <legend>Meeting talking points</legend>
-          {draft.meetingTalkingPoints.map((point, i) => (
-            <input
-              key={i}
-              type="text"
-              value={point}
-              aria-label={`Talking point ${i + 1}`}
-              onChange={(e) => updatePoint(i, e.target.value)}
-            />
-          ))}
-          <button type="button" className="btn-ghost" onClick={addPoint}>
-            Add talking point
-          </button>
-        </fieldset>
-        <label>
-          Limitations
-          <textarea
-            rows={3}
-            value={draft.limitations}
-            onChange={(e) =>
-              onChange({ ...draft, limitations: e.target.value })
-            }
-          />
-        </label>
-      </div>
-
-      {/* Printable seven-section brief — facts are authoritative */}
       <article id="proposal-print" className="proposal-print">
         <header className="proposal-print__banner">
           <p className="proposal-print__brand">MORROW</p>
@@ -186,16 +111,21 @@ export function ProposalEditor({
 
         <section>
           <h3>5. Modeled outcome</h3>
+          <dl className="propose-brief__meters">
+            <div>
+              <dt>Before</dt>
+              <dd>{formatMeters(facts.beforeMeters)}</dd>
+            </div>
+            <div>
+              <dt>After</dt>
+              <dd>{formatMeters(facts.afterMeters)}</dd>
+            </div>
+          </dl>
           <p>
             Accessible route before:{' '}
-            <strong>
-              {formatMeters(facts.beforeMeters)}
-            </strong>
+            <strong>{formatMeters(facts.beforeMeters)}</strong>
             ; after:{' '}
-            <strong>
-              {formatMeters(facts.afterMeters)}
-            </strong>
-            .
+            <strong>{formatMeters(facts.afterMeters)}</strong>.
           </p>
           {facts.newlyReachableDestinations != null && (
             <p>
@@ -234,6 +164,83 @@ export function ProposalEditor({
           <p className="proposal-print__limitations">{draft.limitations}</p>
         </section>
       </article>
+
+      <div className="proposal-editor__actions">
+        <button type="button" className="btn-primary" onClick={onExportPdf}>
+          Export PDF
+        </button>
+        <p className="muted">
+          Opens the print dialog — choose “Save as PDF”. Official metrics and
+          evidence come from the brief above, not the editable prose.
+        </p>
+      </div>
+
+      {warnings.length > 0 && (
+        <ul className="proposal-editor__warnings">
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
+
+      <details className="proposal-editor__edit">
+        <summary>Edit the draft</summary>
+        <div className="proposal-editor__fields">
+        <label>
+          Headline
+          <input
+            type="text"
+            value={draft.headline}
+            onChange={(e) => onChange({ ...draft, headline: e.target.value })}
+          />
+        </label>
+        <label>
+          Resident summary
+          <textarea
+            rows={4}
+            value={draft.plainLanguageSummary}
+            onChange={(e) =>
+              onChange({ ...draft, plainLanguageSummary: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          Request for review
+          <textarea
+            rows={3}
+            value={draft.requestForReview}
+            onChange={(e) =>
+              onChange({ ...draft, requestForReview: e.target.value })
+            }
+          />
+        </label>
+        <fieldset>
+          <legend>Meeting talking points</legend>
+          {draft.meetingTalkingPoints.map((point, i) => (
+            <input
+              key={i}
+              type="text"
+              value={point}
+              aria-label={`Talking point ${i + 1}`}
+              onChange={(e) => updatePoint(i, e.target.value)}
+            />
+          ))}
+          <button type="button" className="btn-ghost" onClick={addPoint}>
+            Add talking point
+          </button>
+        </fieldset>
+        <label>
+          Limitations
+          <textarea
+            rows={3}
+            value={draft.limitations}
+            onChange={(e) =>
+              onChange({ ...draft, limitations: e.target.value })
+            }
+          />
+        </label>
+        </div>
+      </details>
     </div>
   )
 }
