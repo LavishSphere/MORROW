@@ -12,7 +12,8 @@ test("explore canvas mounts the holographic glass city immediately", async () =>
   assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(town, /<City \/>/);
   assert.match(city, /HoloBuilding/);
-  assert.match(city, /CircuitGrid/);
+  assert.match(city, /function Roads/);
+  assert.equal(city.includes("CircuitGrid"), false);
   assert.match(city, /Sparkles/);
   assert.match(city, /#0a3842/);
   assert.match(city, /crystal/);
