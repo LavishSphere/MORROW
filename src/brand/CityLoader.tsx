@@ -5,6 +5,12 @@ import "./city-loader.css";
 
 const LEAVE_MS = 480;
 
+/**
+ * The cover plays once per page load. If the city remounts later (for
+ * example after the 2D list), it does not flash the cover again.
+ */
+let coverFinished = false;
+
 export type CityLoaderProps = {
   /** True until the city has painted and the cover can leave. */
   active: boolean;
@@ -12,27 +18,28 @@ export type CityLoaderProps = {
 };
 
 /**
- * Full-screen cover while the city loads.
- * Black field, white type, and the blue mark. It leaves once `active` is false.
+ * Full-screen cover while the city first loads: the MORROW logo on black,
+ * breathing gently. It fades out once `active` is false.
  */
 export function CityLoader({ active, reducedMotion = false }: CityLoaderProps) {
-  const [present, setPresent] = useState(true);
+  const [present, setPresent] = useState(() => !coverFinished);
 
   useEffect(() => {
     const root = document.getElementById("root");
-    if (!root || !active) return;
+    if (!root || !active || !present) return;
     root.setAttribute("inert", "");
     return () => {
       root.removeAttribute("inert");
     };
-  }, [active]);
+  }, [active, present]);
 
   useEffect(() => {
-    if (active) return;
+    if (active || !present) return;
+    coverFinished = true;
     const delay = reducedMotion ? 0 : LEAVE_MS;
     const timer = window.setTimeout(() => setPresent(false), delay);
     return () => window.clearTimeout(timer);
-  }, [active, reducedMotion]);
+  }, [active, present, reducedMotion]);
 
   if (!present) return null;
 
@@ -46,19 +53,14 @@ export function CityLoader({ active, reducedMotion = false }: CityLoaderProps) {
 
   return createPortal(
     <div className={className} role="status" aria-live="polite" aria-busy={active}>
-      <div className="city-loader__lockup">
-        <div className="city-loader__mark">
-          <img src={markUrl} alt="" width={2400} height={2400} />
-          <span className="city-loader__scan" />
-        </div>
-        <p className="city-loader__word">MORROW</p>
-        <p className="city-loader__status">Loading the city</p>
-        <div className="city-loader__bars" aria-hidden="true">
-          <span className="city-loader__bar" />
-          <span className="city-loader__bar" />
-          <span className="city-loader__bar" />
-        </div>
-      </div>
+      <img
+        className="city-loader__mark"
+        src={markUrl}
+        alt=""
+        width={2400}
+        height={2400}
+      />
+      <span className="sr-only">Loading the city</span>
     </div>,
     document.body,
   );

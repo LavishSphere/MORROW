@@ -8,7 +8,6 @@ type Props = {
   surfaceView: SurfaceView
   onSurfaceViewChange: (view: SurfaceView) => void
   onPlace: (neighborhood: LoadedNeighborhood) => void
-  onShowcase: () => void
 }
 
 export function TopBar({
@@ -17,7 +16,6 @@ export function TopBar({
   surfaceView,
   onSurfaceViewChange,
   onPlace,
-  onShowcase,
 }: Props) {
   return (
     <header className="top-bar">
@@ -27,7 +25,7 @@ export function TopBar({
       </div>
 
       <div className="top-bar__controls">
-        <PlaceSearch onLoad={onPlace} onShowcase={onShowcase} />
+        <PlaceSearch onLoad={onPlace} />
 
         <div
           className="view-toggle"
