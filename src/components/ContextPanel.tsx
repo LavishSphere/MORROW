@@ -1,6 +1,14 @@
 import { EvidenceBadge } from './EvidenceBadge'
+import { ProposalEditor } from './ProposalEditor'
 import type { CompareResult } from '../data/api'
-import type { AppMode, Barrier, Intervention, Scenario } from '../types'
+import type {
+  AppMode,
+  Barrier,
+  DraftProposal,
+  Intervention,
+  ProposalFacts,
+  Scenario,
+} from '../types'
 
 type Props = {
   mode: AppMode
@@ -11,8 +19,18 @@ type Props = {
   scenario: Scenario
   dataNote: string
   compare: CompareResult | null
+  proposalFacts: ProposalFacts | null
+  proposalDraft: DraftProposal | null
+  proposalWarnings: string[]
+  aiGenerated: boolean
+  geminiAvailable: boolean
+  apiAvailable: boolean
+  proposalLoading: boolean
   onSelectBarrier: (id: string) => void
   onSelectIntervention: (id: string) => void
+  onDraftChange: (draft: DraftProposal) => void
+  onGenerate: () => void
+  onExportPdf: () => void
 }
 
 function formatDelta(delta: number | null): string {
@@ -42,8 +60,18 @@ export function ContextPanel({
   scenario,
   dataNote,
   compare,
+  proposalFacts,
+  proposalDraft,
+  proposalWarnings,
+  aiGenerated,
+  geminiAvailable,
+  apiAvailable,
+  proposalLoading,
   onSelectBarrier,
   onSelectIntervention,
+  onDraftChange,
+  onGenerate,
+  onExportPdf,
 }: Props) {
   return (
     <aside
@@ -68,40 +96,51 @@ export function ContextPanel({
             Nearby issues from the bundled Wellesley set. Status badges stay
             honest — this showcase uses illustrative records.
           </p>
-          {barriers.length === 0 ? (
-            <p className="empty-state">No barriers in this area yet.</p>
-          ) : (
-            <ul className="barrier-list">
-              {barriers.map((b) => {
-                const active = selectedBarrier?.id === b.id
-                return (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      className={`barrier-list__item${active ? ' is-active' : ''}`}
-                      aria-pressed={active}
-                      onClick={() => onSelectBarrier(b.id)}
-                    >
-                      <span className="barrier-list__row">
-                        <span className="barrier-list__name">
-                          {b.locationLabel}
-                        </span>
-                        <EvidenceBadge status={b.evidenceStatus} />
+          <ul className="barrier-list">
+            {barriers.map((b) => {
+              const active = selectedBarrier?.id === b.id
+              return (
+                <li key={b.id}>
+                  <button
+                    type="button"
+                    className={`barrier-list__item${active ? ' is-active' : ''}`}
+                    aria-pressed={active}
+                    onClick={() => onSelectBarrier(b.id)}
+                  >
+                    <span className="barrier-list__row">
+                      <span className="barrier-list__name">
+                        {b.locationLabel}
                       </span>
-                      <span className="barrier-list__meta">
-                        {barrierTypeLabel(b.type)}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+                      <EvidenceBadge status={b.evidenceStatus} />
+                    </span>
+                    <span className="barrier-list__meta">
+                      {barrierTypeLabel(b.type)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
           {selectedBarrier && (
             <div className="detail-block">
               <h3>Evidence</h3>
               <p>{selectedBarrier.description}</p>
-              {!selectedBarrier.sourceTitle && (
+              {selectedBarrier.sourceTitle ? (
+                <p>
+                  Source:{' '}
+                  {selectedBarrier.sourceUrl ? (
+                    <a
+                      href={selectedBarrier.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {selectedBarrier.sourceTitle}
+                    </a>
+                  ) : (
+                    selectedBarrier.sourceTitle
+                  )}
+                </p>
+              ) : (
                 <p className="muted">
                   No external source — illustrative scenario.
                 </p>
@@ -114,7 +153,7 @@ export function ContextPanel({
       {mode === 'improve' && (
         <div className="context-panel__body">
           {!selectedBarrier ? (
-            <p className="empty-state">
+            <p className="context-panel__lead">
               Select a barrier in Explore first, then choose a change.
             </p>
           ) : (
@@ -143,6 +182,9 @@ export function ContextPanel({
                   )
                 })}
               </ul>
+              {interventions.length === 0 && (
+                <p className="muted">No interventions for this barrier yet.</p>
+              )}
             </>
           )}
         </div>
@@ -151,13 +193,16 @@ export function ContextPanel({
       {mode === 'compare' && (
         <div className="context-panel__body">
           <p className="context-panel__lead">
-            Modeled before / after via{' '}
-            <code>@morrow/routing.compareIntervention</code> for scenario{' '}
-            <code>{scenario.id}</code>
+            Modeled before / after for scenario <code>{scenario.id}</code>
             {selectedIntervention
               ? ` · intervention ${selectedIntervention.id}`
               : ''}
-            {compare ? ` · source: ${compare.source}` : ''}.
+            . From Sophia&apos;s{' '}
+            <code>@morrow/routing.compareIntervention</code>
+            {compare
+              ? ` · source: ${compare.source}${compare.routingPackageAvailable ? '' : ' (unavailable — mock)'}`
+              : ''}
+            .
           </p>
           {compare ? (
             <>
@@ -209,16 +254,48 @@ export function ContextPanel({
               </div>
             </>
           ) : (
-            <p className="empty-state">Select an intervention in Improve first.</p>
+            <p className="muted">Select an intervention in Improve first.</p>
           )}
         </div>
       )}
 
       {mode === 'propose' && (
         <div className="context-panel__body">
-          <p className="empty-state">
-            Editable draft and Export PDF land in the Propose PR.
+          <p className="context-panel__lead">
+            Editable advocacy draft. Client sends ids only to the generate stub;
+            metrics and evidence badges render from the returned facts object.
           </p>
+          <div className="proposal-editor__actions" style={{ marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onGenerate}
+              disabled={
+                proposalLoading ||
+                !selectedBarrier ||
+                !selectedIntervention
+              }
+            >
+              {proposalLoading ? 'Generating…' : 'Generate proposal'}
+            </button>
+          </div>
+          {proposalFacts && proposalDraft ? (
+            <ProposalEditor
+              facts={proposalFacts}
+              draft={proposalDraft}
+              warnings={proposalWarnings}
+              aiGenerated={aiGenerated}
+              geminiAvailable={geminiAvailable}
+              apiAvailable={apiAvailable}
+              onChange={onDraftChange}
+              onExportPdf={onExportPdf}
+            />
+          ) : (
+            <p className="muted">
+              Choose a barrier and intervention, then generate a template draft
+              (Gemini path labeled unavailable).
+            </p>
+          )}
         </div>
       )}
     </aside>

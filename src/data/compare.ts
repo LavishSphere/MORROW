@@ -13,7 +13,7 @@ export type CompareResult = RouteComparison & {
   scenarioId: string
   interventionId: string
   source: 'morrow-routing'
-  routingPackageAvailable: true
+  routingPackageAvailable: boolean
 }
 
 export function compareByIds(input: {
