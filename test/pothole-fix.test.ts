@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  POTHOLES,
+  draftForPothole,
   getPotholeFix,
   patchPothole,
   resetPotholeFix,
   selectPothole,
 } from "../src/city/potholeFix.ts";
+import type { DraftProposal } from "../src/types.ts";
 
 test("a clicked pothole can be patched without inventing a route", () => {
   resetPotholeFix();
@@ -20,12 +23,29 @@ test("a clicked pothole can be patched without inventing a route", () => {
   resetPotholeFix();
 });
 
+test("a generated draft names the clicked pothole and keeps the route text", () => {
+  const base: DraftProposal = {
+    headline: "Wellesley route",
+    plainLanguageSummary: "Modeled trip stays here.",
+    requestForReview: "Please review the route.",
+    meetingTalkingPoints: ["Route point."],
+    limitations: "Modeled impact only.",
+  };
+  const patched = draftForPothole(base, POTHOLES[0] ?? null, true);
+  assert.match(patched.headline, /Boulevard pothole, west of the bend/);
+  assert.match(patched.plainLanguageSummary, /Patched in this demo/);
+  assert.match(patched.plainLanguageSummary, /does not change the modeled route/);
+  assert.match(patched.plainLanguageSummary, /Modeled trip stays here/);
+  assert.equal(draftForPothole(base, null, false).headline, "Wellesley route");
+});
+
 test("the city popup and the three mode pages share the pothole", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const popup = await readFile("src/components/PotholePopup.tsx", "utf8");
   const improve = await readFile("src/components/ImprovePage.tsx", "utf8");
   const compare = await readFile("src/components/CompareSheet.tsx", "utf8");
   const propose = await readFile("src/components/ProposeSheet.tsx", "utf8");
+  assert.match(propose, /draftForPothole\(/);
   assert.match(city, /selectPothole\(/);
   assert.match(popup, /patchPothole\(/);
   assert.match(popup, /Illustrative street issue/);
