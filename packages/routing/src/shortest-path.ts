@@ -1,13 +1,18 @@
 import { RoutingError } from "./errors.ts";
-import type { GraphEdge, PedestrianGraph, RoutePath, RouteQuery } from "./types.ts";
+import { haversineMeters } from "./from-geojson.ts";
+import type { GraphEdge, GraphNode, PedestrianGraph, RoutePath, RouteQuery } from "./types.ts";
 import { validateGraph } from "./validate.ts";
 
 type Step = { nodeId: string; edgeId: string } | null;
 
+const HEURISTIC_SLACK_METERS = 0.01;
+
 /**
  * Accessible shortest path on a small pedestrian graph.
- * Search minimizes weight (lengthMeters when weight is omitted).
- * The returned distance is the sum of lengthMeters on the chosen edges.
+ * Search is A* with a haversine heuristic when every edge cost is at least
+ * the straight-line distance of its endpoints. Otherwise the heuristic is 0
+ * and the search is Dijkstra. Search minimizes weight (lengthMeters when
+ * weight is omitted). The returned distance is the sum of lengthMeters.
  */
 export function shortestPath(graph: PedestrianGraph, query: RouteQuery): RoutePath {
   validateGraph(graph);
@@ -29,6 +34,8 @@ export function shortestPath(graph: PedestrianGraph, query: RouteQuery): RoutePa
     list.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
   }
 
+  const heuristic = buildHeuristic(nodes, graph, query.destinationId);
+
   const cost = new Map<string, number>([[query.originId, 0]]);
   const distance = new Map<string, number>([[query.originId, 0]]);
   const previous = new Map<string, Step>([[query.originId, null]]);
@@ -36,12 +43,19 @@ export function shortestPath(graph: PedestrianGraph, query: RouteQuery): RoutePa
 
   while (unsettled.size > 0) {
     let current: string | null = null;
-    let best = Infinity;
+    let bestF = Infinity;
+    let bestG = Infinity;
     for (const id of unsettled) {
-      const candidate = cost.get(id);
-      if (candidate === undefined) continue;
-      if (candidate < best || (candidate === best && (current === null || id < current))) {
-        best = candidate;
+      const g = cost.get(id);
+      if (g === undefined) continue;
+      const f = g + heuristic(id);
+      if (
+        f < bestF ||
+        (f === bestF && g < bestG) ||
+        (f === bestF && g === bestG && (current === null || id < current))
+      ) {
+        bestF = f;
+        bestG = g;
         current = id;
       }
     }
@@ -52,7 +66,7 @@ export function shortestPath(graph: PedestrianGraph, query: RouteQuery): RoutePa
     for (const edge of outgoing.get(current) ?? []) {
       if (query.requireAccessible && !edge.accessible) continue;
       if (!unsettled.has(edge.to)) continue;
-      const nextCost = best + (edge.weight ?? edge.lengthMeters);
+      const nextCost = bestG + (edge.weight ?? edge.lengthMeters);
       const known = cost.get(edge.to);
       if (known !== undefined && nextCost >= known) continue;
       cost.set(edge.to, nextCost);
@@ -102,4 +116,37 @@ export function shortestPath(graph: PedestrianGraph, query: RouteQuery): RoutePa
     edgeIds,
     geometry,
   };
+}
+
+function buildHeuristic(
+  nodes: Map<string, GraphNode>,
+  graph: PedestrianGraph,
+  destinationId: string,
+): (nodeId: string) => number {
+  const dest = nodes.get(destinationId)?.coordinates;
+  if (!dest) return () => 0;
+  if (!heuristicIsAdmissible(nodes, graph)) return () => 0;
+
+  return (nodeId: string) => {
+    const here = nodes.get(nodeId)?.coordinates;
+    if (!here) return 0;
+    return haversineMeters(here, dest);
+  };
+}
+
+/** Haversine is only safe when every edge cost dominates its own straight-line span. */
+function heuristicIsAdmissible(
+  nodes: Map<string, GraphNode>,
+  graph: PedestrianGraph,
+): boolean {
+  for (const edge of graph.edges) {
+    const from = nodes.get(edge.from)?.coordinates;
+    const to = nodes.get(edge.to)?.coordinates;
+    if (!from || !to) continue;
+    const cost = edge.weight ?? edge.lengthMeters;
+    if (cost + HEURISTIC_SLACK_METERS < haversineMeters(from, to)) {
+      return false;
+    }
+  }
+  return true;
 }
