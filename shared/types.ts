@@ -107,6 +107,10 @@ export type GenerateProposalResponse = {
   geminiAvailable: boolean;
   /** Always true for live API responses; clients use this vs bundled fallback. */
   apiAvailable: boolean;
+  /** True when generate ran through the Mastra proposal workflow. */
+  mastra?: boolean;
+  /** Mastra step ids completed for this generate call (observability). */
+  workflowSteps?: string[];
 };
 
 /** Showcase bounding box in WGS84. */

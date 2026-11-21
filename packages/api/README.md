@@ -32,7 +32,9 @@ Meters, evidence status, and sources are never taken from the client.
 
 Do **not** put `GEMINI_API_KEY` in Vite `VITE_*` env vars or ship it to the browser.
 
-Tiger Data / PostGIS (`DATABASE_URL`), Mastra, and Vultr hosting are **not** claimed in this package yet (see WHA-9).
+`POST /api/proposals/generate` runs a **Mastra** typed workflow (`morrow-proposal`): validate ids → load evidence → collect route metrics → generate → check → return. The response includes `mastra: true` and `workflowSteps`.
+
+Tiger Data / PostGIS (`DATABASE_URL`) and Vultr hosting are **not** claimed in this package yet (see WHA-9).
 
 ## Run
 
