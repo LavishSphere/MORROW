@@ -39,7 +39,7 @@ Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run de
 | `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
 | `VITE_API_BASE` | No | Front-end API base (no trailing slash). Empty = same-origin / proxy. |
 
-Never put `GEMINI_API_KEY` in `VITE_*` vars. Tiger Data / Mastra / Vultr are not claimed in this build (see WHA-9). Details: [`packages/api/README.md`](packages/api/README.md).
+Never put `GEMINI_API_KEY` in `VITE_*` vars. Mastra wires the generate path; Tiger Data / Vultr are not claimed yet (see WHA-9). Details: [`packages/api/README.md`](packages/api/README.md).
 
 ## Accessible Interface
 

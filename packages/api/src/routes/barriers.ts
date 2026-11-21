@@ -69,7 +69,7 @@ export function handleHealth(
     barriers: listBarriers().length,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
     tigerData: false,
-    mastra: false,
+    mastra: true,
     vultr: false,
   });
 }
