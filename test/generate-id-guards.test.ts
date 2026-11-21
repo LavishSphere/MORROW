@@ -11,3 +11,19 @@ test("client generate path guards demo scenario ids", async () => {
   assert.match(text, /intervention\.barrierId === barrier\.id/);
   assert.match(text, /SCENARIO\.interventionId === intervention\.id/);
 });
+
+test("client fixtures lock scenario graphChanges to the linked intervention", async () => {
+  const fixtures = await readFile("src/data/fixtures.ts", "utf8");
+  assert.equal(fixtures.includes("assertLinkedGraphChanges"), true);
+  assert.equal(
+    fixtures.includes(
+      "scenario.graphChanges must deep-equal the linked intervention.graphChanges",
+    ),
+    true,
+  );
+});
+
+test("compareByIds rejects a missing scenario id", async () => {
+  const compare = await readFile("src/data/compare.ts", "utf8");
+  assert.match(compare, /!input\.scenarioId \|\| input\.scenarioId !== scenario\.id/);
+});

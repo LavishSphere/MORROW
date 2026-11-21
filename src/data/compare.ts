@@ -51,7 +51,7 @@ export function compareByIds(input: {
   interventionId: string
 }): CompareResult {
   const scenario = demo.scenario
-  if (input.scenarioId && input.scenarioId !== scenario.id) {
+  if (!input.scenarioId || input.scenarioId !== scenario.id) {
     throw new Error(
       `Unknown scenario id: ${input.scenarioId} (only ${scenario.id} is bundled)`,
     )

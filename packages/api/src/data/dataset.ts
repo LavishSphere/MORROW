@@ -103,6 +103,9 @@ export function graphChangesForIntervention(
   if (!intervention) {
     throw new Error(`Unknown interventionId: ${interventionId}`);
   }
+  if (intervention.graphChanges.length === 0) {
+    throw new Error(`Intervention ${interventionId} has empty graphChanges`);
+  }
   return intervention.graphChanges;
 }
 
