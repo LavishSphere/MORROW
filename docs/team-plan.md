@@ -8,7 +8,7 @@ This plan assigns the work in the [MORROW Whack 2026 project plan](MORROW_WHACK_
 |---|---|---|
 | AI, integrations, and data | **Ashsmith Khayrul** | OpenStreetMap and municipal data, evidence labels, Gemini drafting, Mastra, Tiger Data/PostGIS, the proposal API, optional Vultr |
 | 3D Showcase | Name not assigned | Wellesley neighborhood scene, camera and lighting, intervention animation, route highlight |
-| Accessible Interface | Name not assigned | Web app shell, Explore / Improve / Compare / Propose, keyboard and 2D access, proposal editor and PDF |
+| Accessible Interface | **Caroline Hu** | Web app shell, Explore / Improve / Compare / Propose, keyboard and 2D access, proposal editor and PDF |
 | Routing and Reliability | Name not assigned | Pedestrian routing and measured before/after results, static public demo, judge-flow rehearsal and backup |
 
 The three unnamed seats stay identified by those role titles until real names exist. Ashsmith Khayrul's lane stays intact: AI, integrations, and data gathering are not split onto the other seats.
