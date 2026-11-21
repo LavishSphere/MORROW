@@ -69,3 +69,18 @@ test("Vite still inlines GeoJSON so Pages cannot emit a basemap URL", async () =
   assert.match(vite, /geojson-as-json/);
   assert.equal(vite.includes("assetsInclude:"), false);
 });
+
+test("client compare and API facts both pass intervention graphChanges to compareScenario", () => {
+  const client = readFileSync("src/data/compare.ts", "utf8");
+  const api = readFileSync("packages/api/src/facts.ts", "utf8");
+  assert.match(client, /graphChanges:\s*intervention\.graphChanges/);
+  assert.match(api, /graphChanges:\s*intervention\.graphChanges/);
+  assert.equal(client.includes("graphChanges: scenario.graphChanges"), false);
+  assert.equal(api.includes("graphChanges: scenario.graphChanges"), false);
+});
+
+test("scripts typecheck allows .ts imports so tests can load @morrow/routing", () => {
+  const scripts = readFileSync("tsconfig.scripts.json", "utf8");
+  assert.match(scripts, /"allowImportingTsExtensions":\s*true/);
+  assert.match(scripts, /test\/\*\*\/\*\.ts/);
+});

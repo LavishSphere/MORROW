@@ -55,4 +55,4 @@ Better Worlds first place always beats sponsor prize chasing.
 ## Open decisions
 
 - Name for the remaining unassigned 3D Showcase seat  
-- Public demo is GitHub Pages at https://morrow.khayrul.com/ (Vite)
+- Public demo is GitHub Pages at [morrow.khayrul.com](https://morrow.khayrul.com/) (Vite)

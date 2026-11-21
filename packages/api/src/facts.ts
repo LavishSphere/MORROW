@@ -84,11 +84,11 @@ export function resolveGenerateInput(body: {
     );
   }
 
-  // Canonical graphChanges from the scenario — ignore any client meters.
+  // Canonical graphChanges from the bundled intervention — ignore any client meters.
   const comparison = compareScenario(basemapGeoJSON, {
     origin: scenario.origin,
     destination: scenario.destination,
-    graphChanges: scenario.graphChanges,
+    graphChanges: intervention.graphChanges,
   });
 
   const evidenceSources =
