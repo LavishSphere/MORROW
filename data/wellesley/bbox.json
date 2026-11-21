@@ -1,0 +1,12 @@
+{
+  "west": -71.3085,
+  "south": 42.291,
+  "east": -71.3005,
+  "north": 42.2968,
+  "crs": "EPSG:4326",
+  "label": "Wellesley College showcase (Central Street / College Road)",
+  "center": [
+    -71.3045,
+    42.2939
+  ]
+}
