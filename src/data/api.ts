@@ -14,17 +14,77 @@ export type { CompareResult }
 
 /**
  * Client boundary for Ashsmith APIs + Sophia routing.
- * Barriers/generate/Gemini remain unavailable stubs (ids only).
- * Compare uses @morrow/routing.compareIntervention on the demo graph.
+ * Tries the live API when VITE_API_BASE is set (or same-origin /api via Vite proxy).
+ * Bundled fixtures remain the labeled fallback when the API is unavailable.
+ * Compare uses @morrow/routing.compareScenario on the bundled Wellesley graph.
  */
 
-export const API_STATUS = {
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(
+  /\/$/,
+  '',
+) ?? ''
+
+/** Resolved after the first successful health / barriers probe. */
+let liveApiReachable: boolean | null = null
+
+export type ApiStatus = {
+  barriersApi: boolean
+  generateApi: boolean
+  gemini: boolean
+  tigerData: boolean
+  morrowRouting: boolean
+}
+
+export const API_STATUS: ApiStatus = {
   barriersApi: false,
   generateApi: false,
   gemini: false,
   tigerData: false,
   morrowRouting: true,
-} as const
+}
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path}`
+}
+
+async function probeLiveApi(): Promise<boolean> {
+  if (liveApiReachable !== null) return liveApiReachable
+  try {
+    const res = await fetch(apiUrl('/api/health'), {
+      signal: AbortSignal.timeout(2500),
+    })
+    if (!res.ok) {
+      liveApiReachable = false
+      return false
+    }
+    const body = (await res.json()) as {
+      ok?: boolean
+      geminiConfigured?: boolean
+      tigerData?: boolean
+    }
+    liveApiReachable = Boolean(body.ok)
+    API_STATUS.barriersApi = liveApiReachable
+    API_STATUS.generateApi = liveApiReachable
+    API_STATUS.gemini = Boolean(body.geminiConfigured)
+    API_STATUS.tigerData = Boolean(body.tigerData)
+    return liveApiReachable
+  } catch {
+    liveApiReachable = false
+    API_STATUS.barriersApi = false
+    API_STATUS.generateApi = false
+    API_STATUS.gemini = false
+    return false
+  }
+}
+
+/** Test / storybook helper — reset cached probe. */
+export function resetApiProbe(): void {
+  liveApiReachable = null
+  API_STATUS.barriersApi = false
+  API_STATUS.generateApi = false
+  API_STATUS.gemini = false
+  API_STATUS.tigerData = false
+}
 
 export type BarriersResult = {
   source: 'bundled' | 'api'
@@ -34,20 +94,82 @@ export type BarriersResult = {
   liveApiAvailable: boolean
 }
 
-export async function fetchBarriers(_bbox?: string): Promise<BarriersResult> {
-  void _bbox
+function mapApiBarrier(raw: Record<string, unknown>): Barrier {
+  return {
+    id: String(raw.id),
+    coordinates: raw.coordinates as [number, number],
+    type: raw.type as Barrier['type'],
+    evidenceStatus: raw.evidenceStatus as Barrier['evidenceStatus'],
+    description: String(raw.description ?? ''),
+    sourceTitle:
+      typeof raw.sourceTitle === 'string'
+        ? raw.sourceTitle
+        : typeof raw.source === 'string'
+          ? raw.source
+          : undefined,
+    sourceUrl: typeof raw.sourceUrl === 'string' ? raw.sourceUrl : undefined,
+    locationLabel: String(raw.locationLabel ?? raw.id),
+  }
+}
+
+export async function fetchBarriers(bbox?: string): Promise<BarriersResult> {
+  const live = await probeLiveApi()
+  const box =
+    bbox ??
+    '-71.3085,42.291,-71.3005,42.2968'
+
+  if (live) {
+    try {
+      const res = await fetch(apiUrl(`/api/barriers?bbox=${encodeURIComponent(box)}`), {
+        signal: AbortSignal.timeout(5000),
+      })
+      if (res.ok) {
+        const body = (await res.json()) as {
+          barriers?: Record<string, unknown>[]
+          note?: string
+        }
+        const barriers = (body.barriers ?? []).map(mapApiBarrier)
+        if (barriers.length > 0) {
+          return {
+            source: 'api',
+            available: true,
+            barriers,
+            liveApiAvailable: true,
+            note: body.note ?? 'Live barrier API',
+          }
+        }
+      }
+    } catch {
+      liveApiReachable = false
+      API_STATUS.barriersApi = false
+      API_STATUS.generateApi = false
+    }
+  }
+
   return {
     source: 'bundled',
     available: true,
     barriers: BARRIERS,
-    liveApiAvailable: API_STATUS.barriersApi,
-    note: API_STATUS.barriersApi
-      ? 'Live barrier API'
-      : 'Bundled Wellesley fixtures — live barrier API unavailable.',
+    liveApiAvailable: false,
+    note: 'Bundled Wellesley fixtures — live barrier API unavailable.',
   }
 }
 
 export async function fetchBarrierById(id: string): Promise<Barrier | null> {
+  const live = await probeLiveApi()
+  if (live) {
+    try {
+      const res = await fetch(apiUrl(`/api/barriers/${encodeURIComponent(id)}`), {
+        signal: AbortSignal.timeout(5000),
+      })
+      if (res.ok) {
+        return mapApiBarrier((await res.json()) as Record<string, unknown>)
+      }
+      if (res.status === 404) return null
+    } catch {
+      /* fall through */
+    }
+  }
   return getBarrier(id) ?? null
 }
 
@@ -90,9 +212,9 @@ function buildFacts(
   }
 }
 
-export async function generateProposal(
+function bundledGenerate(
   req: GenerateProposalRequest,
-): Promise<GenerateProposalResponse> {
+): GenerateProposalResponse {
   const compare = compareByIds({
     scenarioId: req.scenarioId,
     interventionId: req.interventionId,
@@ -132,21 +254,66 @@ export async function generateProposal(
   }
 
   const draft = buildTemplateDraft(facts)
-  const warnings: string[] = []
-  if (!API_STATUS.generateApi) {
-    warnings.push('Generate API unavailable — using local template draft.')
-  }
-  if (!API_STATUS.gemini) {
-    warnings.push('Gemini unavailable — template prose only.')
-  }
-
   return {
     proposalId: `local-${req.scenarioId}-${req.barrierId}-${req.interventionId}`,
     facts,
     draft,
     aiGenerated: false,
-    warnings,
-    geminiAvailable: API_STATUS.gemini,
-    apiAvailable: API_STATUS.generateApi,
+    warnings: [
+      'Generate API unavailable — using local template draft.',
+      'Gemini unavailable — template prose only.',
+    ],
+    geminiAvailable: false,
+    apiAvailable: false,
+  }
+}
+
+export async function generateProposal(
+  req: GenerateProposalRequest,
+): Promise<GenerateProposalResponse> {
+  const live = await probeLiveApi()
+  if (live) {
+    try {
+      const res = await fetch(apiUrl('/api/proposals/generate'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          scenarioId: req.scenarioId,
+          barrierId: req.barrierId,
+          interventionId: req.interventionId,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (res.ok) {
+        const body = (await res.json()) as GenerateProposalResponse
+        API_STATUS.generateApi = true
+        API_STATUS.gemini = Boolean(body.geminiAvailable)
+        return {
+          ...body,
+          apiAvailable: true,
+        }
+      }
+    } catch {
+      liveApiReachable = false
+      API_STATUS.generateApi = false
+    }
+  }
+
+  return bundledGenerate(req)
+}
+
+export async function fetchProposalById(
+  id: string,
+): Promise<GenerateProposalResponse | null> {
+  const live = await probeLiveApi()
+  if (!live) return null
+  try {
+    const res = await fetch(apiUrl(`/api/proposals/${encodeURIComponent(id)}`), {
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as GenerateProposalResponse
+  } catch {
+    return null
   }
 }

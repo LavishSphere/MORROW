@@ -9,6 +9,8 @@ export type {
   Intervention,
   ProposalFacts,
   DraftProposal,
+  GenerateProposalRequest,
+  GenerateProposalResponse,
   ShowcaseBBox,
   DemoScenario,
   DemoDataset,

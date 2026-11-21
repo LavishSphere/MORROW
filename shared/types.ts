@@ -62,6 +62,7 @@ export type Intervention = {
 /**
  * Trusted facts assembled by the server before Gemini or template drafting.
  * Route meters come from the routing module — never from the model.
+ * originLabel / destinationLabel / nextSteps match the PDF seven-section brief.
  */
 export type ProposalFacts = {
   city: string;
@@ -74,6 +75,9 @@ export type ProposalFacts = {
   afterMeters: number | null;
   newlyReachableDestinations: number | null;
   modelAssumptions: string[];
+  originLabel: string;
+  destinationLabel: string;
+  nextSteps: string;
 };
 
 /** Structured draft prose (Gemini or deterministic template). */
@@ -83,6 +87,30 @@ export type DraftProposal = {
   requestForReview: string;
   meetingTalkingPoints: string[];
   limitations: string;
+};
+
+/** Body for POST /api/proposals/generate — ids only; server reloads trusted data. */
+export type GenerateProposalRequest = {
+  scenarioId: string;
+  barrierId: string;
+  interventionId: string;
+};
+
+/** Response from generate / GET proposal by id. */
+export type GenerateProposalResponse = {
+  proposalId: string;
+  facts: ProposalFacts;
+  draft: DraftProposal;
+  aiGenerated: boolean;
+  warnings: string[];
+  /** True when a Gemini key is configured (may still fall back to template). */
+  geminiAvailable: boolean;
+  /** Always true for live API responses; clients use this vs bundled fallback. */
+  apiAvailable: boolean;
+  /** True when generate ran through the Mastra proposal workflow. */
+  mastra?: boolean;
+  /** Mastra step ids completed for this generate call (observability). */
+  workflowSteps?: string[];
 };
 
 /** Showcase bounding box in WGS84. */

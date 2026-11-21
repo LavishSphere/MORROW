@@ -29,8 +29,18 @@ install_tar() {
   local checksum="$2"
   local binary="$3"
   local archive="${tmp}/archive.tar.gz"
+  local attempt
 
-  curl -fsSL -o "${archive}" "${url}"
+  for attempt in 1 2 3 4 5; do
+    if curl -fsSL --retry 2 --retry-delay 2 -o "${archive}" "${url}"; then
+      break
+    fi
+    if [[ "${attempt}" -eq 5 ]]; then
+      echo "failed to download ${url}" >&2
+      exit 1
+    fi
+    sleep $((attempt * 2))
+  done
   echo "${checksum}  ${archive}" | sha256sum -c -
   tar -xzf "${archive}" -C "${tmp}" "${binary}"
   chmod +x "${tmp}/${binary}"
