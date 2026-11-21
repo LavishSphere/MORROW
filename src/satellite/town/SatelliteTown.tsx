@@ -221,14 +221,15 @@ function TownFrame({
             {detection.sourceLabel || 'Illustrative Wellesley scenario'}
           </p>
         </div>
-        <button
-          type="button"
-          className="satellite-town__next"
-          onClick={detection.seeNextProblem}
-          disabled={detection.phase !== 'ready' || detection.problems.length === 0}
-        >
-          See next problem
-        </button>
+        {placesLeft > 0 ? (
+          <button
+            type="button"
+            className="satellite-town__next"
+            onClick={detection.seeNextProblem}
+          >
+            See next problem
+          </button>
+        ) : null}
       </header>
 
       <p className="satellite-town__caption">
@@ -238,14 +239,12 @@ function TownFrame({
       </p>
 
       <p className="satellite-town__live" role="status">
-        {detection.phase === 'running'
-          ? 'AI detection is looking for problems.'
-          : detection.phase === 'unavailable'
+        {away
+          ? 'No barrier is marked for this place. The streets are not a barrier inventory.'
+          : detection.phase === 'running' || detection.phase === 'unavailable'
             ? 'No live detection. Showing the illustrative Wellesley barrier.'
             : selected
-              ? placesLeft > 0
-                ? `${selected.title}. ${placesLeft} other places in view.`
-                : selected.title
+              ? selected.title
               : 'No barrier selected.'}
       </p>
 
