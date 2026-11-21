@@ -13,6 +13,11 @@ test("explore canvas mounts the holographic glass city immediately", async () =>
   assert.match(town, /<City \/>/);
   assert.match(city, /HoloBuilding/);
   assert.match(city, /function Roads/);
+  assert.match(city, /function CurvedRoads/);
+  assert.match(city, /function Pothole/);
+  assert.match(city, /function Hydrant/);
+  assert.match(city, /function Lamp/);
+  assert.match(city, /function Bench/);
   assert.equal(city.includes("CircuitGrid"), false);
   assert.match(city, /Sparkles/);
   assert.match(city, /#0a3842/);
