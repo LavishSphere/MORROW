@@ -149,7 +149,7 @@ That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audit
 | [API image](.github/workflows/api-image.yml) | A `Dockerfile` lands on `main` | Builds the API image and pushes it to GHCR |
 | [External links](.github/workflows/links.yml) | Monday, or a manual run | Live check of links in the README, docs, and site |
 
-GitHub Pages is the static demo host. A custom domain is attached, so the judge URL is the domain above. Vite assets are relative (`./`) so they load at `/` on that host and at `/MORROW/` on github.io. A manual deploy can publish another git ref. The API image workflow publishes `Dockerfile` builds to GHCR when API sources change. Model and database credentials are not available to these workflows — inject them on the Vultr host only.
+GitHub Pages is the static demo host. A custom domain is attached, so the judge URL is the domain above. Vite assets are relative (`./`) so they load at `/` on that host and at `/MORROW/` on github.io. A manual deploy can publish another git ref. The API image workflow publishes `Dockerfile` builds to GHCR when API sources change. The image is `ghcr.io/lavishsphere/morrow:latest`. Import [`pterodactyl/morrow-api.json`](pterodactyl/morrow-api.json) on the VPS panel. Model and database credentials are not available to these workflows — put them in the egg variables only.
 
 Set repository variable `VITE_API_BASE` so the Pages build can call the hosted API. Until that variable and a live host exist, Propose on Pages stays on the bundled / **unavailable** path (intentional).
 

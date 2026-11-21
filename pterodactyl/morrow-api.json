@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-11-21T23:50:00+00:00",
+  "name": "MORROW API",
+  "author": "me@khayrul.com",
+  "description": "MORROW proposal API. The image is ghcr.io/lavishsphere/morrow:latest. Nginx on the VPS proxies public HTTPS to this server's allocation. Leave DATABASE_URL empty to keep the bundled dataset. Do not set MORROW_HOSTED_ON.",
+  "features": null,
+  "docker_images": {
+    "MORROW API": "ghcr.io/lavishsphere/morrow:latest"
+  },
+  "file_denylist": [],
+  "startup": "/app/start-api.sh",
+  "config": {
+    "files": "{}",
+    "startup": "{\n    \"done\": \"listening on\"\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/ash\necho \"The API is already in the image at /app.\"\n",
+      "container": "alpine:3.20",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Tiger database URL",
+      "description": "Tiger Cloud Postgres URL with sslmode=require. Leave empty for the bundled Wellesley dataset. Never commit this value.",
+      "env_variable": "DATABASE_URL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Gemini API key",
+      "description": "Optional. When empty, proposals use the template and health reports Gemini unavailable.",
+      "env_variable": "GEMINI_API_KEY",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Gemini model",
+      "description": "Model id used only when GEMINI_API_KEY is set.",
+      "env_variable": "GEMINI_MODEL",
+      "default_value": "gemini-2.0-flash",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:100",
+      "field_type": "text"
+    },
+    {
+      "name": "Pages origin",
+      "description": "Exact GitHub Pages origin allowed to call the API, for example https://lavishsphere.github.io. Empty allows any origin.",
+      "env_variable": "MORROW_CORS_ORIGIN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:200",
+      "field_type": "text"
+    }
+  ]
+}

@@ -78,15 +78,35 @@ export function createApiServer(): MorrowApiServer {
   });
 }
 
+/**
+ * Pterodactyl sets SERVER_PORT to the allocation and starts the process with
+ * cwd /home/container. That port wins over PORT. When it is set and HOST is
+ * not, bind 0.0.0.0 so nginx on the VPS can reach the container.
+ */
+export function resolveListenAddress(
+  env: Record<string, string | undefined> = process.env,
+): { port: number; host: string } {
+  const serverPort = env.SERVER_PORT?.trim() ?? "";
+  const raw = serverPort || env.PORT?.trim() || "8787";
+  const parsed = Number(raw);
+  const port =
+    Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : 8787;
+  const host = env.HOST?.trim() || (serverPort ? "0.0.0.0" : "127.0.0.1");
+  return { port, host };
+}
+
 export function listenApiServer(
-  port = Number(process.env.PORT ?? 8787),
-  host = process.env.HOST ?? "127.0.0.1",
+  port?: number,
+  host?: string,
 ): Promise<{ server: MorrowApiServer; port: number; host: string }> {
+  const resolved = resolveListenAddress();
+  const bindPort = port ?? resolved.port;
+  const bindHost = host ?? resolved.host;
   const server = createApiServer();
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, host, () => {
-      resolve({ server, port, host });
+    server.listen(bindPort, bindHost, () => {
+      resolve({ server, port: bindPort, host: bindHost });
     });
   });
 }
