@@ -14,9 +14,9 @@ varying vec3 vDir;
 void main() {
   vec3 dir = normalize(vDir);
   float h = clamp(dir.y, -1.0, 1.0);
-  vec3 zenith = vec3(0.01, 0.02, 0.05);
-  vec3 horizon = vec3(0.04, 0.10, 0.20);
-  vec3 glow = vec3(0.11, 0.53, 1.0);
+  vec3 zenith = vec3(0.71, 0.93, 0.97);
+  vec3 horizon = vec3(0.90, 0.98, 0.99);
+  vec3 glow = vec3(0.55, 0.92, 0.97);
   float lift = smoothstep(-0.05, 0.55, h);
   vec3 col = mix(horizon, zenith, lift);
   col += glow * exp(-6.0 * abs(h)) * 0.45;

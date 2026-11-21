@@ -1,4 +1,5 @@
-import { SatelliteTown } from '../satellite/town/SatelliteTown'
+import { ShowcaseCanvas } from '../showcase/ShowcaseCanvas'
+import '../showcase/styles.css'
 import type { AppMode } from '../types'
 
 type Props = {
@@ -6,17 +7,17 @@ type Props = {
   reducedMotion: boolean
 }
 
-/** Wellesley scene between the top bar and the mode bar. */
+/** Isometric holographic city between the top bar and the mode bar. */
 export function CanvasSlot({ mode, reducedMotion }: Props) {
   return (
     <section
       className={`canvas-slot${reducedMotion ? ' is-reduced' : ''}`}
-      aria-label="Satellite view"
+      aria-label="Holographic neighborhood"
     >
-      <SatelliteTown reducedMotion={reducedMotion} />
+      <ShowcaseCanvas barriers={[]} reducedMotion={reducedMotion} />
       <p className="sr-only">
-        Wellesley College, Tower Court to Clapp Library. Illustrative. Mode{' '}
-        {mode}.
+        Illustrative holographic city. Glass buildings, circuit roads, mixed
+        trees. Mode {mode}.
       </p>
     </section>
   )

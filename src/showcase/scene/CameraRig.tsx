@@ -10,6 +10,7 @@ type CameraRigProps = {
   descendSignal: { durationMs: number; token: number } | null;
   lookAt?: readonly [number, number, number];
   span?: number;
+  settled?: readonly [number, number, number];
 };
 
 function smoothstep(value: number) {
@@ -26,6 +27,7 @@ export function CameraRig({
   descendSignal,
   lookAt = [0, 0.4, 0],
   span = 16,
+  settled,
 }: CameraRigProps) {
   const camera = useThree((state) => state.camera);
   const look = useMemo(
@@ -41,8 +43,11 @@ export function CameraRig({
     [span],
   );
   const end = useMemo(
-    () => new THREE.Vector3(span * 0.42, span * 0.48, span * 0.62),
-    [span],
+    () =>
+      settled
+        ? new THREE.Vector3(settled[0], settled[1], settled[2])
+        : new THREE.Vector3(span * 0.42, span * 0.48, span * 0.62),
+    [span, settled],
   );
   const fromMid = useMemo(() => new THREE.Vector3(), []);
   const toEnd = useMemo(() => new THREE.Vector3(), []);
@@ -106,10 +111,10 @@ export function CameraRig({
       enablePan={false}
       enableDamping={!reducedMotion}
       dampingFactor={0.08}
-      minDistance={span * 0.35}
-      maxDistance={span * 1.6}
-      minPolarAngle={0.22}
-      maxPolarAngle={Math.PI * 0.48}
+      minDistance={span * 0.45}
+      maxDistance={span * 1.35}
+      minPolarAngle={0.55}
+      maxPolarAngle={Math.PI * 0.46}
       target={[look.x, look.y, look.z]}
     />
   );
