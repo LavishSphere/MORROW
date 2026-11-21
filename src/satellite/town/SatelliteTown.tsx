@@ -53,9 +53,9 @@ type Props = {
 }
 
 /**
- * Town satellite. Markers and "See next problem" come from the AI detection
- * pass in src/satellite/pins. The Gemini cost estimate stays in
- * src/satellite/stats. This view only flies the camera and draws the frame.
+ * Town satellite. The pin is the checked-in Wellesley barrier unless a pins
+ * module actually exports detection. The caption stays visible when the
+ * full-bleed layout hides the header bar.
  */
 export function SatelliteTown({ reducedMotion }: Props) {
   return (
@@ -172,6 +172,11 @@ function TownFrame({
           See next problem
         </button>
       </header>
+
+      <p className="satellite-town__caption">
+        {detection.sourceLabel || 'Illustrative Wellesley scenario'}
+        {selected ? ` · ${selected.title}` : ''}
+      </p>
 
       <p className="satellite-town__live" role="status">
         {detection.phase === 'running'
