@@ -1,3 +1,4 @@
+import type { CompareResult } from '../data/api'
 import type { AppMode, Barrier } from '../types'
 
 type Props = {
@@ -5,6 +6,14 @@ type Props = {
   selectedBarrier: Barrier | null
   reducedMotion: boolean
   locationLabel: string
+  compare: CompareResult | null
+}
+
+function formatDelta(delta: number | null): string {
+  if (delta == null) return 'n/a'
+  if (delta === 0) return '0 m'
+  const sign = delta > 0 ? '+' : '−'
+  return `${sign}${Math.abs(delta)} m`
 }
 
 export function CanvasSlot({
@@ -12,6 +21,7 @@ export function CanvasSlot({
   selectedBarrier,
   reducedMotion,
   locationLabel,
+  compare,
 }: Props) {
   return (
     <section
@@ -33,6 +43,16 @@ export function CanvasSlot({
             ? ` · Focus: ${selectedBarrier.locationLabel}`
             : ' · Select a barrier in Explore'}
         </p>
+        {compare && (mode === 'compare' || mode === 'improve') && (
+          <p className="canvas-slot__route" aria-live="polite">
+            Modeled route: {compare.beforeMeters ?? 'n/a'} m →{' '}
+            {compare.afterMeters ?? 'n/a'} m ({formatDelta(compare.deltaMeters)}
+            )
+            {compare.after.geometry.length > 0
+              ? ` · ${compare.after.geometry.length} geometry points`
+              : ''}
+          </p>
+        )}
       </div>
     </section>
   )

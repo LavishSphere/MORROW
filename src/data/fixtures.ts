@@ -1,10 +1,10 @@
 import type { Barrier, Intervention, LocationOption, Scenario } from '../types'
+import { MODELED_IMPACT_ASSUMPTIONS } from '../routing/types'
 
 /**
  * Bundled Wellesley demo fixtures.
- * These stand in for Ashsmith APIs (GET /api/barriers, generate, etc.)
- * until those endpoints are available. Evidence status is honest:
- * this Phase 1 scenario is illustrative — not a claim of a real defect.
+ * Stand in for Ashsmith APIs until those endpoints are available.
+ * Evidence status is honest: this scenario is illustrative.
  */
 
 export const LOCATIONS: LocationOption[] = [
@@ -74,15 +74,11 @@ export const SCENARIO: Scenario = {
   label: 'Campus-adjacent accessible trip',
   originLabel: 'Residential block (demo origin)',
   destinationLabel: 'Public destination near campus',
+  originId: 'origin',
+  destinationId: 'destination',
   barrierId: 'wellesley-crossing-01',
   interventionId: 'int-ramp-01',
-  modeledBeforeMeters: 620,
-  modeledAfterMeters: 410,
-  modelAssumptions: [
-    'Demonstration-only street graph',
-    'No site inspection or engineering feasibility assessment',
-    'Before/after meters are fixture placeholders until the routing module lands',
-  ],
+  modelAssumptions: [...MODELED_IMPACT_ASSUMPTIONS],
 }
 
 export function getBarrier(id: string): Barrier | undefined {

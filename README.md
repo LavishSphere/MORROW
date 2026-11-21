@@ -10,7 +10,7 @@ An interactive civic-planning experience that helps anyone visualize a more acce
 
 ## Front-end stack
 
-This Accessible Interface app uses **Vite + React + TypeScript** (chosen over Next.js for a fast static public demo). State is React component state for Phase 1.
+Accessible Interface uses **Vite + React + TypeScript** (chosen over Next.js for a fast static public demo). State is React component state.
 
 ## Run locally
 
@@ -19,9 +19,7 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (typically `http://localhost:5173`).
-
-Other scripts:
+Open the URL Vite prints (typically `http://localhost:5173`).
 
 ```bash
 npm run build    # production build to dist/
@@ -29,37 +27,36 @@ npm run preview  # serve the production build
 npm run lint     # oxlint
 ```
 
-## Phase 1 app shell
+## Accessible Interface (this app)
 
-What this PR delivers:
+- Full-bleed **canvas slot** (3D reserved) + compact **Wellesley (featured)** selector
+- Bottom toolbar: **Explore | Improve | Compare | Propose** (keyboard: arrows / Home / End)
+- Context panel: barriers, evidence badges, intervention options, modeled outcomes
+- **Compare** via id-only client stub shaped like Sophia’s `compareIntervention(graph, query, graphChanges)` ([#11](https://github.com/LavishSphere/MORROW/pull/11) / [#12](https://github.com/LavishSphere/MORROW/pull/12)): before/after meters, geometry, assumptions. Bundled mock until `@morrow/routing` merges — **do not vendor a second routing package**
+- **Propose**: editable template draft + **Export PDF** (print → Save as PDF) with seven sections; metrics/evidence from the facts object
+- **List (2D)** fallback for keyboard/list browsing (MapLibre deferred)
+- Reduced-motion toggle; high-contrast evidence/mode labels
+- API stubs send **ids only**; live Ashsmith / Gemini / routing package paths labeled **unavailable**
 
-- Full-bleed layout with a clear **3D canvas slot** (placeholder for React Three Fiber)
-- Compact **Wellesley (featured)** location selector
-- Bottom toolbar: **Explore | Improve | Compare | Propose** (working mode switch, keyboard-focusable with arrow keys)
-- **Context panel** for barrier / evidence / options / outcomes / proposal shell
-- **Reduced-motion** toggle (wired; honors `prefers-reduced-motion` on load)
-- **Bundled mock fixtures** so the UI runs without a backend
-
-Out of scope here: real Gemini / Tiger / Mastra, routing math, R3F scene, PDF export polish, MapLibre 2D map, multi-city.
+Out of scope in this PR: Gemini server, Tiger Data, Mastra, R3F scene, OSM pipeline, implementing `@morrow/routing` (Sophia’s seat).
 
 ## Mocks vs future Ashsmith APIs
 
-Phase 1 loads barriers and the demo scenario from `src/data/fixtures.ts` via `src/data/api.ts`.
-
-| Future API | Phase 1 behavior |
+| Future API | This PR |
 |---|---|
-| `GET /api/barriers?bbox=…` | Bundled Wellesley barriers |
-| `GET /api/barriers/:id` | Local fixture lookup |
-| `POST /api/proposals/generate` | Propose mode shows a shell only — no network call |
+| `GET /api/barriers?bbox=…` | Bundled fixtures; live API flagged unavailable |
+| `GET /api/barriers/:id` | Local id lookup |
+| `POST /api/proposals/generate` | Client stub: ids in → facts + template draft; Gemini unavailable |
 | `GET /api/proposals/:id` | Not wired |
+| `compareIntervention` (`@morrow/routing`) | Types + mock in `src/routing/types.ts` / `src/data/compareMock.ts`; swap to Sophia’s package when #11/#12 land |
 
-The UI always labels illustrative evidence honestly. When Ashsmith’s APIs land, swap the implementations in `src/data/api.ts`; keep sending **ids only** from the client for metrics and proposal facts.
+Client never invents official meters or evidence labels for export — those come from the stub’s `facts` object built from fixtures / compare results.
 
 ## Docs
 
-- [Project plan](docs/MORROW_WHACK_2026_Project_Plan.md) — vision, demo flow, sponsors, and phase gates
-- [Team plan](docs/team-plan.md) — four-person seat assignments and handoffs
-- [Project context](docs/project-context.md) — short north-star brief for the team
+- [Project plan](docs/MORROW_WHACK_2026_Project_Plan.md)
+- [Team plan](docs/team-plan.md)
+- [Project context](docs/project-context.md)
 
 ## Seat
 

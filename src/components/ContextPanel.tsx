@@ -1,5 +1,14 @@
 import { EvidenceBadge } from './EvidenceBadge'
-import type { AppMode, Barrier, Intervention, Scenario } from '../types'
+import { ProposalEditor } from './ProposalEditor'
+import type { CompareResult } from '../data/api'
+import type {
+  AppMode,
+  Barrier,
+  DraftProposal,
+  Intervention,
+  ProposalFacts,
+  Scenario,
+} from '../types'
 
 type Props = {
   mode: AppMode
@@ -9,8 +18,26 @@ type Props = {
   selectedIntervention: Intervention | null
   scenario: Scenario
   dataNote: string
+  compare: CompareResult | null
+  proposalFacts: ProposalFacts | null
+  proposalDraft: DraftProposal | null
+  proposalWarnings: string[]
+  aiGenerated: boolean
+  geminiAvailable: boolean
+  apiAvailable: boolean
+  proposalLoading: boolean
   onSelectBarrier: (id: string) => void
   onSelectIntervention: (id: string) => void
+  onDraftChange: (draft: DraftProposal) => void
+  onGenerate: () => void
+  onExportPdf: () => void
+}
+
+function formatDelta(delta: number | null): string {
+  if (delta == null) return 'n/a'
+  if (delta === 0) return '0 m'
+  const sign = delta > 0 ? '+' : '−'
+  return `${sign}${Math.abs(delta)} m`
 }
 
 function barrierTypeLabel(type: Barrier['type']): string {
@@ -32,8 +59,19 @@ export function ContextPanel({
   selectedIntervention,
   scenario,
   dataNote,
+  compare,
+  proposalFacts,
+  proposalDraft,
+  proposalWarnings,
+  aiGenerated,
+  geminiAvailable,
+  apiAvailable,
+  proposalLoading,
   onSelectBarrier,
   onSelectIntervention,
+  onDraftChange,
+  onGenerate,
+  onExportPdf,
 }: Props) {
   return (
     <aside
@@ -103,7 +141,9 @@ export function ContextPanel({
                   )}
                 </p>
               ) : (
-                <p className="muted">No external source — illustrative scenario.</p>
+                <p className="muted">
+                  No external source — illustrative scenario.
+                </p>
               )}
             </div>
           )}
@@ -153,89 +193,109 @@ export function ContextPanel({
       {mode === 'compare' && (
         <div className="context-panel__body">
           <p className="context-panel__lead">
-            Modeled before / after for scenario{' '}
-            <code>{scenario.id}</code>. Figures are fixture placeholders until
-            the routing engine ships.
+            Modeled before / after for scenario <code>{scenario.id}</code>
+            {selectedIntervention
+              ? ` · intervention ${selectedIntervention.id}`
+              : ''}
+            . Shaped like Sophia&apos;s{' '}
+            <code>compareIntervention</code> (#12)
+            {compare
+              ? ` · source: ${compare.source}${compare.routingPackageAvailable ? '' : ' (package unavailable)'}`
+              : ''}
+            .
           </p>
-          <dl className="metrics">
-            <div>
-              <dt>Trip</dt>
-              <dd>
-                {scenario.originLabel} → {scenario.destinationLabel}
-              </dd>
-            </div>
-            <div>
-              <dt>Before</dt>
-              <dd>{scenario.modeledBeforeMeters} m</dd>
-            </div>
-            <div>
-              <dt>After</dt>
-              <dd>{scenario.modeledAfterMeters} m</dd>
-            </div>
-            <div>
-              <dt>Change</dt>
-              <dd>
-                −{scenario.modeledBeforeMeters - scenario.modeledAfterMeters} m
-                (modeled)
-              </dd>
-            </div>
-          </dl>
-          <div className="detail-block">
-            <h3>Assumptions</h3>
-            <ul>
-              {scenario.modelAssumptions.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          </div>
+          {compare ? (
+            <>
+              <dl className="metrics">
+                <div>
+                  <dt>Trip</dt>
+                  <dd>
+                    {scenario.originLabel} → {scenario.destinationLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Before</dt>
+                  <dd>
+                    {compare.beforeMeters == null
+                      ? 'unreachable'
+                      : `${compare.beforeMeters} m`}
+                    <span className="metrics__sub">
+                      edges: {compare.before.edgeIds.join(', ') || '—'}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>After</dt>
+                  <dd>
+                    {compare.afterMeters == null
+                      ? 'unreachable'
+                      : `${compare.afterMeters} m`}
+                    <span className="metrics__sub">
+                      edges: {compare.after.edgeIds.join(', ') || '—'} · geometry{' '}
+                      {compare.after.geometry.length} pts
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Delta</dt>
+                  <dd>
+                    {formatDelta(compare.deltaMeters)} (after − before)
+                    {compare.becameReachable ? ' · became reachable' : ''}
+                  </dd>
+                </div>
+              </dl>
+              <div className="detail-block">
+                <h3>Assumptions</h3>
+                <ul>
+                  {compare.assumptions.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : (
+            <p className="muted">Select an intervention in Improve first.</p>
+          )}
         </div>
       )}
 
       {mode === 'propose' && (
         <div className="context-panel__body">
           <p className="context-panel__lead">
-            Proposal shell — Phase 1 shows structure only. Gemini drafting and
-            PDF export arrive in later phases via Ashsmith&apos;s generate API.
+            Editable advocacy draft. Client sends ids only to the generate stub;
+            metrics and evidence badges render from the returned facts object.
           </p>
-          <article className="proposal-shell">
-            <h3>Location</h3>
-            <p>
-              {scenario.city} — {selectedBarrier?.locationLabel ?? scenario.label}
-            </p>
-            <h3>Issue</h3>
-            <p>
-              {selectedBarrier?.description ??
-                'Select a barrier to fill this section.'}
-            </p>
-            <h3>Evidence</h3>
-            {selectedBarrier ? (
-              <p>
-                <EvidenceBadge status={selectedBarrier.evidenceStatus} />{' '}
-                Simulation / demo dataset.
-              </p>
-            ) : (
-              <p className="muted">No barrier selected.</p>
-            )}
-            <h3>Suggested intervention</h3>
-            <p>
-              {selectedIntervention?.description ??
-                'Choose an option in Improve.'}
-            </p>
-            <h3>Modeled outcome</h3>
-            <p>
-              Accessible route {scenario.modeledBeforeMeters} m →{' '}
-              {scenario.modeledAfterMeters} m (fixture).
-            </p>
-            <h3>Action requested</h3>
-            <p>
-              Ask qualified local officials to review feasibility on site before
-              any infrastructure decision.
-            </p>
-            <h3>Next steps</h3>
+          <div className="proposal-editor__actions" style={{ marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onGenerate}
+              disabled={
+                proposalLoading ||
+                !selectedBarrier ||
+                !selectedIntervention
+              }
+            >
+              {proposalLoading ? 'Generating…' : 'Generate proposal'}
+            </button>
+          </div>
+          {proposalFacts && proposalDraft ? (
+            <ProposalEditor
+              facts={proposalFacts}
+              draft={proposalDraft}
+              warnings={proposalWarnings}
+              aiGenerated={aiGenerated}
+              geminiAvailable={geminiAvailable}
+              apiAvailable={apiAvailable}
+              onChange={onDraftChange}
+              onExportPdf={onExportPdf}
+            />
+          ) : (
             <p className="muted">
-              Export PDF and editable draft — not wired in Phase 1.
+              Choose a barrier and intervention, then generate a template draft
+              (Gemini path labeled unavailable).
             </p>
-          </article>
+          )}
         </div>
       )}
     </aside>
