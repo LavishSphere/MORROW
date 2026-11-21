@@ -27,6 +27,8 @@ export default function App() {
   }
   const panelOpen = mode !== 'explore'
   const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
+  // Explore can swap the canvas for the 2D list; other modes always show it.
+  const showCanvas = mode !== 'explore' || surfaceView === 'canvas'
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
     scenario.barrierId,
@@ -86,7 +88,6 @@ export default function App() {
         surfaceView={surfaceView}
         onSurfaceViewChange={setSurfaceView}
         onPlace={setNeighborhood}
-        onShowcase={() => setNeighborhood(null)}
       />
 
       <main
@@ -95,14 +96,9 @@ export default function App() {
         role="tabpanel"
         aria-labelledby={`mode-tab-${mode}`}
       >
-        {mode === 'explore' && surfaceView === 'canvas' && (
-          <CanvasSlot
-            mode={mode}
-            reducedMotion={reducedMotion}
-            neighborhood={neighborhood}
-          />
-        )}
-        {mode !== 'explore' && (
+        {/* One canvas for every mode, so switching modes keeps the city
+            mounted instead of rebuilding it behind the loading cover. */}
+        {showCanvas && (
           <CanvasSlot
             mode={mode}
             reducedMotion={reducedMotion}

@@ -40,8 +40,7 @@
   background: rgba(12, 20, 17, 0.75);
 }
 
-.place-search__go,
-.place-search__back {
+.place-search__go {
   height: var(--bar-control-h, 2.5rem);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
@@ -56,8 +55,7 @@
   transition: background 160ms ease;
 }
 
-.place-search__go:not(:disabled):hover,
-.place-search__back:hover {
+.place-search__go:not(:disabled):hover {
   background: rgba(12, 20, 17, 0.8);
 }
 
