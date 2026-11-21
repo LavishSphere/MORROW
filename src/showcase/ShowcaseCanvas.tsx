@@ -28,7 +28,7 @@ export function ShowcaseCanvas({
     >
       <Canvas
         shadows
-        camera={{ fov: 78, near: 0.05, far: 400, position: [6.15, 1.76, 13.4] }}
+        camera={{ fov: 72, near: 0.05, far: 400, position: [6.15, 1.76, 13.4] }}
         dpr={[1, 1.75]}
         gl={{
           antialias: true,
@@ -68,7 +68,7 @@ export function ShowcaseCanvas({
       </Canvas>
       <OpeningSequence reducedMotion={reducedMotion} />
       <p className="map-mark">MORROW</p>
-      <p className="walk-hint">Click to look · WASD along the street · Click the curb and it becomes a ramp</p>
+      <p className="walk-hint">Click to look · WASD glides on streets · Scroll zooms · Click the curb and it becomes a ramp</p>
       <p className="sr-only" role="status">
         {selectedBarrierId ? `Barrier ${selectedBarrierId} selected.` : "No barrier selected."}{" "}
         {selectedInterventionId
