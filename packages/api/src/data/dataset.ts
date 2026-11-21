@@ -1,6 +1,6 @@
 /**
  * Loads the checked-in Wellesley demo dataset + basemap.
- * No Tiger Data / PostGIS yet (WHA-9). Barriers filter in memory by bbox.
+ * Used when Tiger Data / PostGIS is unset or unreachable (WHA-9).
  */
 
 import { readFileSync } from "node:fs";

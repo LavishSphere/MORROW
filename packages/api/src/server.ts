@@ -41,13 +41,13 @@ async function dispatch(
   }
 
   if (req.method === "GET" && pathname === "/api/barriers") {
-    handleListBarriers(req, res, url);
+    await handleListBarriers(req, res, url);
     return;
   }
 
   const barrierMatch = matchPath(pathname, /^\/api\/barriers\/([^/]+)$/);
   if (req.method === "GET" && barrierMatch) {
-    handleGetBarrier(req, res, decodeURIComponent(barrierMatch[1] ?? ""));
+    await handleGetBarrier(req, res, decodeURIComponent(barrierMatch[1] ?? ""));
     return;
   }
 
@@ -58,7 +58,7 @@ async function dispatch(
 
   const proposalMatch = matchPath(pathname, /^\/api\/proposals\/([^/]+)$/);
   if (req.method === "GET" && proposalMatch) {
-    handleGetProposal(req, res, decodeURIComponent(proposalMatch[1] ?? ""));
+    await handleGetProposal(req, res, decodeURIComponent(proposalMatch[1] ?? ""));
     return;
   }
 
