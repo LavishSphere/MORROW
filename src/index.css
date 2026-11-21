@@ -1028,7 +1028,8 @@ code {
 .dream-sky {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  /* Above the imagery, under the barrier pin (z-index 3) and its leader. */
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
 }
