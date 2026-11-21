@@ -14,10 +14,15 @@ import {
   STREET_HEADING,
 } from "./placeholder";
 
-/** Phase-1 curb in the placeholder scenario. */
-export const CURB_BARRIER_ID = "barrier-curb-1";
-/** Phase-1 ramp intervention in the placeholder scenario. */
-export const RAMP_INTERVENTION_ID = "intervention-ramp-1";
+import {
+  BARRIER_CURB_ID as LAYOUT_BARRIER_ID,
+  INTERVENTION_RAMP_ID as LAYOUT_INTERVENTION_ID,
+} from "../showcase/layout";
+
+/** Demo-dataset curb barrier id. */
+export const CURB_BARRIER_ID = LAYOUT_BARRIER_ID;
+/** Demo-dataset ramp intervention id. */
+export const RAMP_INTERVENTION_ID = LAYOUT_INTERVENTION_ID;
 
 export type BarrierMarkersProps = {
   selectedBarrierId?: string | null;
@@ -77,8 +82,8 @@ function setCursor(event: ThreeEvent<PointerEvent>, cursor: string) {
  * Clickable curb and ramp for the phase-1 scenario.
  *
  * ShowcaseCanvas imports this as `../route/BarrierMarkers`.
- * The curb calls `onSelectBarrier("barrier-curb-1")`.
- * The ramp calls `onSelectIntervention("intervention-ramp-1")`.
+ * The curb calls `onSelectBarrier` with the demo-dataset barrier id.
+ * The ramp calls `onSelectIntervention` with the demo-dataset intervention id.
  */
 export function BarrierMarkers({
   selectedBarrierId = null,

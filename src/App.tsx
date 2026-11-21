@@ -16,7 +16,6 @@ import {
   interventionsForBarrier,
   LOCATIONS,
 } from './data/fixtures'
-import { BARRIER_CURB_ID, INTERVENTION_RAMP_ID } from './showcase/layout'
 import type {
   AppMode,
   Barrier,
@@ -29,8 +28,8 @@ import type {
 export default function App() {
   const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
-  const [locationId, setLocationId] = useState('wellesley')
   const [surfaceView, setSurfaceView] = useState<SurfaceView>('canvas')
+  const [locationId, setLocationId] = useState('wellesley')
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [dataNote, setDataNote] = useState('Loading fixtures…')
   const [selectedBarrierId, setSelectedBarrierId] = useState<string | null>(
@@ -52,13 +51,6 @@ export default function App() {
   })
 
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReducedMotion(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-
-  useEffect(() => {
     let cancelled = false
     fetchBarriers().then((result) => {
       if (cancelled) return
@@ -71,6 +63,13 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReducedMotion(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
   const selectedBarrier =
     barriers.find((b) => b.id === selectedBarrierId) ?? null
   const interventions = selectedBarrier
@@ -79,12 +78,15 @@ export default function App() {
   const selectedIntervention: Intervention | null = selectedInterventionId
     ? (getIntervention(selectedInterventionId) ?? null)
     : null
+
   const compare: CompareResult | null = selectedInterventionId
     ? compareByIds({
         scenarioId: scenario.id,
         interventionId: selectedInterventionId,
       })
     : null
+
+  const location = LOCATIONS.find((l) => l.id === locationId) ?? LOCATIONS[0]
 
   const handleGenerate = async () => {
     if (!selectedBarrierId || !selectedInterventionId) return
@@ -106,16 +108,19 @@ export default function App() {
     }
   }
 
+  const handleExportPdf = () => {
+    window.print()
+  }
+
   return (
-    <div
-      className={`app-shell app-shell--street${reducedMotion ? ' is-reduced-motion' : ''}`}
-    >
+    <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
       <a className="skip-link" href="#context-panel">
         Skip to context panel
       </a>
       <a className="skip-link skip-link--modes" href="#mode-toolbar">
         Skip to modes
       </a>
+
       <TopBar
         locations={LOCATIONS}
         selectedLocationId={locationId}
@@ -125,23 +130,23 @@ export default function App() {
         surfaceView={surfaceView}
         onSurfaceViewChange={setSurfaceView}
       />
-      <main className="app-shell__main app-shell__main--street">
+
+      <main className="app-shell__main">
         {surfaceView === 'canvas' ? (
           <CanvasSlot
-            reducedMotion={reducedMotion}
+            mode={mode}
+            selectedBarrier={selectedBarrier}
             selectedBarrierId={selectedBarrierId}
             selectedInterventionId={selectedInterventionId}
+            reducedMotion={reducedMotion}
+            locationLabel={location.label}
+            compare={compare}
             onSelectBarrier={(id) => {
-              const next = id || BARRIER_CURB_ID
-              setSelectedBarrierId(next)
-              const opts = interventionsForBarrier(next)
-              setSelectedInterventionId(
-                opts[0]?.id ?? INTERVENTION_RAMP_ID,
-              )
+              setSelectedBarrierId(id)
+              const opts = interventionsForBarrier(id)
+              setSelectedInterventionId(opts[0]?.id ?? null)
             }}
-            onSelectIntervention={(id) => {
-              setSelectedInterventionId(id || INTERVENTION_RAMP_ID)
-            }}
+            onSelectIntervention={setSelectedInterventionId}
           />
         ) : (
           <ListFallback
@@ -183,14 +188,17 @@ export default function App() {
           onSelectIntervention={setSelectedInterventionId}
           onDraftChange={setProposalDraft}
           onGenerate={handleGenerate}
-          onExportPdf={() => window.print()}
+          onExportPdf={handleExportPdf}
         />
       </main>
-      <ModeToolbar
-        mode={mode}
-        onModeChange={setMode}
-        reducedMotion={reducedMotion}
-      />
+
+      <div id="mode-toolbar">
+        <ModeToolbar
+          mode={mode}
+          onModeChange={setMode}
+          reducedMotion={reducedMotion}
+        />
+      </div>
     </div>
   )
 }
