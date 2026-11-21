@@ -40,72 +40,50 @@ function pickLeaf(ix: number, iz: number) {
     : AUTUMN[Math.floor(hash(iz, ix) * AUTUMN.length) % AUTUMN.length];
 }
 
+const BLOCKS = [-27, -9, 9, 27] as const;
+
 function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: number } } {
   const lots: Lot[] = [];
   const trees: TreeSpec[] = [];
-  const STEP = 16;
-  const downtown = { x: 8, z: 6 };
 
-  for (let ix = -4; ix <= 4; ix += 1) {
-    for (let iz = -4; iz <= 4; iz += 1) {
-      if (ix === 0 && iz === 0) continue;
-      const x = ix * STEP + (hash(ix, iz) - 0.5) * 4.4;
-      const z = iz * STEP + (hash(iz, ix + 9) - 0.5) * 4.4;
-      const dist = Math.hypot(x - downtown.x, z - downtown.z);
-      if (hash(ix * 3, iz * 7) < 0.22 && dist > 22) {
-        const count = 3 + Math.floor(hash(ix, iz) * 3);
-        for (let t = 0; t < count; t += 1) {
+  BLOCKS.forEach((x, ix) => {
+    BLOCKS.forEach((z, iz) => {
+      const downtown = Math.abs(x) + Math.abs(z) <= 18;
+      if (x === -27 && z === -27) {
+        for (let t = 0; t < 7; t += 1) {
           trees.push({
-            x: x + (hash(ix + t, iz) - 0.5) * 9,
-            z: z + (hash(iz, ix + t + 4) - 0.5) * 9,
+            x: x + (hash(t, ix) - 0.5) * 8,
+            z: z + (hash(iz, t) - 0.5) * 8,
             leaf: pickLeaf(ix + t, iz),
-            scale: 0.9 + hash(t, ix) * 0.55,
+            scale: 0.95 + hash(t, iz) * 0.4,
           });
         }
-        continue;
+        return;
       }
-
-      const downtownLot = dist < 20;
-      const w = downtownLot ? 4.1 + hash(ix + 1, iz) * 2.4 : 3.0 + hash(ix + 1, iz) * 3.4;
-      const d = downtownLot ? 3.9 + hash(ix, iz + 1) * 2.3 : 2.9 + hash(ix, iz + 1) * 3.2;
-      const h = downtownLot ? 8 + hash(ix, iz) * 12 : 3.4 + hash(ix, iz) * 8;
+      const w = downtown ? 5.4 + hash(ix, iz) * 1.4 : 4.2 + hash(ix, iz) * 1.2;
+      const d = downtown ? 5 + hash(iz, ix) * 1.3 : 3.8 + hash(iz, ix) * 1.1;
+      const h = downtown ? 12 + hash(ix + 2, iz) * 12 : 3.6 + hash(ix, iz + 2) * 5;
       lots.push({
-        x,
-        z,
+        x: x + (hash(ix, iz) - 0.5) * 1.2,
+        z: z + (hash(iz, ix) - 0.5) * 1.2,
         w,
         d,
         h,
-        glow: downtownLot ? 0.62 : 0.22,
-        stepped: downtownLot && h > 10,
-        wire: dist > 38,
+        glow: downtown ? 0.75 : 0.28,
+        stepped: downtown && h > 14,
+        wire: false,
       });
       trees.push({
-        x: x + (hash(ix, iz) > 0.5 ? 1 : -1) * (w * 0.5 + 2.1),
-        z: z + (hash(iz, ix) - 0.5) * (d + 2.4),
-        leaf: pickLeaf(ix, iz + 5),
-        scale: 0.8 + hash(ix, 3) * 0.45,
+        x: x + 5.2,
+        z: z - 4.6,
+        leaf: pickLeaf(ix, iz + 3),
+        scale: 0.85 + hash(ix, 4) * 0.3,
       });
-    }
-  }
+    });
+  });
 
-  lots.push(
-    { x: 8.2, z: 7.4, w: 5.1, d: 5.3, h: 22, glow: 0.95, stepped: true, wire: false },
-    { x: 13.4, z: 6.2, w: 4.6, d: 4.8, h: 11, glow: 0.8, stepped: true, wire: false },
-    { x: 12.8, z: 11.8, w: 3.4, d: 3.4, h: 16, glow: 0.78, stepped: true, wire: false },
-    { x: 4.0, z: 12.2, w: 4.0, d: 4.4, h: 10, glow: 0.62, stepped: true, wire: false },
-    { x: 7.2, z: 2.6, w: 3.4, d: 3.5, h: 7.2, glow: 0.48, stepped: false, wire: false },
-  );
-
-  trees.push(
-    { x: -6.8, z: 4.0, leaf: CRYSTAL, scale: 1.15, crystal: true },
-    { x: 2.4, z: 18.6, leaf: "#c4a03a", scale: 1.28 },
-    { x: 19.2, z: 3.2, leaf: "#3d7a38", scale: 1.12 },
-    { x: 20.6, z: 14.4, leaf: "#d7b25a", scale: 1.08 },
-    { x: -3.2, z: -9.4, leaf: "#6ea84a", scale: 1.18 },
-    { x: 16.4, z: -8.2, leaf: "#c9782a", scale: 1.05 },
-  );
-
-  return { lots, trees, plaza: { x: 8.8, z: 1.6 } };
+  trees.push({ x: -27, z: -27, leaf: CRYSTAL, scale: 1.2, crystal: true });
+  return { lots, trees, plaza: { x: -27, z: -27 } };
 }
 
 const CITY = buildCity();
@@ -244,54 +222,6 @@ function GlowSeg({
   );
 }
 
-function RoadCorner({
-  x,
-  z,
-  rotation,
-  radius,
-  width,
-}: {
-  x: number;
-  z: number;
-  rotation: number;
-  radius: number;
-  width: number;
-}) {
-  return (
-    <mesh position={[x, 0.05, z]} rotation={[-Math.PI / 2, 0, rotation]} raycast={() => null}>
-      <torusGeometry args={[radius, width / 2, 8, 10, Math.PI / 2]} />
-      <meshStandardMaterial
-        color={ROAD}
-        emissive={ROAD}
-        emissiveIntensity={1.05}
-        roughness={0.2}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
-
-/** Streets that bend around each block. Not a graph-paper grid. */
-function BlockStreet({ x, z, w, d }: Pick<Lot, "x" | "z" | "w" | "d">) {
-  const pad = 2.4;
-  const hw = w / 2 + pad;
-  const hd = d / 2 + pad;
-  const radius = 1.35;
-  const width = 0.72;
-  return (
-    <group>
-      <GlowSeg from={[x - hw + radius, z - hd]} to={[x + hw - radius, z - hd]} width={width} />
-      <GlowSeg from={[x - hw + radius, z + hd]} to={[x + hw - radius, z + hd]} width={width} />
-      <GlowSeg from={[x - hw, z - hd + radius]} to={[x - hw, z + hd - radius]} width={width} />
-      <GlowSeg from={[x + hw, z - hd + radius]} to={[x + hw, z + hd - radius]} width={width} />
-      <RoadCorner x={x - hw + radius} z={z - hd + radius} rotation={Math.PI} radius={radius} width={width} />
-      <RoadCorner x={x + hw - radius} z={z - hd + radius} rotation={Math.PI / 2} radius={radius} width={width} />
-      <RoadCorner x={x + hw - radius} z={z + hd - radius} rotation={0} radius={radius} width={width} />
-      <RoadCorner x={x - hw + radius} z={z + hd - radius} rotation={-Math.PI / 2} radius={radius} width={width} />
-    </group>
-  );
-}
-
 function quad(
   a: readonly [number, number],
   b: readonly [number, number],
@@ -363,19 +293,33 @@ function Pothole({ x, z }: { x: number; z: number }) {
   );
 }
 
+const STREETS = [-36, -18, 0, 18, 36] as const;
+
 function CurvedRoads() {
-  const holes = [4, 9, 15, 20].map((index) => beside(BOULEVARD, index, 0.15));
+  const span = 54;
+  const curb = 1.7;
   return (
     <group>
-      <Ribbon points={BOULEVARD} width={3.4} color="#12343c" y={0.03} glow={0.15} />
-      <Ribbon points={BOULEVARD} width={0.16} y={0.07} />
-      <Ribbon points={SWEEP} width={2.6} color="#12343c" y={0.03} glow={0.15} />
-      <Ribbon points={SWEEP} width={0.14} y={0.07} />
-      <Ribbon points={CRESCENT} width={2.2} color="#12343c" y={0.03} glow={0.12} />
-      <Ribbon points={LOOP} width={2.1} color="#12343c" y={0.03} glow={0.12} />
-      {holes.map((spot) => (
-        <Pothole key={`hole-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
+      {STREETS.map((z) => (
+        <group key={`h-${z}`}>
+          <GlowSeg from={[-span, z]} to={[span, z]} width={4.8} color="#103f4c" y={0.03} glow={0.12} />
+          <GlowSeg from={[-span, z]} to={[span, z]} width={3.2} color="#1a7584" y={0.055} glow={0.4} />
+          <GlowSeg from={[-span, z - curb]} to={[span, z - curb]} width={0.12} color="#f4ffff" y={0.09} glow={0.75} />
+          <GlowSeg from={[-span, z + curb]} to={[span, z + curb]} width={0.12} color="#f4ffff" y={0.09} glow={0.75} />
+          <GlowSeg from={[-span, z]} to={[span, z]} width={0.08} color="#f7ffff" y={0.1} glow={0.55} />
+        </group>
       ))}
+      {STREETS.map((x) => (
+        <group key={`v-${x}`}>
+          <GlowSeg from={[x, -span]} to={[x, span]} width={4.8} color="#103f4c" y={0.03} glow={0.12} />
+          <GlowSeg from={[x, -span]} to={[x, span]} width={3.2} color="#1a7584" y={0.055} glow={0.4} />
+          <GlowSeg from={[x - curb, -span]} to={[x - curb, span]} width={0.12} color="#f4ffff" y={0.09} glow={0.75} />
+          <GlowSeg from={[x + curb, -span]} to={[x + curb, span]} width={0.12} color="#f4ffff" y={0.09} glow={0.75} />
+          <GlowSeg from={[x, -span]} to={[x, span]} width={0.08} color="#f7ffff" y={0.1} glow={0.55} />
+        </group>
+      ))}
+      <Pothole x={0} z={9} />
+      <Pothole x={-18} z={0} />
     </group>
   );
 }
@@ -538,9 +482,6 @@ function Roads() {
   return (
     <group>
       <CurvedRoads />
-      {CITY.lots.map((lot) => (
-        <BlockStreet key={`street-${lot.x}-${lot.z}`} x={lot.x} z={lot.z} w={lot.w} d={lot.d} />
-      ))}
       <StreetLife />
     </group>
   );
