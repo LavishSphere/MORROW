@@ -1,22 +1,13 @@
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  background: #000000;
-  color: #1488ff;
-}
-
-body {
-  overflow: hidden;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
-}
+/* Scoped to the canvas host so Accessible Interface chrome keeps its shell styles. */
 
 .showcase {
   position: relative;
   height: 100%;
+  min-height: 280px;
   overflow: hidden;
   background: #000000;
+  color: #1488ff;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .showcase canvas {
@@ -24,83 +15,33 @@ body {
   touch-action: none;
 }
 
-.map-mark {
+.showcase .map-mark {
   position: absolute;
-  top: 28px;
-  left: 32px;
+  top: 16px;
+  left: 18px;
   z-index: 8;
   margin: 0;
   color: #1488ff;
   font-family: "Bricolage Grotesque", "Avenir Next", sans-serif;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.28em;
   pointer-events: none;
 }
 
-.walk-hint {
+.showcase .walk-hint {
   position: absolute;
-  left: 32px;
-  bottom: 28px;
+  left: 18px;
+  bottom: 14px;
   z-index: 8;
   margin: 0;
   color: #1488ff;
   font-family: "Bricolage Grotesque", "Avenir Next", sans-serif;
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   pointer-events: none;
-}
-
-.opening {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  background: #000000;
-  color: #1488ff;
-  opacity: 1;
-  pointer-events: auto;
-  transition: opacity 850ms ease;
-}
-
-.opening.is-fading,
-.opening.is-done {
-  opacity: 0;
-}
-
-.opening.is-done {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.opening-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  text-align: center;
-}
-
-.opening-card img {
-  width: 88px;
-  height: 88px;
-  user-select: none;
-}
-
-.opening-card h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: 0.42em;
-  text-indent: 0.42em;
-}
-
-.opening-card p {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: 0.03em;
+  max-width: calc(100% - 36px);
 }
 
 .pin-label {
@@ -154,10 +95,4 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .opening {
-    transition-duration: 280ms;
-  }
 }
