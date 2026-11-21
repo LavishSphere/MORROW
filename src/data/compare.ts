@@ -86,3 +86,15 @@ export function compareByIds(input: {
     routingPackageAvailable: true,
   }
 }
+
+/** App / satellite / outage generate must not white-screen on a bad id. */
+export function tryCompareByIds(input: {
+  scenarioId: string
+  interventionId: string
+}): CompareResult | null {
+  try {
+    return compareByIds(input)
+  } catch {
+    return null
+  }
+}

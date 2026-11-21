@@ -1,5 +1,9 @@
 import { buildTemplateDraft } from './templateProposal'
-import { compareByIds, type CompareResult } from './compare'
+import {
+  compareByIds,
+  tryCompareByIds,
+  type CompareResult,
+} from './compare'
 import { BARRIERS, getBarrier, getIntervention, SCENARIO } from './fixtures'
 import type {
   Barrier,
@@ -187,7 +191,7 @@ export function getDemoIntervention(): Intervention | null {
   return getIntervention(SCENARIO.interventionId) ?? null
 }
 
-export { compareByIds }
+export { compareByIds, tryCompareByIds }
 
 function idsMatchDemoScenario(
   req: GenerateProposalRequest,
@@ -277,10 +281,13 @@ function bundledGenerate(
     return invalidGenerateResponse()
   }
 
-  const compare = compareByIds({
+  const compare = tryCompareByIds({
     scenarioId: req.scenarioId,
     interventionId: req.interventionId,
   })
+  if (!compare) {
+    return invalidGenerateResponse()
+  }
   const facts = buildFacts(req.barrierId, req.interventionId, compare)
 
   if (!facts) {

@@ -7,9 +7,12 @@ import {
 } from "../src/data/dataset.ts";
 import { clearProposals } from "../src/data/proposals.ts";
 import { buildTemplateDraft } from "../src/draft/template.ts";
-import { resolveGenerateInput } from "../src/facts.ts";
+import {
+  ProposalInputError,
+  resolveGenerateInput,
+} from "../src/facts.ts";
 import { createApiServer } from "../src/server.ts";
-import type { ProposalFacts } from "../../../shared/types.ts";
+import type { Barrier, Intervention, ProposalFacts } from "../../../shared/types.ts";
 
 const server = createApiServer();
 let baseUrl = "";
@@ -211,4 +214,77 @@ test("template draft matches PDF DraftProposal shape", () => {
   assert.ok(draft.requestForReview);
   assert.ok(draft.meetingTalkingPoints.length >= 1);
   assert.ok(draft.limitations);
+});
+
+test("resolveGenerateInput rejects barrier/intervention pairs that do not match the scenario", () => {
+  const extraBarrier: Barrier = {
+    id: "wellesley-barrier-mismatch-02",
+    coordinates: [-71.307, 42.293],
+    type: "missing_ramp",
+    evidenceStatus: "illustrative",
+    description: "Fixture barrier for mismatch tests (not in the demo dataset).",
+    locationLabel: "Mismatch fixture",
+  };
+  const extraOnOtherBarrier: Intervention = {
+    id: "wellesley-intervention-mismatch-other",
+    barrierId: extraBarrier.id,
+    type: "install_ramp",
+    description: "Fixture intervention attached to the extra barrier.",
+    graphChanges: [{ edgeId: "osm-way-543827744", accessible: true, weight: 1 }],
+  };
+  const extraOnDemoBarrier: Intervention = {
+    id: "wellesley-intervention-mismatch-on-demo",
+    barrierId: "wellesley-barrier-campus-path-01",
+    type: "install_ramp",
+    description: "Second intervention on the demo barrier.",
+    graphChanges: [{ edgeId: "osm-way-543827745", accessible: true, weight: 1 }],
+  };
+
+  dataset.barriers.push(extraBarrier);
+  dataset.interventions.push(extraOnOtherBarrier, extraOnDemoBarrier);
+  try {
+    assert.throws(
+      () =>
+        resolveGenerateInput({
+          scenarioId: "wellesley-demo-01",
+          barrierId: "wellesley-barrier-campus-path-01",
+          interventionId: extraOnOtherBarrier.id,
+        }),
+      (err: unknown) =>
+        err instanceof ProposalInputError &&
+        err.status === 400 &&
+        err.message === "interventionId does not belong to barrierId",
+    );
+    assert.throws(
+      () =>
+        resolveGenerateInput({
+          scenarioId: "wellesley-demo-01",
+          barrierId: extraBarrier.id,
+          interventionId: extraOnOtherBarrier.id,
+        }),
+      (err: unknown) =>
+        err instanceof ProposalInputError &&
+        err.status === 400 &&
+        err.message === "barrierId does not match the scenario's barrier",
+    );
+    assert.throws(
+      () =>
+        resolveGenerateInput({
+          scenarioId: "wellesley-demo-01",
+          barrierId: "wellesley-barrier-campus-path-01",
+          interventionId: extraOnDemoBarrier.id,
+        }),
+      (err: unknown) =>
+        err instanceof ProposalInputError &&
+        err.status === 400 &&
+        err.message === "interventionId does not match the scenario's intervention",
+    );
+  } finally {
+    const dropBarrier = dataset.barriers.lastIndexOf(extraBarrier);
+    if (dropBarrier !== -1) dataset.barriers.splice(dropBarrier, 1);
+    for (const extra of [extraOnOtherBarrier, extraOnDemoBarrier]) {
+      const drop = dataset.interventions.lastIndexOf(extra);
+      if (drop !== -1) dataset.interventions.splice(drop, 1);
+    }
+  }
 });
