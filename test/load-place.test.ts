@@ -54,8 +54,8 @@ test("the canvas loads a typed place on the satellite scene", async () => {
   const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
   const town = await readFile("src/satellite/town/SatelliteTown.tsx", "utf8");
   const query = await readFile("src/data/overpass.ts", "utf8");
-  assert.match(slot, /SatelliteTown/);
-  assert.equal(slot.includes("ShowcaseCanvas"), false);
+  assert.match(slot, /ShowcaseCanvas/);
+  assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(query, /Not a barrier inventory/);
   assert.match(town, /No modeled route for this place/);
 });
