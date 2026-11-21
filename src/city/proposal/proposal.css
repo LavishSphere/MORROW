@@ -1,0 +1,7 @@
+/* Tailwind for the proposal card only. Preflight stays off so the rest of the app is unchanged. */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme) source(none);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+
+@source "./**/*.{tsx,ts}";
