@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
+import { ImprovePage } from './components/ImprovePage'
 import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { fetchBarriers, getDemoScenario, tryCompareByIds } from './data/api'
-import { interventionsForBarrier, LOCATIONS } from './data/fixtures'
+import {
+  getBarrier,
+  interventionsForBarrier,
+  LOCATIONS,
+} from './data/fixtures'
 import type { AppMode, Barrier, SurfaceView } from './types'
 
 export default function App() {
@@ -50,6 +55,12 @@ export default function App() {
         interventionId: selectedInterventionId,
       })
     : null
+  const selectedBarrier =
+    barriers.find((barrier) => barrier.id === selectedBarrierId) ??
+    (selectedBarrierId ? (getBarrier(selectedBarrierId) ?? null) : null)
+  const interventions = selectedBarrier
+    ? interventionsForBarrier(selectedBarrier.id)
+    : []
 
   return (
     <div className={`app-shell${reducedMotion ? ' is-reduced-motion' : ''}`}>
@@ -73,9 +84,22 @@ export default function App() {
         role="tabpanel"
         aria-labelledby={`mode-tab-${mode}`}
       >
-        {surfaceView === 'canvas' ? (
-          <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
-        ) : (
+        {mode === 'explore' && surfaceView === 'canvas' && (
+          <>
+            <CanvasSlot mode={mode} reducedMotion={reducedMotion} />
+            <div className="dream-sky" aria-hidden="true">
+              <span className="dream-sky__cloud dream-sky__cloud--one" />
+              <span className="dream-sky__cloud dream-sky__cloud--two" />
+              <span className="dream-sky__cloud dream-sky__cloud--three" />
+              <span className="dream-sky__cloud dream-sky__cloud--four" />
+              <span className="dream-sky__sparkle dream-sky__sparkle--a" />
+              <span className="dream-sky__sparkle dream-sky__sparkle--b" />
+              <span className="dream-sky__sparkle dream-sky__sparkle--c" />
+              <span className="dream-sky__glow" />
+            </div>
+          </>
+        )}
+        {mode === 'explore' && surfaceView === 'list' && (
           <ListFallback
             barriers={barriers}
             selectedBarrierId={selectedBarrierId}
@@ -87,20 +111,17 @@ export default function App() {
             }}
           />
         )}
-        <div className="dream-sky" aria-hidden="true">
-          <span className="dream-sky__cloud dream-sky__cloud--one" />
-          <span className="dream-sky__cloud dream-sky__cloud--two" />
-          <span className="dream-sky__cloud dream-sky__cloud--three" />
-          <span className="dream-sky__cloud dream-sky__cloud--four" />
-          <span className="dream-sky__sparkle dream-sky__sparkle--a" />
-          <span className="dream-sky__sparkle dream-sky__sparkle--b" />
-          <span className="dream-sky__sparkle dream-sky__sparkle--c" />
-          <span className="dream-sky__glow" />
-        </div>
+        {mode === 'improve' && (
+          <ImprovePage
+            barrier={selectedBarrier}
+            interventions={interventions}
+            selectedId={selectedInterventionId}
+            onSelect={setSelectedInterventionId}
+          />
+        )}
+        {mode === 'compare' && <CompareSheet />}
+        {mode === 'propose' && <ProposeSheet />}
       </main>
-
-      {mode === 'compare' && <CompareSheet />}
-      {mode === 'propose' && <ProposeSheet />}
 
       <div id="mode-toolbar">
         <ModeToolbar
