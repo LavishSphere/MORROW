@@ -89,4 +89,4 @@ That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audit
 
 GitHub Pages is the static demo host. A manual deploy can publish another git ref. Model and database credentials are not available to these workflows.
 
-Until `apps/web` exists, the build writes the holding page in `site/` to `dist/`. When that app is added, its build should write `apps/web/dist/index.html`. The pipeline copies that directory to `dist/`.
+`npm run build` writes the Vite app to `dist/`. Pages publishes that folder. The `site/` holding page is not the judge demo.
