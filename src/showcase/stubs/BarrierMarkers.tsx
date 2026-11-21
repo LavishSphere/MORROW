@@ -94,11 +94,11 @@ function Pin({ position, label, selected, reducedMotion, onClick }: PinProps) {
           }}
           onPointerOut={() => setHot(false)}
         >
-          <octahedronGeometry args={[0.2, 0]} />
+          <octahedronGeometry args={[0.32, 0]} />
           <meshBasicMaterial color={LOGO_BLUE} toneMapped={false} />
         </mesh>
-        <mesh position={[0, -0.28, 0]} raycast={() => null}>
-          <cylinderGeometry args={[0.025, 0.025, 0.36, 5]} />
+        <mesh position={[0, -0.5, 0]} raycast={() => null}>
+          <cylinderGeometry args={[0.04, 0.04, 0.8, 6]} />
           <meshBasicMaterial color={LOGO_BLUE} toneMapped={false} />
         </mesh>
       </group>
@@ -120,14 +120,14 @@ export function BarrierMarkers({
     <group name="barrier-markers">
       {barriers.map((barrier) => {
         const barrierPin: readonly [number, number, number] = [
-          barrier.position[0],
-          barrier.position[1] + 0.78,
+          barrier.position[0] + 0.4,
+          barrier.position[1] + 2.3,
           barrier.position[2],
         ];
         const interventionPin: readonly [number, number, number] = [
-          barrier.position[0] - 0.78,
-          barrier.position[1] + 0.42,
-          barrier.position[2] + 0.78,
+          barrier.position[0] - 6.4,
+          barrier.position[1] + 2.3,
+          barrier.position[2] + 1.2,
         ];
         return (
           <group key={barrier.id}>
