@@ -1,7 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { formatImprovement, formatMeters } from './format'
 import {
-  GEMINI_ESTIMATE_LABEL,
   buildStubGeminiCostEstimate,
   requestGeminiCostEstimate,
 } from './geminiEstimate'
@@ -16,7 +15,7 @@ export type BeforeAfterCardProps = {
 }
 
 const EMPTY_ESTIMATE: GeminiCostEstimate = {
-  label: GEMINI_ESTIMATE_LABEL,
+  label: 'No Gemini estimate',
   amountUsd: null,
   display: '—',
 }

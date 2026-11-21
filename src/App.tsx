@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
+import { CompareSheet } from './components/CompareSheet'
 import { ListFallback } from './components/ListFallback'
 import { ModeToolbar } from './components/ModeToolbar'
 import { ProposeSheet } from './components/ProposeSheet'
@@ -103,6 +104,7 @@ export default function App() {
         </div>
       </main>
 
+      {mode === 'compare' && <CompareSheet />}
       {mode === 'propose' && <ProposeSheet />}
 
       <div id="mode-toolbar">
