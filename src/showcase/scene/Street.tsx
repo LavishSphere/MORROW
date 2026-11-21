@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
 import { useCursor } from "@react-three/drei";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import {
   BARRIER_CURB_ID,
-  CROSSING_Z,
   CURB_POSITION,
   CURB_SIZE,
   INTERVENTION_RAMP_ID,
@@ -11,7 +10,6 @@ import {
   RAMP_POSITION,
   RAMP_RISE,
   RAMP_WIDTH,
-  ROAD_TOP,
 } from "../layout";
 import { Surface } from "../materials";
 import { LOGO_BLUE, scene } from "../palette";
@@ -24,6 +22,10 @@ type StreetProps = {
   onSelectIntervention?: (id: string) => void;
 };
 
+/**
+ * Clickable curb → ramp at the illustrative Wellesley barrier.
+ * Selecting the curb emits the demo-dataset barrier + intervention ids.
+ */
 export function Street({
   selectedBarrierId,
   selectedInterventionId,
@@ -35,18 +37,14 @@ export function Street({
   const [hot, setHot] = useState<"curb" | "ramp" | null>(null);
   useCursor(hot !== null);
 
-  const rampGeometry = useMemo(() => createRampGeometry(RAMP_LENGTH, RAMP_RISE, RAMP_WIDTH), []);
+  const rampGeometry = useMemo(
+    () => createRampGeometry(RAMP_LENGTH, RAMP_RISE, RAMP_WIDTH),
+    [],
+  );
   useEffect(() => () => rampGeometry.dispose(), [rampGeometry]);
 
   return (
-    <group>
-      {[-1.15, -0.4, 0.35, 1.1].map((offset) => (
-        <mesh key={offset} position={[0, ROAD_TOP + 0.012, CROSSING_Z + offset]} raycast={() => null}>
-          <boxGeometry args={[7.2, 0.02, 0.38]} />
-          <meshStandardMaterial color={scene.crosswalk} roughness={0.7} />
-        </mesh>
-      ))}
-
+    <group name="street-intervention">
       {!rampActive && (
         <group
           name={BARRIER_CURB_ID}
@@ -63,7 +61,7 @@ export function Street({
           onPointerOut={() => setHot(null)}
         >
           {(hot === "curb" || curbSelected) && (
-            <mesh scale={[1.08, 1.12, 1.06]} raycast={() => null}>
+            <mesh scale={[1.12, 1.18, 1.1]} raycast={() => null}>
               <boxGeometry args={CURB_SIZE} />
               <meshBasicMaterial color={LOGO_BLUE} side={THREE.BackSide} />
             </mesh>
@@ -73,7 +71,7 @@ export function Street({
             <Surface
               color={curbSelected ? LOGO_BLUE : scene.curb}
               emissive={LOGO_BLUE}
-              emissiveIntensity={curbSelected ? 0.35 : 0}
+              emissiveIntensity={curbSelected ? 0.4 : hot === "curb" ? 0.22 : 0}
               roughness={0.7}
             />
           </mesh>
@@ -98,7 +96,7 @@ export function Street({
             <Surface
               color={scene.sidewalk}
               emissive={LOGO_BLUE}
-              emissiveIntensity={0.25}
+              emissiveIntensity={0.28}
               roughness={0.72}
               side={THREE.DoubleSide}
             />

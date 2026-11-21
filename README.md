@@ -25,7 +25,7 @@ npm test
 
 ## Accessible Interface
 
-- Canvas fills the window as an eye-level street view. WASD glides along streets and sidewalks only. Scroll zooms. Click the curb and it becomes a ramp. No floating island and no pedestrians.
+- 3D Showcase: React Three Fiber miniature of Wellesley from `data/wellesley/basemap.geojson`, opening lockup (“Make tomorrow possible”), clickable curb → ramp, orbit camera after descent
 - Wellesley selector + four modes
 - Explore / Improve context panel with evidence badges
 - Compare via `@morrow/routing.compareIntervention` (`src/data/compare.ts`)
