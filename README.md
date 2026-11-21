@@ -83,7 +83,7 @@ That lints Markdown and TypeScript, typechecks, tests, builds `dist/`, and audit
 
 | Workflow | When it runs | What it does |
 | --- | --- | --- |
-| [CI](.github/workflows/ci.yml) | Pull requests and pushes to `main` | App gates, workflow lint, secret scan, offline link check, dependency review |
+| [CI](.github/workflows/ci.yml) | Pull requests and pushes to `main` | App gates, workflow lint, secret scan, offline link check, and a high-severity npm audit |
 | [External links](.github/workflows/links.yml) | Monday, or a manual run | Live check of links in the README, docs, and site |
 
 Model and database credentials are not available to these workflows.
