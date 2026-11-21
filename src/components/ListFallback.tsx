@@ -20,11 +20,16 @@ function typeLabel(type: Barrier['type']): string {
   }
 }
 
+function formatMeters(meters: number | null): string {
+  if (meters == null || !Number.isFinite(meters)) return 'Unreachable'
+  return `${Math.round(meters).toLocaleString('en-US')} m`
+}
+
 function formatDelta(delta: number | null): string {
-  if (delta == null) return 'n/a'
+  if (delta == null || !Number.isFinite(delta)) return 'n/a'
   if (delta === 0) return '0 m'
   const sign = delta > 0 ? '+' : '−'
-  return `${sign}${Math.abs(delta)} m`
+  return `${sign}${Math.abs(Math.round(delta)).toLocaleString('en-US')} m`
 }
 
 /** Simple 2D / list alternative to the 3D canvas (MapLibre deferred). */
@@ -89,14 +94,11 @@ export function ListFallback({
 
       {compare && (
         <div className="list-fallback__compare" aria-live="polite">
-          <h3>Modeled route (compareIntervention shape)</h3>
+          <h3>Modeled route</h3>
           <p>
-            Before: <strong>{compare.beforeMeters ?? 'n/a'} m</strong> (
-            {compare.before.edgeIds.join(' → ') || 'unreachable'}) → After:{' '}
-            <strong>{compare.afterMeters ?? 'n/a'} m</strong> (
-            {compare.after.edgeIds.join(' → ') || 'unreachable'}). Delta:{' '}
-            {formatDelta(compare.deltaMeters)}. Geometry points after:{' '}
-            {compare.after.geometry.length}. Source: {compare.source}.
+            Before: <strong>{formatMeters(compare.beforeMeters)}</strong> →
+            After: <strong>{formatMeters(compare.afterMeters)}</strong>. Delta:{' '}
+            {formatDelta(compare.deltaMeters)}. Not a Gemini estimate.
           </p>
         </div>
       )}
