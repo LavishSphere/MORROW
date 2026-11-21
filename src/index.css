@@ -1,24 +1,24 @@
 :root {
-  --ink: #1a2b2e;
-  --ink-soft: #3d5256;
-  --paper: #f3f6f4;
-  --panel: rgba(247, 250, 248, 0.88);
-  --panel-solid: #f7faf8;
-  --line: rgba(26, 43, 46, 0.12);
-  --moss: #2f5d50;
-  --moss-deep: #1f3f37;
-  --moss-soft: #d7e6df;
-  --sky: #c9d9e2;
-  --ground: #b9c9b8;
-  --amber: #8a6a2f;
-  --amber-soft: #f0e6cc;
-  --slate-badge: #4a5c62;
-  --slate-soft: #e2e8ea;
-  --focus: #1f6f5c;
-  --shadow: 0 10px 40px rgba(26, 43, 46, 0.12);
-  --radius: 14px;
+  --ink: #4a1d4e;
+  --ink-soft: #7a4a7e;
+  --paper: #fff4fb;
+  --panel: rgba(255, 246, 252, 0.86);
+  --panel-solid: #fff7fc;
+  --line: rgba(168, 80, 160, 0.18);
+  --moss: #c45b9b;
+  --moss-deep: #8a2f78;
+  --moss-soft: #f7d6ec;
+  --sky: #f3c7ea;
+  --ground: #e9c4f5;
+  --amber: #b56b8a;
+  --amber-soft: #f8dce8;
+  --slate-badge: #7a4a7e;
+  --slate-soft: #f3e0f4;
+  --focus: #b44ac8;
+  --shadow: 0 12px 40px rgba(168, 80, 160, 0.16);
+  --radius: 18px;
   --font-display: 'Bricolage Grotesque', Georgia, serif;
-  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-body: 'Nunito', 'Source Sans 3', 'Segoe UI', sans-serif;
   color-scheme: light;
 }
 
@@ -75,9 +75,9 @@ a {
   display: grid;
   grid-template-rows: auto 1fr auto;
   background:
-    radial-gradient(1200px 600px at 20% 0%, #dce8ee 0%, transparent 55%),
-    radial-gradient(900px 500px at 90% 10%, #cfdccf 0%, transparent 50%),
-    linear-gradient(165deg, #d5e2e8 0%, #c8d5c9 48%, #aebfad 100%);
+    radial-gradient(900px 480px at 12% 0%, #ffd6f0 0%, transparent 58%),
+    radial-gradient(800px 420px at 92% 8%, #e4c8ff 0%, transparent 52%),
+    linear-gradient(165deg, #ffe9f7 0%, #f3d9ff 46%, #f7c6e8 100%);
 }
 
 .app-shell.is-reduced-motion *,
@@ -194,11 +194,13 @@ a {
 
 /* —— Main —— */
 .app-shell__main {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   padding: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 860px) {
@@ -1012,32 +1014,138 @@ code {
   animation: none !important;
 }
 
+.dream-sky {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dream-sky__glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(255, 182, 230, 0.28) 0%, transparent 48%),
+    radial-gradient(ellipse at 100% 80%, rgba(186, 140, 255, 0.16) 0%, transparent 42%);
+}
+
+.dream-sky__cloud {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 248, 255, 0.72);
+  filter: blur(2px);
+  box-shadow:
+    28px 8px 0 -4px rgba(255, 248, 255, 0.7),
+    -26px 10px 0 -6px rgba(255, 230, 248, 0.65),
+    8px 16px 0 -2px rgba(243, 217, 255, 0.6);
+}
+
+.dream-sky__cloud--one { width: 120px; height: 38px; top: 7%; left: 8%; }
+.dream-sky__cloud--two { width: 160px; height: 44px; top: 12%; right: 10%; }
+.dream-sky__cloud--three { width: 90px; height: 28px; top: 22%; left: 38%; opacity: 0.85; }
+.dream-sky__cloud--four { width: 70px; height: 22px; top: 5%; right: 28%; opacity: 0.7; }
+
+.dream-sky__sparkle {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 236, 252, 0.95);
+  box-shadow: 0 0 10px 3px rgba(244, 166, 212, 0.7);
+}
+
+.dream-sky__sparkle--a { top: 16%; left: 28%; }
+.dream-sky__sparkle--b { top: 9%; right: 22%; }
+.dream-sky__sparkle--c { top: 26%; right: 40%; }
+
+.app-shell:not(.is-reduced-motion) .dream-sky__cloud--one { animation: cloud-drift 18s ease-in-out infinite alternate; }
+.app-shell:not(.is-reduced-motion) .dream-sky__cloud--two { animation: cloud-drift 22s ease-in-out infinite alternate-reverse; }
+.app-shell:not(.is-reduced-motion) .dream-sky__cloud--three { animation: cloud-drift 16s ease-in-out infinite alternate; }
+.app-shell:not(.is-reduced-motion) .dream-sky__cloud--four { animation: cloud-drift 20s ease-in-out infinite alternate-reverse; }
+.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--a { animation: sparkle-twinkle 2.6s ease-in-out infinite; }
+.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--b { animation: sparkle-twinkle 3.1s ease-in-out infinite 0.4s; }
+.app-shell:not(.is-reduced-motion) .dream-sky__sparkle--c { animation: sparkle-twinkle 2.2s ease-in-out infinite 0.8s; }
+
+@keyframes cloud-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(28px); }
+}
+
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.satellite-town__caption {
+  padding: 0.4rem 0.85rem;
+  background: rgba(255, 240, 250, 0.86);
+  color: #4a1d4e;
+  border: 1px solid rgba(196, 91, 155, 0.28);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(138, 47, 120, 0.18);
+  text-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.compare-sheet,
 .propose-sheet {
   position: fixed;
   z-index: 6;
   top: 5.5rem;
-  right: 12px;
   width: min(28rem, calc(100% - 24px));
   max-height: calc(100% - 10rem);
   overflow: auto;
-  padding: 0.75rem;
-  background: rgba(8, 12, 14, 0.92);
-  color: #f4faf7;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.85rem;
+  background: rgba(255, 244, 251, 0.92);
+  color: var(--ink);
+  border: 1px solid rgba(196, 91, 155, 0.28);
+  border-radius: 22px;
+  box-shadow: 0 16px 40px rgba(138, 47, 120, 0.22);
+  backdrop-filter: blur(16px);
+}
+
+.compare-sheet {
+  left: 16px;
+  width: min(24rem, calc(100% - 32px));
+}
+
+.propose-sheet {
+  right: 12px;
 }
 
 .propose-sheet__generate {
-  background: #1488ff;
-  color: #ffffff;
+  background: linear-gradient(135deg, #f4a6d4 0%, #c9a0f0 100%);
+  color: #4a1d4e;
   border: 0;
-  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
   font-weight: 700;
 }
 
-.propose-sheet__note {
+.propose-sheet__note,
+.compare-sheet__note {
   margin: 0.6rem 0 0;
   font-size: 0.85rem;
   line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.compare-sheet__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.mode-toolbar__track {
+  background: rgba(255, 240, 250, 0.82);
+  border: 1px solid rgba(196, 91, 155, 0.28);
+  box-shadow: 0 10px 32px rgba(138, 47, 120, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.mode-toolbar__btn.is-active {
+  background: linear-gradient(135deg, #f4a6d4 0%, #c9a0f0 100%);
+  color: #4a1d4e;
 }
 
 .empty-state {
