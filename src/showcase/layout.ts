@@ -1,37 +1,66 @@
-export const BARRIER_CURB_ID = "barrier-curb-1";
-export const INTERVENTION_RAMP_ID = "intervention-ramp-1";
+import demoDataset from "../../data/wellesley/demo-dataset.json";
+import bboxJson from "../../data/wellesley/bbox.json";
+import { createProjector, type SceneProjector, type ShowcaseBBox } from "./geo";
+
+/** Stable ids from data/wellesley/demo-dataset.json — do not invent substitutes. */
+export const BARRIER_CURB_ID = "wellesley-barrier-campus-path-01";
+export const INTERVENTION_RAMP_ID = "wellesley-intervention-ramp-01";
+
+export const INTERVENTION_EDGE_IDS = [
+  "osm-way-543827744",
+  "osm-way-543827745",
+] as const;
+
+export const SHOWCASE_BBOX: ShowcaseBBox = {
+  west: bboxJson.west,
+  south: bboxJson.south,
+  east: bboxJson.east,
+  north: bboxJson.north,
+  center: bboxJson.center as [number, number],
+};
+
+export const defaultProjector: SceneProjector = createProjector(SHOWCASE_BBOX);
 
 export const ROAD_TOP = 0.04;
 export const SIDEWALK_TOP = 0.14;
 
-export const CROSSING_Z = 10;
+const barrierLonLat = demoDataset.barriers[0].coordinates as [number, number];
+const [barrierX, barrierZ] = defaultProjector.project(barrierLonLat[0], barrierLonLat[1]);
 
-export const CURB_POSITION = [4.85, SIDEWALK_TOP + 0.14, CROSSING_Z] as const;
-export const CURB_SIZE = [0.5, 0.28, 1.7] as const;
+/** Barrier sits on the illustrative campus footway edge. */
+export const CURB_POSITION = [barrierX, SIDEWALK_TOP + 0.12, barrierZ] as const;
+export const CURB_SIZE = [0.42, 0.26, 0.9] as const;
 
-/** Center of the ramp wedge. Local +X is the high sidewalk end. */
-export const RAMP_POSITION = [4.35, ROAD_TOP, CROSSING_Z] as const;
-export const RAMP_LENGTH = 1.35;
+/** Ramp wedge centered just street-side of the curb. */
+export const RAMP_POSITION = [barrierX + 0.35, ROAD_TOP, barrierZ] as const;
+export const RAMP_LENGTH = 0.95;
 export const RAMP_RISE = SIDEWALK_TOP - ROAD_TOP + 0.02;
-export const RAMP_WIDTH = 1.55;
+export const RAMP_WIDTH = 0.85;
 
+/** Fallback route until routing geometry is wired through CanvasSlot. */
 export const ROUTE_POINTS = [
-  [0, 0.1, -22],
-  [0, 0.1, -8],
-  [0, 0.1, CROSSING_Z],
-  [0, 0.1, 18],
-  [0, 0.1, 28],
+  defaultProjector.project3(
+    demoDataset.scenario.origin[0],
+    demoDataset.scenario.origin[1],
+    0.12,
+  ),
+  defaultProjector.project3(barrierLonLat[0], barrierLonLat[1], 0.12),
+  defaultProjector.project3(
+    demoDataset.scenario.destination[0],
+    demoDataset.scenario.destination[1],
+    0.12,
+  ),
 ] as const;
 
-/** Phase 1 keeps invented footprints even when an extract is passed in. */
-export function footprintSource(geoJson: unknown): "invented" {
+/** Returns whether footprints came from a real FeatureCollection. */
+export function footprintSource(geoJson: unknown): "geojson" | "invented" {
   if (
     typeof geoJson === "object" &&
     geoJson !== null &&
     "type" in geoJson &&
     (geoJson as { type?: unknown }).type === "FeatureCollection"
   ) {
-    return "invented";
+    return "geojson";
   }
   return "invented";
 }
