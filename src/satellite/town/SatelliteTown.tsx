@@ -1,7 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
+import wellesleyBasemap from '../../../data/wellesley/basemap.geojson'
 import { compareByIds } from '../../data/compare'
-import type { LoadedNeighborhood } from '../../data/overpass'
+import type { LoadedNeighborhood, OsmWay } from '../../data/overpass'
+import { waysFromBasemap, type BasemapWay } from '../../data/wellesleyBasemap'
 import { SatelliteStage } from '../camera/SatelliteStage'
 import { formatMeters } from '../stats/format'
 import { useTownCamera } from '../camera/useTownCamera'
@@ -19,6 +21,39 @@ const pinModules = import.meta.glob<PinsModule>('../pins/index.ts', {
 })
 
 const pinsModule = Object.values(pinModules)[0]
+const wellesleyStreets = waysFromBasemap(wellesleyBasemap)
+
+function streetPath(
+  points: [number, number][],
+  project: (lng: number, lat: number) => { x: number; y: number },
+): string {
+  return points
+    .map((point, index) => {
+      const placed = project(point[0], point[1])
+      return `${index === 0 ? 'M' : 'L'}${placed.x} ${placed.y}`
+    })
+    .join(' ')
+}
+
+function StreetLayer({
+  ways,
+  project,
+}: {
+  ways: readonly (OsmWay | BasemapWay)[]
+  project: (lng: number, lat: number) => { x: number; y: number }
+}) {
+  return (
+    <svg className="satellite-town__streets" aria-hidden="true">
+      {ways.map((way) => (
+        <path
+          key={way.id}
+          d={streetPath(way.points, project)}
+          className={way.kind === 'building' ? 'satellite-town__building' : 'satellite-town__road'}
+        />
+      ))}
+    </svg>
+  )
+}
 
 /** The checked-in Wellesley barrier. Not a model finding. */
 function illustrativeDetection(): AiDetection {
@@ -135,29 +170,10 @@ function TownFrame({
       <SatelliteStage frame={frame}>
         {(project) => (
           <>
-            {away ? (
-              <svg className="satellite-town__streets" aria-hidden="true">
-                {neighborhood.ways.map((way) => {
-                  const d = way.points
-                    .map((point, index) => {
-                      const placed = project(point[0], point[1])
-                      return `${index === 0 ? 'M' : 'L'}${placed.x} ${placed.y}`
-                    })
-                    .join(' ')
-                  return (
-                    <path
-                      key={way.id}
-                      d={d}
-                      className={
-                        way.kind === 'building'
-                          ? 'satellite-town__building'
-                          : 'satellite-town__road'
-                      }
-                    />
-                  )
-                })}
-              </svg>
-            ) : null}
+            <StreetLayer
+              ways={away ? neighborhood.ways : wellesleyStreets}
+              project={project}
+            />
             {away
               ? null
               : detection.problems.map((problem) => {
@@ -169,11 +185,14 @@ function TownFrame({
                   type="button"
                   className={`satellite-pin${isSelected ? ' is-selected' : ''}`}
                   style={{ left: point.x, top: point.y }}
-                  aria-label={problem.title}
+                  aria-label={`Illustrative barrier: ${problem.title}`}
                   aria-current={isSelected ? 'true' : undefined}
                   onClick={() => detection.selectProblem(problem.id)}
                 >
                   <span className="satellite-pin__diamond" />
+                  {isSelected ? (
+                    <span className="satellite-pin__label">{problem.title}</span>
+                  ) : null}
                 </button>
               )
             })}
@@ -215,7 +234,7 @@ function TownFrame({
       <p className="satellite-town__caption">
         {away
           ? neighborhood.note
-          : `${detection.sourceLabel || 'Illustrative Wellesley scenario'}${selected ? ` · ${selected.title}` : ''}`}
+          : `${detection.sourceLabel || 'Illustrative Wellesley scenario'}${selected ? ` · ${selected.title}` : ''}. Bundled OpenStreetMap streets. Not a barrier inventory.`}
       </p>
 
       <p className="satellite-town__live" role="status">
