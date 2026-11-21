@@ -40,15 +40,11 @@ jobs:
         with:
           enablement: true
       - name: Set Vite base for this Pages site
-        env:
-          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: |
-          path="${PAGES_BASE_PATH:-/}"
-          if [ "$path" = "/" ] || [ -z "$path" ]; then
-            echo "VITE_BASE=/" >> "${GITHUB_ENV}"
-          else
-            echo "VITE_BASE=${path%/}/" >> "${GITHUB_ENV}"
-          fi
+          # github.io serves the project site at /MORROW/. The Pages custom
+          # domain serves the same artifact at /. Absolute /MORROW/assets
+          # 404s on the custom domain. Relative ./ works at both hosts.
+          echo "VITE_BASE=./" >> "${GITHUB_ENV}"
       - name: Setup Node
         uses: ./.github/actions/setup-node
       - name: Lint, typecheck, test, build, and audit
@@ -64,7 +60,11 @@ jobs:
           base = os.environ["VITE_BASE"]
           if not html.strip():
               raise SystemExit("dist/index.html is empty")
-          if f'src="{base}assets/' not in html:
+          if "/MORROW/assets/" in html:
+              raise SystemExit(
+                  "dist/index.html uses /MORROW/assets; that path 404s on the Pages custom domain"
+              )
+          if 'src="./assets/' not in html and 'src="assets/' not in html:
               raise SystemExit(
                   f"dist/index.html does not load JS under VITE_BASE={base!r}"
               )

@@ -16,6 +16,7 @@ export type { CompareResult }
  * Client boundary for Ashsmith APIs + Sophia routing.
  * Tries the live API when VITE_API_BASE is set (or same-origin /api via Vite proxy).
  * Bundled fixtures remain the labeled fallback when the API is unavailable.
+ * Compare uses @morrow/routing.compareScenario on the bundled Wellesley graph.
  */
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(
