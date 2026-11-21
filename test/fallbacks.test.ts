@@ -4,10 +4,9 @@ import { test } from "node:test";
 
 test("README runbook says how to open the demo and what fallbacks do", async () => {
   const readme = await readFile("README.md", "utf8");
-  assert.equal(
-    readme.includes("https://lavishsphere.github.io/MORROW/"),
-    true,
-  );
+  assert.equal(readme.includes("## Open the demo"), true);
+  assert.equal(readme.includes("Public URL"), true);
+  assert.equal(readme.includes("GitHub Pages"), true);
   assert.equal(readme.includes("No login"), true);
   assert.equal(readme.includes("npm run dev"), true);
   assert.equal(readme.includes("What the fallbacks do"), true);
