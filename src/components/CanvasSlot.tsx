@@ -1,4 +1,10 @@
 import type { CompareResult } from '../data/api'
+import { ShowcaseCanvas } from '../showcase/ShowcaseCanvas'
+import {
+  PLACEHOLDER_BARRIERS,
+  PLACEHOLDER_ROUTE,
+} from '../showcase/placeholder'
+import '../showcase/styles.css'
 import type { AppMode, Barrier } from '../types'
 
 type Props = {
@@ -28,21 +34,15 @@ export function CanvasSlot({
       className={`canvas-slot${reducedMotion ? ' is-reduced' : ''}`}
       aria-label="Neighborhood canvas"
     >
-      <div className="canvas-slot__atmosphere" aria-hidden="true" />
-      <div className="canvas-slot__grid" aria-hidden="true" />
+      <ShowcaseCanvas
+        barriers={PLACEHOLDER_BARRIERS}
+        routeGeometry={PLACEHOLDER_ROUTE}
+        reducedMotion={reducedMotion}
+        selectedBarrierId={selectedBarrier?.id ?? null}
+      />
 
       <div className="canvas-slot__content">
-        <p className="canvas-slot__eyebrow">3D canvas reserved</p>
-        <h1 className="canvas-slot__brand">MORROW</h1>
-        <p className="canvas-slot__tagline">Make tomorrow possible.</p>
         <p className="canvas-slot__place">{locationLabel}</p>
-        <p className="canvas-slot__note">
-          Placeholder for the React Three Fiber Wellesley scene. Mode:{' '}
-          <strong>{mode}</strong>
-          {selectedBarrier
-            ? ` · Focus: ${selectedBarrier.locationLabel}`
-            : ' · Select a barrier in Explore'}
-        </p>
         {compare && (mode === 'compare' || mode === 'improve') && (
           <p className="canvas-slot__route" aria-live="polite">
             Modeled route: {compare.beforeMeters ?? 'n/a'} m →{' '}
