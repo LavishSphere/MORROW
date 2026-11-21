@@ -1,16 +1,13 @@
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
+import { OpeningSequence } from "../brand/OpeningSequence";
+import { BarrierMarkers } from "../route/BarrierMarkers";
+import { RouteRibbon } from "../route/RouteRibbon";
+import { BARRIER_CURB_ID, CURB_POSITION, INTERVENTION_RAMP_ID, RAMP_POSITION } from "./layout";
 import { TownScene } from "./scene/TownScene";
-// Switch these stubs to the real modules when those seats land:
-// import { OpeningSequence } from "../brand/OpeningSequence";
-// import { RouteRibbon } from "../route/RouteRibbon";
-// import { BarrierMarkers } from "../route/BarrierMarkers";
-import { BarrierMarkers } from "./stubs/BarrierMarkers";
-import { OpeningSequence } from "./stubs/OpeningSequence";
-import { RouteRibbon } from "./stubs/RouteRibbon";
 import type { ShowcaseCanvasProps } from "./types";
 
-const OPENING_LOOK: [number, number, number] = [0.15, 0.35, 0.1];
+const OPENING_LOOK: [number, number, number] = [6.15, 1.5, 11.2];
 
 export function ShowcaseCanvas({
   geoJson,
@@ -30,7 +27,8 @@ export function ShowcaseCanvas({
       data-reduced-motion={reducedMotion ? "reduce" : "no-preference"}
     >
       <Canvas
-        camera={{ fov: 42, near: 0.1, far: 200, position: [13.2, -1.1, 12.4] }}
+        shadows
+        camera={{ fov: 72, near: 0.05, far: 400, position: [6.15, 1.76, 13.4] }}
         dpr={[1, 1.75]}
         gl={{
           antialias: true,
@@ -50,18 +48,27 @@ export function ShowcaseCanvas({
           onSelectBarrier={onSelectBarrier}
           onSelectIntervention={onSelectIntervention}
         >
-          <RouteRibbon routeGeometry={routeGeometry} reducedMotion={reducedMotion} />
+          <RouteRibbon
+            routeGeometry={routeGeometry?.points}
+            reducedMotion={reducedMotion}
+          />
           <BarrierMarkers
-            barriers={barriers}
             selectedBarrierId={selectedBarrierId}
             selectedInterventionId={selectedInterventionId}
-            reducedMotion={reducedMotion}
-            onSelectBarrier={onSelectBarrier}
-            onSelectIntervention={onSelectIntervention}
+            onSelectBarrier={(id) => {
+              onSelectBarrier?.(id);
+              if (id === BARRIER_CURB_ID) onSelectIntervention?.(INTERVENTION_RAMP_ID);
+            }}
+            onSelectIntervention={(id) => onSelectIntervention?.(id)}
+            curbPosition={barriers[0]?.position ?? CURB_POSITION}
+            rampPosition={RAMP_POSITION}
+            heading={-Math.PI / 2}
           />
         </TownScene>
       </Canvas>
       <OpeningSequence reducedMotion={reducedMotion} />
+      <p className="map-mark">MORROW</p>
+      <p className="walk-hint">Click to look · WASD glides on streets · Scroll zooms · Click the curb and it becomes a ramp</p>
       <p className="sr-only" role="status">
         {selectedBarrierId ? `Barrier ${selectedBarrierId} selected.` : "No barrier selected."}{" "}
         {selectedInterventionId
