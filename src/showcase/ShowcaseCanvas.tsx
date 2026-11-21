@@ -5,6 +5,7 @@ import basemap from "../../data/wellesley/basemap.geojson";
 import { CityLoader } from "../brand/CityLoader";
 import { TownScene } from "./scene/TownScene";
 import type { ShowcaseCanvasProps } from "./types";
+import "./styles.css";
 
 /** Frames to paint before the cover can lift. The first frame compiles the city. */
 const PAINTED_FRAMES = 3;

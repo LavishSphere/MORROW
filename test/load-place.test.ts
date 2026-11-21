@@ -50,12 +50,15 @@ test("OpenStreetMap ways are streets and buildings, not barriers", () => {
   assert.equal(ways[1]?.kind, "building");
 });
 
-test("the canvas loads a typed place on the satellite scene", async () => {
+test("the canvas is the glass city with curved roads and potholes", async () => {
   const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
+  const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const town = await readFile("src/satellite/town/SatelliteTown.tsx", "utf8");
   const query = await readFile("src/data/overpass.ts", "utf8");
-  assert.match(slot, /SatelliteTown/);
-  assert.equal(slot.includes("ShowcaseCanvas"), false);
+  assert.match(slot, /ShowcaseCanvas/);
+  assert.equal(slot.includes("SatelliteTown"), false);
+  assert.match(city, /function CurvedRoads/);
+  assert.match(city, /function Pothole/);
   assert.match(query, /Not a barrier inventory/);
   assert.match(town, /No modeled route for this place/);
 });

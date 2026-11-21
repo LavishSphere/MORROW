@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-test("the unused holographic city still builds from glass blocks", async () => {
+test("the holographic city builds from glass blocks, curved roads, and potholes", async () => {
   const town = await readFile("src/showcase/scene/TownScene.tsx", "utf8");
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const canvas = await readFile("src/showcase/ShowcaseCanvas.tsx", "utf8");
