@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import demoDataset from '../../../data/wellesley/demo-dataset.json'
-import { SatelliteStage } from '../camera/SatelliteStage'
+import { SatelliteMap } from '../camera/SatelliteMap'
 import { useTownCamera } from '../camera/useTownCamera'
 import {
   type AiDetection,
@@ -118,41 +118,25 @@ function TownFrame({
 
   return (
     <div className="satellite-town" ref={rootRef}>
-      <SatelliteStage frame={frame}>
-        {(project) => (
-          <>
-            {detection.problems.map((problem) => {
-              const point = project(problem.longitude, problem.latitude)
-              const isSelected = problem.id === detection.selectedId
-              return (
-                <button
-                  key={problem.id}
-                  type="button"
-                  className={`satellite-pin${isSelected ? ' is-selected' : ''}`}
-                  style={{ left: point.x, top: point.y }}
-                  aria-label={problem.title}
-                  aria-current={isSelected ? 'true' : undefined}
-                  onClick={() => detection.selectProblem(problem.id)}
-                >
-                  <img className="satellite-pin__mark" src={blueMarkUrl} alt="" />
-                </button>
-              )
-            })}
-            {selected ? (
-              <svg className="satellite-town__leader" aria-hidden="true">
-                <line
-                  x1={project(selected.longitude, selected.latitude).x}
-                  y1={project(selected.longitude, selected.latitude).y + 22}
-                  x2={viewport.width / 2}
-                  y2={Math.max(96, viewport.height - 210)}
-                  stroke="#FFFFFF"
-                  strokeWidth="3"
-                />
-              </svg>
-            ) : null}
-          </>
+      <SatelliteMap
+        frame={frame}
+        problems={detection.problems.flatMap((problem) =>
+          problem.kind
+            ? [
+                {
+                  id: problem.id,
+                  longitude: problem.longitude,
+                  latitude: problem.latitude,
+                  title: problem.title,
+                  kind: problem.kind,
+                },
+              ]
+            : [],
         )}
-      </SatelliteStage>
+        selectedId={detection.selectedId}
+        reducedMotion={reducedMotion}
+        onSelect={detection.selectProblem}
+      />
 
       <header className="satellite-town__bar">
         <div className="satellite-town__brand">
@@ -161,6 +145,15 @@ function TownFrame({
             <p className="satellite-town__mark">MORROW</p>
             <p className="satellite-town__source">
               {detection.sourceLabel || 'Illustrative Wellesley scenario'}
+            </p>
+            <p className="satellite-town__fix">
+              {selected?.kind === 'pothole'
+                ? 'Watch the pothole fill in'
+                : selected?.kind === 'sidewalk'
+                  ? 'Watch the sidewalk level out'
+                  : selected?.kind === 'crossing'
+                    ? 'Watch the crossing open'
+                    : 'Watch the curb become a ramp'}
             </p>
           </div>
         </div>
@@ -187,19 +180,26 @@ function TownFrame({
       </p>
 
       <section className="satellite-town__card" aria-label="Selected problem">
+        <h2 className="satellite-town__problem">{selected?.title ?? 'Select a problem'}</h2>
         <div className="satellite-town__photos">
           <figure>
-            <img src={curbUrl} alt="Vertical curb blocking the crosswalk" />
+            <img
+              src={selected?.beforePhoto ?? curbUrl}
+              alt={selected ? `${selected.title} before the fix` : 'Before the fix'}
+            />
             <figcaption>
               Before
-              <span>Curb</span>
+              <span>{selected?.beforeLabel ?? 'Curb'}</span>
             </figcaption>
           </figure>
           <figure>
-            <img src={rampUrl} alt="Curb cut as a ramp into the crosswalk" />
+            <img
+              src={selected?.afterPhoto ?? rampUrl}
+              alt={selected ? `${selected.title} after the fix` : 'After the fix'}
+            />
             <figcaption>
               After
-              <span>Ramp</span>
+              <span>{selected?.afterLabel ?? 'Ramp'}</span>
             </figcaption>
           </figure>
         </div>

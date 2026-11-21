@@ -60,6 +60,13 @@
   font-weight: 600;
 }
 
+.satellite-town__fix {
+  margin: 2px 0 0;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .satellite-town__next {
   border: 2px solid #ffffff;
   border-radius: 6px;
@@ -149,7 +156,21 @@
   background: #000000;
 }
 
-.satellite-town__photos {
+.satellite-town__problem {
+  margin: 0;
+  color: #ffffff;
+  font-family: var(--font-display, "Bricolage Grotesque", Georgia, serif);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.satellite-stage__canvas,
+.satellite-stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
@@ -163,9 +184,9 @@
 .satellite-town__photos img {
   display: block;
   width: 100%;
-  height: 132px;
+  height: 88px;
   object-fit: cover;
-  object-position: center 40%;
+  object-position: center 45%;
 }
 
 .satellite-town__photos figcaption {

@@ -9,6 +9,11 @@ export type AiDetectedProblem = {
   longitude: number
   latitude: number
   title: string
+  kind?: 'ramp' | 'pothole' | 'sidewalk' | 'crossing'
+  beforeLabel?: string
+  afterLabel?: string
+  beforePhoto?: string
+  afterPhoto?: string
 }
 
 export type AiDetection = {
