@@ -23,7 +23,7 @@ Win Better Worlds with a civic tool that is aesthetically unforgettable **and** 
 | AI, integrations, and data | Ashsmith Khayrul |
 | 3D Showcase | Unassigned |
 | Accessible Interface | Caroline Hu |
-| Routing and Reliability | Unassigned |
+| Routing and Reliability | Sophia Zheng |
 
 No hardware seat. Ashsmith’s lane (data, Gemini, Mastra, Tiger Data, Vultr, proposal API) stays whole.
 
@@ -54,6 +54,5 @@ Better Worlds first place always beats sponsor prize chasing.
 
 ## Open decisions
 
-- Names for the three unassigned seats  
-- Repository / hosting target for the public demo  
-- Vite vs Next.js (record in README when chosen)
+- Name for the remaining unassigned 3D Showcase seat  
+- Public demo is GitHub Pages at https://morrow.khayrul.com/ (Vite)
