@@ -1,21 +1,21 @@
 :root {
-  --ink: #4a1d4e;
-  --ink-soft: #7a4a7e;
-  --paper: #fff4fb;
-  --panel: rgba(255, 246, 252, 0.86);
-  --panel-solid: #fff7fc;
-  --line: rgba(168, 80, 160, 0.18);
-  --moss: #c45b9b;
-  --moss-deep: #8a2f78;
-  --moss-soft: #f7d6ec;
-  --sky: #f3c7ea;
-  --ground: #e9c4f5;
-  --amber: #b56b8a;
-  --amber-soft: #f8dce8;
-  --slate-badge: #7a4a7e;
-  --slate-soft: #f3e0f4;
-  --focus: #b44ac8;
-  --shadow: 0 12px 40px rgba(168, 80, 160, 0.16);
+  --ink: #07343c;
+  --ink-soft: #1a5a66;
+  --paper: #e7f8fb;
+  --panel: rgba(232, 250, 253, 0.82);
+  --panel-solid: #eafbfd;
+  --line: rgba(11, 58, 68, 0.16);
+  --moss: #1aa7b8;
+  --moss-deep: #0e7c8a;
+  --moss-soft: #c5eef6;
+  --sky: #c5eef6;
+  --ground: #0b3a44;
+  --amber: #c4a03a;
+  --amber-soft: #f3e6b8;
+  --slate-badge: #1a5a66;
+  --slate-soft: #d7f4fa;
+  --focus: #13c4d4;
+  --shadow: 0 10px 40px rgba(11, 58, 68, 0.18);
   --radius: 18px;
   --font-display: 'Bricolage Grotesque', Georgia, serif;
   --font-body: 'Nunito', 'Source Sans 3', 'Segoe UI', sans-serif;
@@ -75,9 +75,9 @@ a {
   display: grid;
   grid-template-rows: auto 1fr auto;
   background:
-    radial-gradient(900px 480px at 12% 0%, #ffd6f0 0%, transparent 58%),
-    radial-gradient(800px 420px at 92% 8%, #e4c8ff 0%, transparent 52%),
-    linear-gradient(165deg, #ffe9f7 0%, #f3d9ff 46%, #f7c6e8 100%);
+    radial-gradient(1200px 600px at 12% 0%, #f2ffff 0%, transparent 50%),
+    radial-gradient(900px 520px at 88% 8%, #9ee7ef 0%, transparent 48%),
+    linear-gradient(165deg, #c5eef6 0%, #7ec8d4 46%, #0b3a44 100%);
 }
 
 .app-shell.is-reduced-motion *,
@@ -1163,8 +1163,8 @@ code {
 }
 
 .propose-sheet__generate {
-  background: linear-gradient(135deg, #f4a6d4 0%, #c9a0f0 100%);
-  color: #4a1d4e;
+  background: linear-gradient(135deg, #9ee7ef 0%, #1aa7b8 100%);
+  color: #07343c;
   border: 0;
   border-radius: 999px;
   padding: 0.5rem 0.9rem;
@@ -1191,15 +1191,15 @@ code {
 }
 
 .mode-toolbar__track {
-  background: rgba(255, 240, 250, 0.82);
-  border: 1px solid rgba(196, 91, 155, 0.28);
-  box-shadow: 0 10px 32px rgba(138, 47, 120, 0.18);
+  background: rgba(232, 250, 253, 0.82);
+  border: 1px solid rgba(11, 58, 68, 0.16);
+  box-shadow: 0 10px 32px rgba(11, 58, 68, 0.16);
   backdrop-filter: blur(14px);
 }
 
 .mode-toolbar__btn.is-active {
-  background: linear-gradient(135deg, #f4a6d4 0%, #c9a0f0 100%);
-  color: #4a1d4e;
+  background: linear-gradient(135deg, #9ee7ef 0%, #1aa7b8 100%);
+  color: #07343c;
 }
 
 .empty-state {
