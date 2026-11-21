@@ -315,7 +315,7 @@ export function fromWalkableGeoJSON(
     for (const point of way.coords) coords.set(pointKey(point), point);
   }
   const keys = [...coords.keys()];
-  let unionFind = clusterKeys(keys, coords, vertexMerge);
+  const unionFind = clusterKeys(keys, coords, vertexMerge);
   let canon = averages(keys, coords, unionFind);
 
   if (stitch > 0) {
