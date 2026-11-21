@@ -1,9 +1,10 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import demoDataset from '../../../data/wellesley/demo-dataset.json'
 import { SatelliteStage } from '../camera/SatelliteStage'
 import { useTownCamera } from '../camera/useTownCamera'
 import {
-  EMPTY_DETECTION,
   type AiDetection,
+  type AiDetectedProblem,
   type PinsModule,
   type StatsModule,
 } from './contract'
@@ -20,6 +21,31 @@ const statsModules = import.meta.glob<StatsModule>('../stats/index.ts', {
 
 const pinsModule = Object.values(pinModules)[0]
 const statsModule = Object.values(statsModules)[0]
+
+/** The checked-in Wellesley barrier. Not a model finding. */
+function illustrativeDetection(): AiDetection {
+  const barrier = demoDataset.barriers[0]
+  const [longitude, latitude] = barrier.coordinates
+  const problem: AiDetectedProblem = {
+    id: barrier.id,
+    longitude,
+    latitude,
+    title: barrier.locationLabel,
+  }
+  return {
+    phase: 'ready',
+    problems: [problem],
+    selectedId: problem.id,
+    seeNextProblem() {},
+    selectProblem() {},
+    sourceLabel: 'Illustrative Wellesley scenario, not an AI detection',
+  }
+}
+
+function detectionFromPins(): AiDetection | null {
+  if (typeof pinsModule?.useAiDetection !== 'function') return null
+  return pinsModule.useAiDetection()
+}
 
 type Props = {
   reducedMotion: boolean
@@ -39,13 +65,8 @@ export function SatelliteTown({ reducedMotion }: Props) {
 }
 
 function DetectionBridge({ children }: { children: (detection: AiDetection) => ReactNode }) {
-  if (!pinsModule) return children(EMPTY_DETECTION)
-  return <DetectionHost>{children}</DetectionHost>
-}
-
-function DetectionHost({ children }: { children: (detection: AiDetection) => ReactNode }) {
-  const detection = pinsModule.useAiDetection()
-  return children(detection)
+  const fromPins = detectionFromPins()
+  return children(fromPins ?? illustrativeDetection())
 }
 
 function TownFrame({
@@ -129,7 +150,7 @@ function TownFrame({
         <div>
           <p className="satellite-town__mark">MORROW</p>
           <p className="satellite-town__source">
-            {detection.sourceLabel || 'Problems detected by AI'}
+            {detection.sourceLabel || 'Illustrative Wellesley scenario'}
           </p>
         </div>
         <button
@@ -146,10 +167,12 @@ function TownFrame({
         {detection.phase === 'running'
           ? 'AI detection is looking for problems.'
           : detection.phase === 'unavailable'
-            ? 'AI detection is not connected.'
+            ? 'No live detection. Showing the illustrative Wellesley barrier.'
             : selected
-              ? `${selected.title}. ${placesLeft} other problems detected.`
-              : 'No problems detected.'}
+              ? placesLeft > 0
+                ? `${selected.title}. ${placesLeft} other places in view.`
+                : selected.title
+              : 'No barrier selected.'}
       </p>
 
       <section className="satellite-town__card" aria-label="Selected problem">
