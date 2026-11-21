@@ -1,3 +1,5 @@
+export { CityLoader } from "./CityLoader";
+export type { CityLoaderProps } from "./CityLoader";
 export { LogoMark } from "./LogoMark";
 export type { LogoMarkProps } from "./LogoMark";
 export { LOGO_STROKES } from "./logoPaths";
