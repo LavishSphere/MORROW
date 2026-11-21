@@ -97,6 +97,18 @@ export function onAsphalt(x: number, z: number): boolean {
   return false;
 }
 
+/** Roads and sidewalks inside the city. Grass and the area past the curb return false. */
+export function onStreet(x: number, z: number): boolean {
+  if (Math.abs(x) > CITY_LIMIT || Math.abs(z) > CITY_LIMIT) return false;
+  for (const center of ROAD_XS) {
+    if (Math.abs(x - center) < PAVEMENT) return true;
+  }
+  for (const center of ROAD_ZS) {
+    if (Math.abs(z - center) < PAVEMENT) return true;
+  }
+  return false;
+}
+
 export function onPavement(x: number, z: number): boolean {
   if (Math.abs(x) > CITY_LIMIT || Math.abs(z) > CITY_LIMIT) return true;
   for (const center of ROAD_XS) {
