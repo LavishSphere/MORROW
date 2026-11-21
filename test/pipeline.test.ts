@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { parse } from "yaml";
 
 const workflowDir = ".github/workflows";
-const expectedWorkflows = ["ci.yml", "links.yml"];
+const expectedWorkflows = ["ci.yml", "deploy.yml", "links.yml"];
 
 const forbidden = [
   "pull_request_target",
@@ -47,6 +47,16 @@ test("CI jobs cover app and quality", async () => {
   const jobs = asRecord(document["jobs"], "ci jobs");
   assert.ok(jobs["app"]);
   assert.ok(jobs["quality"]);
+});
+
+test("deploy publishes dist to GitHub Pages", async () => {
+  const text = await readWorkflow("deploy.yml");
+  const document = asRecord(parse(text), "deploy");
+  const jobs = asRecord(document["jobs"], "deploy jobs");
+  const deploy = asRecord(jobs["deploy"], "deploy job");
+  const environment = asRecord(deploy["environment"], "pages environment");
+  assert.equal(environment["name"], "github-pages");
+  assert.match(text, /path:\s*dist/);
 });
 
 test("package scripts expose the local CI entrypoint", async () => {
