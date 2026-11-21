@@ -1,3 +1,4 @@
+import { formatMeters } from '../satellite/stats/format'
 import { EvidenceBadge } from './EvidenceBadge'
 import type { DraftProposal, ProposalFacts } from '../types'
 
@@ -188,11 +189,11 @@ export function ProposalEditor({
           <p>
             Accessible route before:{' '}
             <strong>
-              {facts.beforeMeters == null ? 'n/a' : `${facts.beforeMeters} m`}
+              {formatMeters(facts.beforeMeters)}
             </strong>
             ; after:{' '}
             <strong>
-              {facts.afterMeters == null ? 'n/a' : `${facts.afterMeters} m`}
+              {formatMeters(facts.afterMeters)}
             </strong>
             .
           </p>

@@ -974,8 +974,19 @@ code {
   .proposal-editor__actions,
   .proposal-editor__fields,
   .btn-primary,
-  .btn-ghost {
+  .btn-ghost,
+  .dream-sky,
+  .propose-sheet__generate,
+  .propose-sheet__note {
     display: none !important;
+  }
+
+  .mode-page {
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
   }
 
   .app-shell,
