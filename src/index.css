@@ -1015,10 +1015,10 @@ code {
 .propose-sheet {
   position: fixed;
   z-index: 6;
-  top: 3.2rem;
+  top: 5.5rem;
   right: 12px;
   width: min(28rem, calc(100% - 24px));
-  max-height: calc(100% - 6.5rem);
+  max-height: calc(100% - 10rem);
   overflow: auto;
   padding: 0.75rem;
   background: rgba(8, 12, 14, 0.92);
