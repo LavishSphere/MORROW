@@ -57,6 +57,73 @@ export function createFacadeTexture(wall: string): THREE.CanvasTexture {
   return texture;
 }
 
+function paintNoise(
+  paint: (x: number, y: number, n: number) => void,
+  count: number,
+) {
+  for (let i = 0; i < count; i += 1) {
+    paint(Math.random() * 512, Math.random() * 512, Math.random());
+  }
+}
+
+export function createAsphaltTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 18);
+  if (!context) return texture;
+  context.fillStyle = "#2a2e34";
+  context.fillRect(0, 0, 512, 512);
+  paintNoise((x, y, n) => {
+    const g = 36 + Math.floor(n * 28);
+    context.fillStyle = `rgb(${g},${g + 2},${g + 4})`;
+    context.fillRect(x, y, 1 + n * 2, 1 + n);
+  }, 8000);
+  context.strokeStyle = "rgba(18,18,20,0.45)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(40, 0);
+  context.bezierCurveTo(80, 180, 20, 320, 70, 512);
+  context.stroke();
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export function createConcreteTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(4, 12);
+  if (!context) return texture;
+  context.fillStyle = "#b7b2a8";
+  context.fillRect(0, 0, 512, 512);
+  paintNoise((x, y, n) => {
+    const g = 150 + Math.floor(n * 50);
+    context.fillStyle = `rgba(${g},${g - 4},${g - 10},0.45)`;
+    context.fillRect(x, y, 2, 2);
+  }, 5000);
+  context.strokeStyle = "rgba(90,86,80,0.55)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(0, 170);
+  context.lineTo(512, 170);
+  context.moveTo(0, 340);
+  context.lineTo(512, 340);
+  context.stroke();
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export function createGrassTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 256;

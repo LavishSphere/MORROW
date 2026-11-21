@@ -7,8 +7,8 @@ import { BUILDINGS, CITY_LIMIT, TREES, onPavement } from "./cityData";
 const PARK = { minX: -28, maxX: -9, minZ: 9, maxZ: 28 };
 const CITY_TUFTS = 20000;
 const PARK_TUFTS = 6000;
-const BLADE_WIDTH = 0.15;
-const BLADE_HEIGHT = 0.72;
+const BLADE_WIDTH = 0.08;
+const BLADE_HEIGHT = 0.22;
 const GROUND_SIZE = 560;
 
 const GREENS = [
