@@ -1,7 +1,7 @@
 .cartoon-city {
   position: absolute;
   inset: 0;
-  background: #071820;
+  background: #000000;
   color: #ffffff;
   font-family: "Source Sans 3", "Segoe UI", sans-serif;
 }
@@ -42,7 +42,7 @@
   justify-self: start;
   max-width: 34rem;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid #1488ff;
   border-radius: 12px;
   background: rgba(4, 18, 24, 0.82);
   pointer-events: auto;

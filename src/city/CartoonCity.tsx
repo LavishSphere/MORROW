@@ -59,9 +59,18 @@ const ISSUES: readonly Issue[] = [
   },
 ];
 
-const GROUND = "#062833";
-const GLASS = "#9aebff";
-const GLOW = "#d8fbff";
+const LOGO_BLUE = "#1488FF";
+const BLACK = "#000000";
+const GROUND = BLACK;
+const GLASS = LOGO_BLUE;
+const GLOW = LOGO_BLUE;
+
+/** High corner looking at the campus origin so the blocks fill the view. */
+const CAMERA_START = new THREE.Vector3(16, 12, 18);
+const CAMERA_LOOK = (() => {
+  const dir = CAMERA_START.clone().negate().normalize();
+  return { yaw: Math.atan2(dir.x, dir.z), pitch: Math.asin(dir.y) };
+})();
 
 function place(issue: Issue): [number, number, number] {
   const [x, y, z] = defaultProjector.project3(issue.longitude, issue.latitude, 0.08);
@@ -72,11 +81,11 @@ function FlyCamera() {
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
   const keys = useRef<Record<string, boolean>>({});
-  const look = useRef({ yaw: 0.85, pitch: -0.48 });
+  const look = useRef({ yaw: CAMERA_LOOK.yaw, pitch: CAMERA_LOOK.pitch });
   const drag = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
-    camera.position.set(7.2, 5.4, 8.6);
+    camera.position.copy(CAMERA_START);
     const element = gl.domElement;
     const down = (event: PointerEvent) => {
       if (event.button !== 2 && event.button !== 1) return;
@@ -169,10 +178,10 @@ function Buildings() {
         <mesh key={building.id} geometry={building.geometry} castShadow raycast={() => null}>
           <meshStandardMaterial
             color={GLASS}
-            emissive="#7ad7ff"
-            emissiveIntensity={0.45}
+            emissive={LOGO_BLUE}
+            emissiveIntensity={0.85}
             transparent
-            opacity={0.42}
+            opacity={0.78}
             roughness={0.18}
             metalness={0.12}
           />
@@ -208,8 +217,8 @@ function Roads() {
       {ways.map((way) => (
         <mesh key={way.id} geometry={way.geometry} raycast={() => null}>
           <meshStandardMaterial
-            color={way.glow ? "#163a46" : "#0e2c36"}
-            emissive={way.glow ? "#9aebff" : "#4ec4d4"}
+            color={BLACK}
+            emissive={LOGO_BLUE}
             emissiveIntensity={way.glow ? 0.85 : 0.35}
             roughness={0.35}
             metalness={0.05}
@@ -239,13 +248,13 @@ function Trees() {
           <group key={spot.id} position={[spot.x, 0, spot.z]}>
             <mesh position={[0, 0.18, 0]} raycast={() => null}>
               <cylinderGeometry args={[0.04, 0.05, 0.36, 6]} />
-              <meshStandardMaterial color="#d7efe8" />
+              <meshStandardMaterial color={LOGO_BLUE} />
             </mesh>
             <mesh position={[0, 0.48, 0]} raycast={() => null}>
               <sphereGeometry args={[0.22, 10, 8]} />
               <meshStandardMaterial
-                color={autumn ? "#e2a24a" : "#7dcea0"}
-                emissive={autumn ? "#c9842e" : "#3d9a62"}
+                color={autumn ? "#7ab6ff" : LOGO_BLUE}
+                emissive={LOGO_BLUE}
                 emissiveIntensity={0.25}
               />
             </mesh>
@@ -277,8 +286,8 @@ function IssueMarker({
       <mesh position={[0, 0.55, 0]}>
         <octahedronGeometry args={[0.16, 0]} />
         <meshStandardMaterial
-          color="#1488ff"
-          emissive="#1488ff"
+          color={LOGO_BLUE}
+          emissive={LOGO_BLUE}
           emissiveIntensity={selected ? 1.1 : 0.55}
         />
       </mesh>
@@ -347,11 +356,11 @@ function Scene({
 }) {
   return (
     <>
-      <color attach="background" args={["#071820"]} />
-      <fog attach="fog" args={["#0b2430", 12, 32]} />
-      <hemisphereLight args={["#b7fff2", "#062028", 0.85]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[6, 10, 4]} intensity={1.15} color="#e9fffb" />
+      <color attach="background" args={[BLACK]} />
+      <fog attach="fog" args={[BLACK, 18, 42]} />
+      <hemisphereLight args={[LOGO_BLUE, BLACK, 0.85]} />
+      <ambientLight intensity={0.45} />
+      <directionalLight position={[6, 10, 4]} intensity={1.35} color="#ffffff" />
       <FlyCamera />
       <Ground />
       <Roads />
@@ -434,7 +443,7 @@ export function CartoonCity({ reducedMotion }: Props) {
   return (
     <div className="cartoon-city">
       <Canvas
-        camera={{ fov: 52, near: 0.05, far: 80, position: [7.2, 5.4, 8.6] }}
+        camera={{ fov: 52, near: 0.05, far: 80, position: [16, 12, 18] }}
         gl={{ antialias: true }}
         dpr={[1, 1.5]}
       >
