@@ -111,64 +111,85 @@ function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: n
 const CITY = buildCity();
 
 function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
-  const fill = wire ? 0.35 : 0.85 + glow * 0.2;
-  const belts = h > 12 ? 3 : h > 7 ? 2 : 1;
-  const crown = stepped ? h * 0.28 : 0;
+  const fill = wire ? 0.55 : 0.9 + glow * 0.15;
+  const floors = Math.min(7, Math.max(3, Math.floor(h / 2.1)));
+  const crown = stepped ? h * 0.22 : 0;
+  const story = (index: number) => 0.85 + ((h - 1.1) * (index + 1)) / (floors + 1);
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, h / 2, 0]} castShadow>
+      <mesh position={[0, 0.38, 0]} castShadow>
+        <boxGeometry args={[w * 1.14, 0.76, d * 1.14]} />
+        <meshStandardMaterial color="#146e7c" emissive="#7af4ff" emissiveIntensity={0.35} roughness={0.4} />
+      </mesh>
+      <mesh position={[0, 0.38 + h / 2, 0]} castShadow>
         <boxGeometry args={[w, h, d]} />
         <meshStandardMaterial
           color={GLASS}
           emissive={GLASS_GLOW}
           emissiveIntensity={fill}
-          roughness={0.22}
-          metalness={0.18}
+          roughness={0.18}
+          metalness={0.22}
         />
         <Edges threshold={15} color={EDGE} />
       </mesh>
-      {Array.from({ length: belts }, (_, index) => {
-        const y = h * ((index + 1) / (belts + 1));
-        return (
-          <mesh key={`belt-${index}`} position={[0, y, 0]} raycast={() => null}>
-            <boxGeometry args={[w * 1.02, 0.08, d * 1.02]} />
-            <meshBasicMaterial color="#f4ffff" transparent opacity={0.85} />
-          </mesh>
-        );
-      })}
-      {(
-        [
-          [w / 2, d / 2],
-          [w / 2, -d / 2],
-          [-w / 2, d / 2],
-          [-w / 2, -d / 2],
-        ] as const
-      ).map(([cx, cz]) => (
-        <mesh key={`${cx}-${cz}`} position={[cx, h / 2, cz]} raycast={() => null}>
-          <boxGeometry args={[0.08, h, 0.08]} />
+      {Array.from({ length: floors }, (_, index) => (
+        <mesh key={`floor-${index}`} position={[0, story(index), 0]} raycast={() => null}>
+          <boxGeometry args={[w * 1.012, 0.045, d * 1.012]} />
+          <meshBasicMaterial color="#f4ffff" transparent opacity={0.72} />
+        </mesh>
+      ))}
+      {Array.from({ length: floors }, (_, row) =>
+        ([-0.3, 0, 0.3] as const).map((nx) => {
+          const lit = (row + (nx > 0 ? 1 : 0)) % 3 === 0;
+          const paneH = Math.max(0.32, (h / floors) * 0.42);
+          return (
+            <group key={`win-${row}-${nx}`}>
+              <mesh position={[nx * w, story(row) - paneH * 0.7, d / 2 + 0.03]} raycast={() => null}>
+                <boxGeometry args={[w * 0.2, paneH, 0.03]} />
+                <meshStandardMaterial
+                  color={lit ? "#e9fdff" : "#0d4552"}
+                  emissive={lit ? "#c8f7ff" : "#1c7f8e"}
+                  emissiveIntensity={lit ? 1.15 : 0.4}
+                  roughness={0.12}
+                />
+              </mesh>
+              <mesh position={[w / 2 + 0.03, story(row) - paneH * 0.7, nx * d]} raycast={() => null}>
+                <boxGeometry args={[0.03, paneH, d * 0.2]} />
+                <meshStandardMaterial
+                  color={lit ? "#e9fdff" : "#0d4552"}
+                  emissive={lit ? "#c8f7ff" : "#1c7f8e"}
+                  emissiveIntensity={lit ? 0.9 : 0.35}
+                  roughness={0.12}
+                />
+              </mesh>
+            </group>
+          );
+        }),
+      )}
+      {([-1, 1] as const).map((side) => (
+        <mesh key={`mullion-${side}`} position={[side * w * 0.22, 0.38 + h / 2, d / 2 + 0.02]} raycast={() => null}>
+          <boxGeometry args={[0.05, h * 0.96, 0.04]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
       ))}
+      <mesh position={[0, 0.38 + h + 0.06, 0]} raycast={() => null}>
+        <boxGeometry args={[w * 1.04, 0.1, d * 1.04]} />
+        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.45} />
+      </mesh>
+      <mesh position={[w * 0.12, 0.38 + h + 0.38, d * 0.08]}>
+        <boxGeometry args={[w * 0.38, 0.42, d * 0.32]} />
+        <meshStandardMaterial color="#d8fbff" emissive="#7af4ff" emissiveIntensity={0.7} roughness={0.3} />
+      </mesh>
       {stepped && (
-        <mesh position={[0, h + crown / 2, 0]} castShadow>
+        <mesh position={[0, 0.38 + h + crown / 2, 0]} castShadow>
           <boxGeometry args={[w * 0.58, crown, d * 0.54]} />
-          <meshStandardMaterial
-            color="#7af4ff"
-            emissive="#d8fbff"
-            emissiveIntensity={1.2}
-            roughness={0.16}
-            metalness={0.12}
-          />
+          <meshStandardMaterial color="#7af4ff" emissive="#d8fbff" emissiveIntensity={1.05} roughness={0.16} />
           <Edges threshold={12} color="#ffffff" />
         </mesh>
       )}
-      <mesh position={[0, h + crown + 0.12, 0]}>
-        <boxGeometry args={[Math.max(0.9, w * 0.34), 0.16, Math.max(0.9, d * 0.34)]} />
-        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.8} />
-      </mesh>
       {h > 14 && (
-        <mesh position={[0, h + crown + 1.1, 0]} raycast={() => null}>
-          <cylinderGeometry args={[0.05, 0.05, 1.8, 6]} />
+        <mesh position={[w * 0.12, 0.38 + h + crown + 0.9, d * 0.08]} raycast={() => null}>
+          <cylinderGeometry args={[0.04, 0.04, 1.4, 6]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
       )}
@@ -251,53 +272,14 @@ function GlowSeg({
   );
 }
 
-function RoadCorner({
-  x,
-  z,
-  rotation,
-  radius,
-  width,
-}: {
-  x: number;
-  z: number;
-  rotation: number;
-  radius: number;
-  width: number;
-}) {
-  return (
-    <mesh position={[x, 0.05, z]} rotation={[-Math.PI / 2, 0, rotation]} raycast={() => null}>
-      <torusGeometry args={[radius, width / 2, 8, 10, Math.PI / 2]} />
-      <meshStandardMaterial
-        color={ROAD}
-        emissive={ROAD}
-        emissiveIntensity={1.05}
-        roughness={0.2}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
+/** Driving surface in the same cyan family as the glass, wide enough to read as a street. */
+const DECK = "#1a7584";
+const WALK = "#103f4c";
+const CURB = "#f4ffff";
+const LANE = "#f7ffff";
 
-/** Streets that bend around each block. Not a graph-paper grid. */
-function BlockStreet({ x, z, w, d }: Pick<Lot, "x" | "z" | "w" | "d">) {
-  const pad = 2.4;
-  const hw = w / 2 + pad;
-  const hd = d / 2 + pad;
-  const radius = 1.35;
-  const width = 0.72;
-  return (
-    <group>
-      <GlowSeg from={[x - hw + radius, z - hd]} to={[x + hw - radius, z - hd]} width={width} />
-      <GlowSeg from={[x - hw + radius, z + hd]} to={[x + hw - radius, z + hd]} width={width} />
-      <GlowSeg from={[x - hw, z - hd + radius]} to={[x - hw, z + hd - radius]} width={width} />
-      <GlowSeg from={[x + hw, z - hd + radius]} to={[x + hw, z + hd - radius]} width={width} />
-      <RoadCorner x={x - hw + radius} z={z - hd + radius} rotation={Math.PI} radius={radius} width={width} />
-      <RoadCorner x={x + hw - radius} z={z - hd + radius} rotation={Math.PI / 2} radius={radius} width={width} />
-      <RoadCorner x={x + hw - radius} z={z + hd - radius} rotation={0} radius={radius} width={width} />
-      <RoadCorner x={x - hw + radius} z={z + hd - radius} rotation={-Math.PI / 2} radius={radius} width={width} />
-    </group>
-  );
-}
+const AVENUES = [-40, -16, 8, 32];
+const CROSS_STREETS = [-36, -12, 12, 36];
 
 function quad(
   a: readonly [number, number],
@@ -317,71 +299,114 @@ function quad(
   return points;
 }
 
-function ellipse(cx: number, cz: number, rx: number, rz: number, steps: number) {
-  const points: [number, number][] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    const angle = (i / steps) * Math.PI * 2;
-    points.push([cx + Math.cos(angle) * rx, cz + Math.sin(angle) * rz]);
-  }
-  return points;
+const BOULEVARD = quad([-62, -20], [4, 18], [64, -6], 28);
+
+function shift(
+  from: readonly [number, number],
+  to: readonly [number, number],
+  offset: number,
+): { from: [number, number]; to: [number, number] } {
+  const dx = to[0] - from[0];
+  const dz = to[1] - from[1];
+  const len = Math.hypot(dx, dz) || 1;
+  const nx = -dz / len;
+  const nz = dx / len;
+  return {
+    from: [from[0] + nx * offset, from[1] + nz * offset],
+    to: [to[0] + nx * offset, to[1] + nz * offset],
+  };
 }
 
-const BOULEVARD = quad([-62, -24], [2, 28], [64, 4], 24);
-const SWEEP = quad([-56, 36], [6, -18], [60, 30], 22);
-const CRESCENT = quad([-34, -10], [4, 32], [36, -4], 16);
-const LOOP = ellipse(9, 7, 24, 15, 32);
+function Pothole({ x, z }: { x: number; z: number }) {
+  return (
+    <group position={[x, 0.1, z]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0.2]} raycast={() => null}>
+        <circleGeometry args={[0.95, 8]} />
+        <meshStandardMaterial color="#7af4ff" emissive="#7af4ff" emissiveIntensity={0.35} />
+      </mesh>
+      <mesh position={[0.05, 0.01, -0.04]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <circleGeometry args={[0.55, 7]} />
+        <meshStandardMaterial color="#062830" roughness={1} />
+      </mesh>
+    </group>
+  );
+}
 
-function Ribbon({
-  points,
-  width,
-  color = ROAD,
-  y = 0.05,
-  glow = 1.15,
-}: {
-  points: readonly (readonly [number, number])[];
-  width: number;
-  color?: string;
-  y?: number;
-  glow?: number;
-}) {
+function LaneDashes({ from, to }: { from: readonly [number, number]; to: readonly [number, number] }) {
+  const dx = to[0] - from[0];
+  const dz = to[1] - from[1];
+  const len = Math.hypot(dx, dz);
+  if (len < 1) return null;
+  const ux = dx / len;
+  const uz = dz / len;
+  const dashes: Array<readonly [readonly [number, number], readonly [number, number]]> = [];
+  for (let dist = 0.6; dist < len - 0.6; dist += 1.8) {
+    const end = Math.min(dist + 0.85, len - 0.4);
+    dashes.push([
+      [from[0] + ux * dist, from[1] + uz * dist],
+      [from[0] + ux * end, from[1] + uz * end],
+    ]);
+  }
   return (
     <group>
-      {points.slice(0, -1).map((from, index) => (
-        <GlowSeg
-          key={index}
-          from={from}
-          to={points[index + 1] ?? from}
-          width={width}
-          color={color}
-          y={y}
-          glow={glow}
-        />
+      {dashes.map(([start, end], index) => (
+        <GlowSeg key={index} from={start} to={end} width={0.1} color={LANE} y={0.1} glow={0.7} />
       ))}
     </group>
   );
 }
 
-function Pothole({ x, z }: { x: number; z: number }) {
+/** A photo-style street: sidewalk, deck, curb, edge lines, dashed center. Colors stay in the glass palette. */
+function Paved({
+  from,
+  to,
+  width = 3.6,
+}: {
+  from: readonly [number, number];
+  to: readonly [number, number];
+  width?: number;
+}) {
+  const half = width / 2;
+  const leftCurb = shift(from, to, -(half + 0.08));
+  const rightCurb = shift(from, to, half + 0.08);
+  const leftEdge = shift(from, to, -(half - 0.22));
+  const rightEdge = shift(from, to, half - 0.22);
   return (
-    <mesh position={[x, 0.09, z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-      <circleGeometry args={[0.72, 8]} />
-      <meshStandardMaterial color="#061820" roughness={1} />
-    </mesh>
+    <group>
+      <GlowSeg from={from} to={to} width={width + 2.2} color={WALK} y={0.03} glow={0.18} />
+      <GlowSeg from={from} to={to} width={width} color={DECK} y={0.055} glow={0.42} />
+      <GlowSeg from={leftCurb.from} to={leftCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
+      <GlowSeg from={rightCurb.from} to={rightCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
+      <GlowSeg from={leftEdge.from} to={leftEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
+      <GlowSeg from={rightEdge.from} to={rightEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
+      <LaneDashes from={from} to={to} />
+    </group>
   );
 }
 
 function CurvedRoads() {
-  const holes = [4, 9, 15, 20].map((index) => beside(BOULEVARD, index, 0.15));
+  const holes = [6, 14, 22].map((index) => beside(BOULEVARD, index, 0.2));
   return (
     <group>
-      <Ribbon points={BOULEVARD} width={3.4} color="#12343c" y={0.03} glow={0.15} />
-      <Ribbon points={BOULEVARD} width={0.16} y={0.07} />
-      <Ribbon points={SWEEP} width={2.6} color="#12343c" y={0.03} glow={0.15} />
-      <Ribbon points={SWEEP} width={0.14} y={0.07} />
-      <Ribbon points={CRESCENT} width={2.2} color="#12343c" y={0.03} glow={0.12} />
-      <Ribbon points={LOOP} width={2.1} color="#12343c" y={0.03} glow={0.12} />
+      {BOULEVARD.slice(0, -1).map((from, index) => (
+        <Paved key={`bend-${index}`} from={from} to={BOULEVARD[index + 1] ?? from} width={3.8} />
+      ))}
       {holes.map((spot) => (
         <Pothole key={`hole-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
+      ))}
+    </group>
+  );
+}
+
+function StreetGrid() {
+  const span = 58;
+  return (
+    <group>
+      {CROSS_STREETS.map((z) => (
+        <Paved key={`h-${z}`} from={[-span, z]} to={[span, z]} />
+      ))}
+      {AVENUES.map((x) => (
+        <Paved key={`v-${x}`} from={[x, -span]} to={[x, span]} />
       ))}
     </group>
   );
@@ -513,12 +538,12 @@ function Bin({ x, z }: { x: number; z: number }) {
 }
 
 function StreetLife() {
-  const hydrants = [2, 6, 10, 14, 18, 22].map((index) => beside(BOULEVARD, index, 1.7));
-  const lamps = [1, 4, 7, 10, 13, 16, 19].map((index) => beside(SWEEP, index, -1.8));
-  const benches = [2, 6, 10, 14].map((index) => beside(CRESCENT, index, 1.55));
-  const walks = [5, 12, 19].map((index) => beside(BOULEVARD, index, 0));
-  const stop = beside(BOULEVARD, 11, -2.4);
-  const bins = [8, 16].map((index) => beside(LOOP, index, 1.5));
+  const hydrants = [4, 10, 16, 22].map((index) => beside(BOULEVARD, index, 2.5));
+  const lamps = [3, 9, 15, 21].map((index) => beside(BOULEVARD, index, -2.6));
+  const benches = [7, 18].map((index) => beside(BOULEVARD, index, 2.7));
+  const walks = [8, 16].map((index) => beside(BOULEVARD, index, 0));
+  const stop = beside(BOULEVARD, 12, -3.1);
+  const bins = [6, 20].map((index) => beside(BOULEVARD, index, 3.1));
   return (
     <group>
       {hydrants.map((spot) => (
@@ -544,10 +569,8 @@ function StreetLife() {
 function Roads() {
   return (
     <group>
+      <StreetGrid />
       <CurvedRoads />
-      {CITY.lots.map((lot) => (
-        <BlockStreet key={`street-${lot.x}-${lot.z}`} x={lot.x} z={lot.z} w={lot.w} d={lot.d} />
-      ))}
       <StreetLife />
     </group>
   );
