@@ -50,6 +50,27 @@ export const SCENARIO: Scenario = {
     : [...MODELED_IMPACT_ASSUMPTIONS],
 }
 
+function assertLinkedGraphChanges(): void {
+  const linked = INTERVENTIONS.find((item) => item.id === SCENARIO.interventionId)
+  if (!linked) {
+    throw new Error(`Unknown scenario.interventionId: ${SCENARIO.interventionId}`)
+  }
+  if (linked.barrierId !== SCENARIO.barrierId) {
+    throw new Error('scenario.barrierId must match the linked intervention.barrierId')
+  }
+  const scenarioChanges = demoDataset.scenario.graphChanges
+  if (JSON.stringify(linked.graphChanges) !== JSON.stringify(scenarioChanges)) {
+    throw new Error(
+      'scenario.graphChanges must deep-equal the linked intervention.graphChanges',
+    )
+  }
+  if (linked.graphChanges.length === 0) {
+    throw new Error(`Intervention ${linked.id} has empty graphChanges`)
+  }
+}
+
+assertLinkedGraphChanges()
+
 export function getBarrier(id: string): Barrier | undefined {
   return BARRIERS.find((b) => b.id === id)
 }

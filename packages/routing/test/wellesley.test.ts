@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { compareScenario as exportedCompareScenario } from "@morrow/routing";
 import { compareIntervention, MODELED_IMPACT_ASSUMPTIONS } from "../src/compare.ts";
 import { edgeBelongsToWay, wayIdFromEdgeId } from "../src/from-geojson.ts";
 import {
@@ -21,8 +22,15 @@ type DemoFile = {
     id: string;
     origin: [number, number];
     destination: [number, number];
+    barrierId: string;
+    interventionId: string;
     graphChanges: GraphChange[];
   };
+  interventions: Array<{
+    id: string;
+    barrierId: string;
+    graphChanges: GraphChange[];
+  }>;
 };
 
 function loadBasemap(): unknown {
@@ -47,6 +55,18 @@ function sumPathMeters(graph: PedestrianGraph, edgeIds: string[]): number {
   }
   return total;
 }
+
+test("scenario graphChanges match the linked ramp intervention", () => {
+  const demo = loadDemo();
+  const intervention = demo.interventions.find(
+    (item) => item.id === demo.scenario.interventionId,
+  );
+  assert.ok(intervention);
+  assert.equal(demo.scenario.id, "wellesley-demo-01");
+  assert.equal(demo.scenario.interventionId, "wellesley-intervention-ramp-01");
+  assert.equal(intervention.barrierId, demo.scenario.barrierId);
+  assert.deepEqual(demo.scenario.graphChanges, intervention.graphChanges);
+});
 
 test("wellesley-demo-01 graph contains the intervention way ids", () => {
   const demo = loadDemo();
@@ -81,6 +101,8 @@ test("compareIntervention on wellesley-demo-01 recomputes meters from those ways
   assert.equal(comparison.beforeMeters, null);
   assert.equal(comparison.after.reachable, true);
   assert.ok(comparison.afterMeters !== null && comparison.afterMeters > 0);
+  assert.notEqual(comparison.afterMeters, 1200);
+  assert.notEqual(comparison.afterMeters, 800);
   assert.equal(
     comparison.afterMeters,
     sumPathMeters(graph, comparison.after.edgeIds),
@@ -95,6 +117,10 @@ test("compareIntervention on wellesley-demo-01 recomputes meters from those ways
   const viaHelper = compareScenario(collection, demo.scenario);
   assert.equal(viaHelper.afterMeters, comparison.afterMeters);
   assert.deepEqual(viaHelper.after.edgeIds, comparison.after.edgeIds);
+  assert.equal(
+    exportedCompareScenario(collection, demo.scenario).afterMeters,
+    comparison.afterMeters,
+  );
 });
 
 test("scaling osm-way-543827744 and osm-way-543827745 changes after meters", () => {

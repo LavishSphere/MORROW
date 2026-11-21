@@ -51,7 +51,7 @@ export function compareByIds(input: {
   interventionId: string
 }): CompareResult {
   const scenario = demo.scenario
-  if (input.scenarioId && input.scenarioId !== scenario.id) {
+  if (!input.scenarioId || input.scenarioId !== scenario.id) {
     throw new Error(
       `Unknown scenario id: ${input.scenarioId} (only ${scenario.id} is bundled)`,
     )
@@ -63,6 +63,12 @@ export function compareByIds(input: {
 
   if (!intervention) {
     throw new Error(`Unknown intervention id: ${input.interventionId}`)
+  }
+
+  if (intervention.graphChanges.length === 0) {
+    throw new Error(
+      `Intervention ${input.interventionId} has empty graphChanges`,
+    )
   }
 
   // Canonical graphChanges from the bundled intervention — ids only from client.
@@ -78,5 +84,17 @@ export function compareByIds(input: {
     interventionId: intervention.id,
     source: 'morrow-routing',
     routingPackageAvailable: true,
+  }
+}
+
+/** App / satellite / outage generate must not white-screen on a bad id. */
+export function tryCompareByIds(input: {
+  scenarioId: string
+  interventionId: string
+}): CompareResult | null {
+  try {
+    return compareByIds(input)
+  } catch {
+    return null
   }
 }
