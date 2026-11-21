@@ -4,15 +4,22 @@ import {
   getBarrier,
   listBarriers,
 } from "../data/dataset.ts";
+import {
+  barriersInBboxFromTiger,
+  databaseUrlConfigured,
+  getBarrierFromTiger,
+  tigerLastError,
+  tigerLive,
+} from "../data/tiger.ts";
 import { parseBbox, sendJson } from "../http.ts";
 
 const BARRIER_LIMIT = 100;
 
-export function handleListBarriers(
+export async function handleListBarriers(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
-): void {
+): Promise<void> {
   void req;
   const bboxRaw = url.searchParams.get("bbox");
   if (!bboxRaw) {
@@ -29,6 +36,25 @@ export function handleListBarriers(
     return;
   }
 
+  const fromTiger = await barriersInBboxFromTiger(
+    bbox.west,
+    bbox.south,
+    bbox.east,
+    bbox.north,
+    BARRIER_LIMIT,
+  );
+
+  if (fromTiger) {
+    sendJson(res, 200, {
+      source: "tiger-data",
+      tigerData: true,
+      barriers: fromTiger,
+      count: fromTiger.length,
+      note: "Live PostGIS bbox query (Tiger Data).",
+    });
+    return;
+  }
+
   const barriers = barriersInBbox(
     bbox.west,
     bbox.south,
@@ -36,21 +62,30 @@ export function handleListBarriers(
     bbox.north,
   ).slice(0, BARRIER_LIMIT);
 
+  const note = databaseUrlConfigured()
+    ? `Bundled Wellesley demo dataset (Tiger Data unavailable${tigerLastError() ? `: ${tigerLastError()}` : ""}).`
+    : "Bundled Wellesley demo dataset (in-memory bbox filter). Set DATABASE_URL for Tiger Data/PostGIS.";
+
   sendJson(res, 200, {
     source: "bundled",
     tigerData: false,
     barriers,
     count: barriers.length,
-    note:
-      "Bundled Wellesley demo dataset (in-memory bbox filter). Tiger Data/PostGIS not wired yet.",
+    note,
   });
 }
 
-export function handleGetBarrier(
+export async function handleGetBarrier(
   _req: IncomingMessage,
   res: ServerResponse,
   id: string,
-): void {
+): Promise<void> {
+  const fromTiger = await getBarrierFromTiger(id);
+  if (fromTiger) {
+    sendJson(res, 200, fromTiger);
+    return;
+  }
+
   const barrier = getBarrier(id);
   if (!barrier) {
     sendJson(res, 404, { error: `Barrier not found: ${id}` });
@@ -68,7 +103,9 @@ export function handleHealth(
     service: "@morrow/api",
     barriers: listBarriers().length,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
-    tigerData: false,
+    tigerData: tigerLive(),
+    databaseUrlConfigured: databaseUrlConfigured(),
+    tigerError: tigerLive() ? null : tigerLastError(),
     mastra: true,
     vultr: false,
   });

@@ -44,6 +44,7 @@ test("GET /api/health reports template-only without Gemini key", async () => {
   assert.equal(record.geminiConfigured, false);
   assert.equal(record.tigerData, false);
   assert.equal(record.mastra, true);
+  assert.equal(record.databaseUrlConfigured, false);
 });
 
 test("GET /api/barriers?bbox= returns bundled Wellesley barrier", async () => {

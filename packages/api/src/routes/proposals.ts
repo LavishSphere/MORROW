@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getProposal } from "../data/proposals.ts";
+import {
+  getProposalFromTiger,
+  saveProposalToTiger,
+  tigerLive,
+} from "../data/tiger.ts";
 import { generateRequestSchema } from "../draft/schema.ts";
 import { readJsonBody, sendJson } from "../http.ts";
 import { runProposalWorkflow } from "../workflow/proposal.ts";
@@ -35,6 +40,16 @@ export async function handleGenerateProposal(
     const { proposal, stepTrace, mastra } = await runProposalWorkflow(
       parsed.data,
     );
+
+    // Best-effort Tiger Data persistence; in-memory remains the session authority.
+    const persisted = await saveProposalToTiger(proposal);
+    if (tigerLive() && !persisted) {
+      proposal.warnings = [
+        ...proposal.warnings,
+        "Tiger Data proposal save failed — draft kept in memory for this session.",
+      ];
+    }
+
     sendJson(res, 201, {
       ...proposal,
       mastra,
@@ -52,15 +67,22 @@ export async function handleGenerateProposal(
   }
 }
 
-export function handleGetProposal(
+export async function handleGetProposal(
   _req: IncomingMessage,
   res: ServerResponse,
   id: string,
-): void {
-  const proposal = getProposal(id);
-  if (!proposal) {
-    sendJson(res, 404, { error: `Proposal not found: ${id}` });
+): Promise<void> {
+  const memory = getProposal(id);
+  if (memory) {
+    sendJson(res, 200, memory);
     return;
   }
-  sendJson(res, 200, proposal);
+
+  const fromTiger = await getProposalFromTiger(id);
+  if (fromTiger) {
+    sendJson(res, 200, fromTiger);
+    return;
+  }
+
+  sendJson(res, 404, { error: `Proposal not found: ${id}` });
 }

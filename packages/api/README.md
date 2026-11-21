@@ -6,11 +6,11 @@ Proposal and barrier HTTP API for MORROW (Ashsmith lane).
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/api/health` | Liveness + whether Gemini is configured |
-| `GET` | `/api/barriers?bbox=west,south,east,north` | In-memory bbox filter over the Wellesley demo dataset |
-| `GET` | `/api/barriers/:id` | One barrier, or 404 |
+| `GET` | `/api/health` | Liveness + Gemini / Tiger Data flags |
+| `GET` | `/api/barriers?bbox=west,south,east,north` | PostGIS bbox when Tiger Data is live; else bundled Wellesley dataset |
+| `GET` | `/api/barriers/:id` | One barrier (Tiger Data first, then bundled), or 404 |
 | `POST` | `/api/proposals/generate` | Ids only → reload dataset → `@morrow/routing` recompute → Gemini or template |
-| `GET` | `/api/proposals/:id` | Saved draft from the in-memory store |
+| `GET` | `/api/proposals/:id` | Saved draft (memory, then Tiger Data) |
 
 `POST /api/proposals/generate` accepts only:
 
@@ -26,15 +26,23 @@ Meters, evidence status, and sources are never taken from the client.
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | No | — | Server-side Google Gemini key. When unset, the deterministic template always runs. |
 | `GEMINI_MODEL` | No | `gemini-2.0-flash` | Model id for `@google/genai` |
+| `DATABASE_URL` | No | — | Tiger Data / PostGIS URL with TLS (`sslmode=require`). When unset or unreachable, the API uses the bundled dataset. |
 | `PORT` | No | `8787` | Listen port |
 | `HOST` | No | `127.0.0.1` | Bind address |
 | `MORROW_CORS_ORIGIN` | No | `*` | Exact browser origin to allow, or omit for `*` |
 
-Do **not** put `GEMINI_API_KEY` in Vite `VITE_*` env vars or ship it to the browser.
+Do **not** put `GEMINI_API_KEY` or `DATABASE_URL` in Vite `VITE_*` env vars or ship them to the browser. See the repo root [`.env.example`](../../.env.example) for the template shape (no real secrets).
 
-`POST /api/proposals/generate` runs a **Mastra** typed workflow (`morrow-proposal`): validate ids → load evidence → collect route metrics → generate → check → return. The response includes `mastra: true` and `workflowSteps`.
+`POST /api/proposals/generate` runs a **Mastra** typed workflow (`morrow-proposal`): validate ids → load evidence → collect route metrics → generate → check → return. The response includes `mastra: true` and `workflowSteps`. Vultr hosting is a separate WHA-9 PR.
 
-Tiger Data / PostGIS (`DATABASE_URL`) and Vultr hosting are **not** claimed in this package yet (see WHA-9).
+## Tiger Data / PostGIS
+
+1. Create a Tiger Cloud (or local PostGIS) service.
+2. Set `DATABASE_URL` locally — never commit the value.
+3. Apply schema and seed the Wellesley illustrative barrier (`psql "$DATABASE_URL" -f packages/api/sql/schema.sql`, or `npm run api:seed -- --schema`, then `npm run api:seed`).
+4. Restart the API. `GET /api/health` should show `tigerData: true`. `GET /api/barriers?bbox=…` should report `source: "tiger-data"`.
+
+If the database is down, barriers and generate keep working on the bundled dataset; health reports `tigerData: false`.
 
 ## Run
 
@@ -50,7 +58,7 @@ Or:
 npm run api -w @morrow/api
 ```
 
-Template-only smoke (no key):
+Template-only smoke (no key, no database):
 
 ```bash
 curl -s "http://127.0.0.1:8787/api/health"
@@ -62,4 +70,4 @@ curl -s -X POST "http://127.0.0.1:8787/api/proposals/generate" \
 
 ## Frontend
 
-Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For the GitHub Pages build, set `VITE_API_BASE` to the public HTTPS API origin. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
