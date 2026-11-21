@@ -2,17 +2,25 @@
   "name": "morrow",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test packages/routing/test/*.test.ts",
-    "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit && tsc -b"
+    "lint:md": "markdownlint-cli2",
+    "lint": "oxlint && eslint .",
+    "typecheck": "tsc -p packages/routing/tsconfig.json --noEmit && tsc -b && tsc -p tsconfig.scripts.json --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts packages/routing/test/*.test.ts",
+    "audit": "npm audit --audit-level=high",
+    "quality": "bash scripts/quality.sh",
+    "ci": "npm run lint:md && npm run lint && npm run typecheck && npm test && npm run build && npm run audit"
   },
   "dependencies": {
     "@morrow/routing": "*",
@@ -23,12 +31,17 @@
     "three": "0.187.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^9.39.1",
+    "markdownlint-cli2": "^0.24.2",
     "oxlint": "^1.90.0",
     "typescript": "~5.9.3",
-    "vite": "^8.0.0"
+    "typescript-eslint": "^8.46.3",
+    "vite": "^8.0.0",
+    "yaml": "^2.8.1"
   }
 }
