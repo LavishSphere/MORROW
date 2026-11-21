@@ -3,7 +3,12 @@ import { CanvasSlot } from './components/CanvasSlot'
 import { ContextPanel } from './components/ContextPanel'
 import { ModeToolbar } from './components/ModeToolbar'
 import { TopBar } from './components/TopBar'
-import { fetchBarriers, getDemoScenario } from './data/api'
+import {
+  compareByIds,
+  type CompareResult,
+  fetchBarriers,
+  getDemoScenario,
+} from './data/api'
 import {
   getIntervention,
   interventionsForBarrier,
@@ -49,6 +54,12 @@ export default function App() {
   const selectedIntervention: Intervention | null = selectedInterventionId
     ? (getIntervention(selectedInterventionId) ?? null)
     : null
+  const compare: CompareResult | null = selectedInterventionId
+    ? compareByIds({
+        scenarioId: scenario.id,
+        interventionId: selectedInterventionId,
+      })
+    : null
   const location = LOCATIONS.find((l) => l.id === locationId) ?? LOCATIONS[0]
 
   return (
@@ -76,6 +87,7 @@ export default function App() {
               ? `Focus: ${selectedBarrier.locationLabel}`
               : undefined
           }
+          compare={compare}
         />
         <ContextPanel
           mode={mode}
@@ -87,7 +99,9 @@ export default function App() {
               ? selectedIntervention
               : null
           }
+          scenario={scenario}
           dataNote={dataNote}
+          compare={compare}
           onSelectBarrier={(id) => {
             setSelectedBarrierId(id)
             const opts = interventionsForBarrier(id)
