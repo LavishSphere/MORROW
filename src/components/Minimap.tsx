@@ -10,7 +10,7 @@ const SIZE = 168
 const ZOOMED_IN = 40
 const LOGO_BLUE = '#1488ff'
 
-type Paths = { roads: Path2D; walks: Path2D; buildings: Path2D }
+type Paths = { roads: Path2D; walks: Path2D; buildings: Path2D; water: Path2D }
 
 type View = {
   /** Scene point at the middle of the canvas. */
@@ -50,6 +50,8 @@ function drawMap(
   ctx.setTransform(scale, 0, 0, scale, px / 2 - view.cx * scale, px / 2 - view.cz * scale)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  ctx.fillStyle = 'rgba(36, 140, 176, 0.72)'
+  ctx.fill(paths.water)
   ctx.fillStyle = 'rgba(150, 190, 210, 0.55)'
   ctx.fill(paths.buildings)
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'
@@ -122,7 +124,12 @@ export function Minimap({ placeLabel }: Props) {
   const paths = useMemo<Paths | null>(
     () =>
       map
-        ? { roads: new Path2D(map.roads), walks: new Path2D(map.walks), buildings: new Path2D(map.buildings) }
+        ? {
+            roads: new Path2D(map.roads),
+            walks: new Path2D(map.walks),
+            buildings: new Path2D(map.buildings),
+            water: new Path2D(map.water),
+          }
         : null,
     [map],
   )

@@ -5,11 +5,15 @@ export type OsmWay = {
   id: number
   name: string | null
   /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
-  kind: 'road' | 'building' | 'part'
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
   building?: string | null
+  /** OSM water tag (lake, pond, …) when the way is a shoreline. */
+  water?: string | null
+  /** OSM waterway tag (river, stream, canal) when the way is a centerline. */
+  waterway?: string | null
   /** Accessibility tags the issue detector reads (crossing, sidewalk, surface…). */
   tags?: Record<string, string>
   /** [longitude, latitude] */
@@ -78,7 +82,23 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     if (points.length < 2) continue
     const part = typeof row.tags?.['building:part'] === 'string'
     const building = !part && typeof row.tags?.building === 'string'
+    const highway = typeof row.tags?.highway === 'string'
+    const natural = row.tags?.natural === 'water'
+    const water = typeof row.tags?.water === 'string' ? row.tags.water : null
+    const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+    const kind = part
+      ? 'part'
+      : building
+        ? 'building'
+        : highway
+          ? 'road'
+          : natural || water
+            ? 'water'
+            : waterway === 'river' || waterway === 'stream' || waterway === 'canal'
+              ? 'waterway'
+              : null
+    if (!kind) continue
     const tags: Record<string, string> = {}
     for (const key of KEEP_TAGS) {
       const value = row.tags?.[key]
@@ -87,9 +107,11 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     ways.push({
       id: row.id,
       name,
-      kind: part ? 'part' : building ? 'building' : 'road',
-      highway: typeof row.tags?.highway === 'string' ? row.tags.highway : null,
+      kind,
+      highway: highway ? String(row.tags?.highway) : null,
       building: building ? String(row.tags?.building) : null,
+      water,
+      waterway,
       ...(Object.keys(tags).length > 0 ? { tags } : {}),
       points,
     })
@@ -100,10 +122,8 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
 /** Real streets and buildings in one area around a point, from OpenStreetMap. */
 export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
-  // Streets and buildings get separate quotas, so a dense downtown's
-  // buildings cannot crowd out its streets.
-  // building:part pieces carry the real 3D shape of detailed landmarks.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;`
+  // Streets, buildings, landmark pieces, and water get separate quotas.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal)$"](${box});out tags geom 800;`
   const res = await fetch(OVERPASS, {
     method: 'POST',
     headers: {
@@ -120,7 +140,8 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
 function describe(place: UsPlace, ways: OsmWay[]) {
   const roads = ways.filter((way) => way.kind === 'road').length
   const buildings = ways.filter((way) => way.kind === 'building').length
-  return `${place.label}. OpenStreetMap: ${roads} streets and ${buildings} buildings so far; more load as you explore. Not a barrier inventory.`
+  const water = ways.filter((way) => way.kind === 'water' || way.kind === 'waterway').length
+  return `${place.label}. OpenStreetMap: ${roads} streets, ${buildings} buildings, and ${water} water shapes so far; more load as you explore. Water is the mapped shoreline. Not a barrier inventory.`
 }
 
 /**
@@ -182,6 +203,27 @@ const PATH = new Set(['path', 'track', 'cycleway', 'bridleway'])
 export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
   const features = []
   for (const way of neighborhood.ways) {
+    if (way.kind === 'water') {
+      if (way.points.length < 3) continue
+      const ring = [...way.points]
+      const [first] = ring
+      const last = ring[ring.length - 1]
+      if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push(first)
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: { osmId: way.id, layer: 'water', name: way.name, water: way.water ?? 'water' },
+      })
+      continue
+    }
+    if (way.kind === 'waterway') {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: way.points },
+        properties: { osmId: way.id, layer: 'waterway', name: way.name, waterway: way.waterway },
+      })
+      continue
+    }
     if (way.kind === 'building' || way.kind === 'part') {
       if (way.points.length < 3) continue
       const ring = [...way.points]

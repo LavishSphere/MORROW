@@ -88,6 +88,49 @@ test("OpenStreetMap ways are streets and buildings, not barriers", () => {
   assert.equal(ways[0]?.name, "South Irvine Street");
   assert.deepEqual(ways[0]?.points[0], [-82.4, 34.85]);
   assert.equal(ways[1]?.kind, "building");
+  const wet = waysFromOverpass({
+    elements: [
+      {
+        type: "way",
+        id: 42,
+        tags: { natural: "water", name: "Lake Waban", water: "lake" },
+        geometry: [
+          { lat: 42.29, lon: -71.31 },
+          { lat: 42.291, lon: -71.309 },
+          { lat: 42.29, lon: -71.308 },
+          { lat: 42.29, lon: -71.31 },
+        ],
+      },
+      {
+        type: "way",
+        id: 43,
+        tags: { waterway: "stream", name: "Fuller Brook" },
+        geometry: [
+          { lat: 42.29, lon: -71.31 },
+          { lat: 42.292, lon: -71.309 },
+        ],
+      },
+      {
+        type: "way",
+        id: 44,
+        tags: { highway: "residential", natural: "water" },
+        geometry: [
+          { lat: 42.29, lon: -71.31 },
+          { lat: 42.291, lon: -71.31 },
+        ],
+      },
+    ],
+  });
+  assert.equal(wet[0]?.kind, "water");
+  assert.equal(wet[1]?.kind, "waterway");
+  assert.equal(wet[2]?.kind, "road");
+  const geo = neighborhoodGeoJson({
+    place: { label: "Wellesley, Massachusetts", lng: -71.3, lat: 42.29 },
+    note: "",
+    ways: wet,
+  });
+  const layers = (geo.features as { properties: { layer: string } }[]).map((f) => f.properties.layer);
+  assert.deepEqual(layers, ["water", "waterway", "road"]);
 });
 
 test("the canvas loads a typed place on the satellite scene", async () => {
