@@ -249,16 +249,28 @@ function IssuePins({
 
   const capacity = Math.max(1, issues.length);
   const looks = useMemo(() => {
-    const head = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 });
-    // Heads glow in their own instance colour, so they read against dark glass.
-    head.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <emissivemap_fragment>",
-        "#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * 0.6;",
-      );
-    };
+    // Badges, not lit objects: flat kind colour that the sun, the fog and the
+    // tone mapping leave alone, so a stairs pin never reads as an autumn tree.
+    const head = new THREE.MeshBasicMaterial({ fog: false, toneMapped: false });
+    // A dark rim drawn from the back faces of a slightly larger copy.
+    const outline = new THREE.MeshBasicMaterial({ color: "#14202e", side: THREE.BackSide, fog: false, toneMapped: false });
+    // Pins behind buildings still show, faded, instead of vanishing downtown.
+    const ghost = new THREE.MeshBasicMaterial({
+      fog: false,
+      toneMapped: false,
+      transparent: true,
+      opacity: 0.38,
+      depthTest: false,
+      depthWrite: false,
+    });
     return {
       head,
+      outline,
+      ghost,
+      rims: Object.fromEntries(SHAPES.map((shape) => [shape, headGeometry(shape).scale(1.12, 1.12, 1.12)])) as Record<
+        IssueShape,
+        THREE.BufferGeometry
+      >,
       pole: new THREE.MeshStandardMaterial({ color: "#e9edef", metalness: 0.5, roughness: 0.35 }),
       hit: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
       heads: Object.fromEntries(SHAPES.map((shape) => [shape, headGeometry(shape)])) as Record<IssueShape, THREE.BufferGeometry>,
@@ -269,6 +281,9 @@ function IssuePins({
   useEffect(
     () => () => {
       looks.head.dispose();
+      looks.outline.dispose();
+      looks.ghost.dispose();
+      for (const g of Object.values(looks.rims)) g.dispose();
       looks.pole.dispose();
       looks.hit.dispose();
       looks.poleShape.dispose();
@@ -281,6 +296,8 @@ function IssuePins({
   const poles = useRef<THREE.InstancedMesh>(null);
   const hits = useRef<THREE.InstancedMesh>(null);
   const heads = useRef<Partial<Record<IssueShape, THREE.InstancedMesh | null>>>({});
+  // Rims and ghosts share each head's matrices and colours; only their counts are copied.
+  const extras = useRef<Partial<Record<IssueShape, (THREE.InstancedMesh | null)[]>>>({});
   const drawn = useRef({ scale: 0, pins: null as Pin[] | null, hovered: null as string | null });
   const lastCheck = useRef(-1);
   const temp = useMemo(() => ({ m: new THREE.Matrix4(), q: new THREE.Quaternion(), p: new THREE.Vector3(), s: new THREE.Vector3(), c: new THREE.Color() }), []);
@@ -339,6 +356,12 @@ function IssuePins({
       head.count = counts[shape];
       head.instanceMatrix.needsUpdate = true;
       if (head.instanceColor) head.instanceColor.needsUpdate = true;
+      for (const extra of extras.current[shape] ?? []) {
+        if (!extra) continue;
+        extra.instanceMatrix = head.instanceMatrix;
+        extra.instanceColor = head.instanceColor;
+        extra.count = counts[shape];
+      }
     }
   });
 
@@ -367,6 +390,27 @@ function IssuePins({
           raycast={() => null}
         />
       ))}
+      {SHAPES.flatMap((shape) =>
+        (
+          [
+            [looks.rims[shape], looks.outline, 0],
+            [looks.heads[shape], looks.ghost, 20],
+          ] as const
+        ).map(([geometry, material, order], k) => (
+          <instancedMesh
+            key={`${shape}-extra${k}-${capacity}`}
+            ref={(mesh) => {
+              const list = (extras.current[shape] ??= []);
+              list[k] = mesh;
+              if (mesh) mesh.count = 0;
+            }}
+            args={[geometry, material, capacity]}
+            frustumCulled={false}
+            renderOrder={order}
+            raycast={() => null}
+          />
+        )),
+      )}
       {/* Generous invisible targets so pins are easy to hover and click. */}
       <instancedMesh
         key={`hits-${capacity}`}
@@ -513,7 +557,7 @@ export function IssueLayer({ reducedMotion = false }: { reducedMotion?: boolean 
               key={`crowd-${issue.id}`}
               x={issue.x}
               z={issue.z}
-              count={Math.max(4, Math.min(12, 3 + Math.round(people / 12)))}
+              count={Math.max(4, Math.min(7, 3 + Math.round(people / 20)))}
               wheelchair={issue.kind === "stairs" || issue.kind === "unmarked_crossing"}
               seed={Math.abs(issue.x * 0.013 + issue.z * 0.017) + 0.1}
               reducedMotion={reducedMotion}

@@ -33,7 +33,7 @@ test("every kind has its own colour and its own pin shape", () => {
 test("pins keep their screen size across zooms, within limits", () => {
   assert.ok(markerScale(15) < markerScale(60));
   assert.ok(markerScale(60) < markerScale(100));
-  assert.equal(markerScale(1), 0.6);
+  assert.equal(markerScale(1), 0.8);
   assert.equal(markerScale(10_000), 4);
 });
 

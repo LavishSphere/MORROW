@@ -61,7 +61,7 @@ const STONE = "#d9dcd8";
 const ROOF_METAL = "#dfe5e8";
 const ROOF_GARDEN = "#5f8f55";
 const LAWN = "#7d9a68";
-const SMART_LINE = "#8ff3ff";
+const LANE_PAINT = "#efe6c4";
 const LOGO_BLUE = "#1488ff";
 const { green: GREEN, autumn: AUTUMN } = lookTrees(["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"], ["#b98c3a", "#c99a4c", "#b8692c"]);
 
@@ -2107,12 +2107,8 @@ function useMaterials() {
         road: plain("#3b4448", { roughness: 0.85 }),
         // The big bridges stay clear of the city's haze, so they read from downtown.
         farDeck: plain("#3b4448", { roughness: 0.85, fog: false }),
-        line: new THREE.MeshStandardMaterial({
-          color: SMART_LINE,
-          emissive: SMART_LINE,
-          emissiveIntensity: 0.9,
-          toneMapped: false,
-        }),
+        // Painted lane lines, not neon: blue stays reserved for proposed fixes.
+        line: plain(LANE_PAINT, { roughness: 0.7 }),
         lit: plain(LOGO_BLUE, { emissive: new THREE.Color(LOGO_BLUE), emissiveIntensity: 0.6 }),
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),

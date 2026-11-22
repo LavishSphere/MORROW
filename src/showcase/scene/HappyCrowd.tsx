@@ -89,6 +89,8 @@ function Rider({ figure }: { figure: Figure }) {
   );
 }
 
+const CROWD_SCALE = 1.2;
+
 /**
  * A small happy crowd around a fix: people facing it with arms up,
  * bouncing, and (for ramps and crossings) a wheelchair user rolling in.
@@ -113,7 +115,8 @@ export function HappyCrowd({
     () =>
       Array.from({ length: count }, (_, i) => {
         const angle = (i / count) * Math.PI * 2 + seed * 6.28;
-        const r = 1.1 + hash(seed * 31 + i) * 0.9;
+        // Stand back from the fix so it stays visible: around its edge, not on it.
+        const r = 1.9 + hash(seed * 31 + i) * 0.8;
         const fx = Math.cos(angle) * r;
         const fz = Math.sin(angle) * r;
         return {
@@ -172,7 +175,9 @@ export function HappyCrowd({
           }}
           position={[figure.x, 0, figure.z]}
           rotation={[0, figure.facing, 0]}
-          scale={2.5}
+          // A touch larger than the walkers on the paths, so the crowd reads, but
+          // still people-sized next to houses and cars.
+          scale={CROWD_SCALE}
         >
           {figure.wheelchair ? <Rider figure={figure} /> : <Person figure={figure} />}
         </group>
