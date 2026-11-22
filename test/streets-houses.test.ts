@@ -60,15 +60,11 @@ test("walking near the edge of a loaded city loads the real area ahead", async (
   assert.match(store, /const keep = \(set: ReadonlySet<string>\)/);
 });
 
-test("suburban homes are houses with gable roofs, not glass towers", async () => {
+test("buildings are extruded footprints, with a roof only when roof:shape is present", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  assert.match(city, /const HOUSE_KINDS = new Set\(\["house", "detached", "semidetached_house"/);
-  assert.match(city, /if \(HOUSE_KINDS\.has\(kind\) \|\| \(kind === "yes" && Math\.abs\(signedArea\(ring\)\) < SMALL_UNTYPED\)\)/);
-  // Small untyped buildings (under about 250 m²) are usually homes.
-  assert.match(city, /const SMALL_UNTYPED = 250 \* 0\.14 \* 0\.14;/);
-  assert.match(city, /function house\(/);
-  // Ridge along the longest wall, gable ends in siding, some chimneys.
-  assert.match(city, /Orient a box to the longest wall/);
-  assert.match(city, /Gable ends in the siding color/);
+  assert.equal(city.includes("function house("), false);
+  assert.equal(city.includes("FLOORS[kind]"), false);
+  assert.match(city, /const shape = String\(own\["roof:shape"\]/);
+  assert.match(city, /walls\(tint, ring, PODIUM_H, top\)/);
   assert.match(city, /houses\.shingles\[i\]/);
 });

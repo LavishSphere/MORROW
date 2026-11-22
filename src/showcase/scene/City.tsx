@@ -1,8 +1,10 @@
 import { Sparkles } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
 import waterMap from "../../../data/wellesley/water.geojson";
+import { withOvertureBuildings } from "../../data/buildingHeight.ts";
+import { fetchOvertureBuildings } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -21,8 +23,10 @@ import { useStreetImprovements } from "../../city/streetImprovements";
  * town extract in data/wellesley/town.geojson (College, Wellesley Square,
  * and the streets around them), or a loaded US city. Lakes, ponds, and
  * brooks come from the same map. That water is the shoreline, not a defect.
- * Buildings are rebuilt as glass with green roofs; heights are a design
- * choice (OSM has none here), not a survey.
+ * Buildings are the Overture 2026-11-18.0 footprints extruded to a measured
+ * height: that feature's height, then the OSM height tag, then levels times
+ * 3 m. A roof is added only when roof:shape is present. Microsoft imagery
+ * heights are not used. Streets keep their existing ribbon widths.
  *
  * Thousands of buildings stay fast because each kind of surface is merged
  * into one mesh, and trees and street furniture are instanced.
@@ -37,25 +41,6 @@ export const CITY_SPAN = createProjector(SHOWCASE_BBOX, CITY_SCALE).span;
 const BAY = 0.55;
 const FLOOR_H = 0.75;
 const PODIUM_H = 0.35;
-
-/** Floors by OSM building type, before a little per-building variation. */
-const FLOORS: Record<string, number> = {
-  university: 9,
-  college: 7,
-  dormitory: 7,
-  apartments: 8,
-  commercial: 6,
-  retail: 4,
-  office: 8,
-  chapel: 4,
-  church: 4,
-  house: 3,
-  detached: 3,
-  residential: 4,
-  garage: 1,
-  garages: 1,
-  shed: 1,
-};
 
 const STONE = "#d9dcd8";
 const ROOF_METAL = "#dfe5e8";
@@ -204,16 +189,14 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
 }
 
 /** The Wellesley town extract plus its mapped water, centered on the College. */
-const TOWN = buildModel(
-  {
-    type: "FeatureCollection",
-    features: [
-      ...(town as { features: unknown[] }).features,
-      ...(waterMap as { features: unknown[] }).features,
-    ],
-  },
-  SHOWCASE_BBOX.center,
-);
+const TOWN_GEOJSON = {
+  type: "FeatureCollection" as const,
+  features: [
+    ...(town as { features: unknown[] }).features,
+    ...(waterMap as { features: unknown[] }).features,
+  ],
+};
+const TOWN = buildModel(TOWN_GEOJSON, SHOWCASE_BBOX.center);
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
@@ -583,15 +566,6 @@ type Built = {
   streams: THREE.BufferGeometry;
 };
 
-/* —— Suburban houses: siding walls and a pitched gable roof —— */
-
-/** OpenStreetMap building types drawn as houses rather than glass. */
-const HOUSE_KINDS = new Set(["house", "detached", "semidetached_house", "bungalow", "terrace", "residential"]);
-/**
- * Untyped buildings ("yes") smaller than this footprint (about 250 m², in
- * scene units²) are almost always homes or garages, so they get houses too.
- */
-const SMALL_UNTYPED = 250 * 0.14 * 0.14;
 const SIDING = ["#f2efe8", "#e8dcc4", "#c9d4dc", "#d9c4a6"] as const;
 const SHINGLE = ["#4a4f55", "#6b4f3f", "#3f4a5a"] as const;
 
@@ -615,86 +589,11 @@ function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
   bucket.push([...a, ...b, ...c], [nx, ny, nz], [0, 0, 1, 0, 0, 1]);
 }
 
-/**
- * A house on a real footprint: one or two stories of siding, and a gable
- * roof whose ridge runs along the footprint's longest side. Returns the
- * roof peak height.
- */
-function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: number) {
-  const stories = seed > 0.55 ? 2 : 1;
-  const wallTop = 0.08 + stories * 0.62;
-  walls(siding, ring, 0, wallTop);
-
-  // Orient a box to the longest wall so the ridge follows the house.
-  let longest = 0;
-  let angle = 0;
-  for (let i = 0; i < ring.length; i += 1) {
-    const [ax, az] = ring[i]!;
-    const [bx, bz] = ring[(i + 1) % ring.length]!;
-    const len = Math.hypot(bx - ax, bz - az);
-    if (len > longest) {
-      longest = len;
-      angle = Math.atan2(bz - az, bx - ax);
-    }
-  }
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  let umin = Infinity;
-  let umax = -Infinity;
-  let vmin = Infinity;
-  let vmax = -Infinity;
-  for (const [x, z] of ring) {
-    const u = x * cos + z * sin;
-    const v = -x * sin + z * cos;
-    umin = Math.min(umin, u);
-    umax = Math.max(umax, u);
-    vmin = Math.min(vmin, v);
-    vmax = Math.max(vmax, v);
-  }
-  const eave = 0.12;
-  umin -= eave;
-  umax += eave;
-  vmin -= eave;
-  vmax += eave;
-  const vmid = (vmin + vmax) / 2;
-  const rise = Math.min(1.1, ((vmax - vmin) / 2) * 0.8);
-  const at = (u: number, v: number, y: number): Point3 => [u * cos - v * sin, y, u * sin + v * cos];
-  const A = at(umin, vmin, wallTop);
-  const B = at(umax, vmin, wallTop);
-  const C = at(umax, vmax, wallTop);
-  const D = at(umin, vmax, wallTop);
-  const R1 = at(umin, vmid, wallTop + rise);
-  const R2 = at(umax, vmid, wallTop + rise);
-  tri(roof, A, B, R2);
-  tri(roof, A, R2, R1);
-  tri(roof, D, R1, R2);
-  tri(roof, D, R2, C);
-  // Gable ends in the siding color.
-  tri(siding, A, R1, D);
-  tri(siding, B, C, R2);
-
-  if (seed > 0.5) {
-    const cu = umin + (umax - umin) * 0.75;
-    const cv = vmin + (vmax - vmin) * 0.3;
-    const half = 0.11;
-    const box: Ring = [
-      [cu - half, cv - half],
-      [cu + half, cv - half],
-      [cu + half, cv + half],
-      [cu - half, cv + half],
-    ].map(([u, v]) => [u * cos - v * sin, u * sin + v * cos] as const);
-    const chimneyTop = wallTop + rise + 0.25;
-    walls(chimney, box, wallTop, chimneyTop);
-    cap(chimney, box, chimneyTop);
-  }
-  return wallTop + rise;
-}
-
 /* —— Real 3D shapes from OpenStreetMap (Simple 3D Buildings) —— */
 
 /** Real metres → scene units, with the same ~1.5× height boost the city uses. */
 const REAL_TO_SCENE = 0.14 * 1.5;
-const METRES_PER_LEVEL = 3.2;
+const METRES_PER_LEVEL = 3;
 
 /** "443.2", "75 m" → number; anything else → null. */
 function metres(value: unknown): number | null {
@@ -814,7 +713,7 @@ function drawPiece(wall: Bucket, roof: Bucket, ring: Ring, tags: Record<string, 
   if (!h) return 0;
   const y0 = h.bottom * REAL_TO_SCENE;
   const yTop = Math.max(y0 + 0.05, h.top * REAL_TO_SCENE);
-  const shape = String(tags["roof:shape"] ?? "flat").toLowerCase();
+  const shape = String(tags["roof:shape"] ?? "").trim().toLowerCase() || "flat";
   // A roof taller than a quarter of the piece is almost always a mapping slip.
   const roofH = shape === "flat" ? 0 : Math.min((yTop - y0) * 0.25, (metres(tags["roof:height"]) ?? 6) * REAL_TO_SCENE);
   const base = yTop - roofH;
@@ -898,8 +797,6 @@ function buildCity(model: CityModel): Built {
   for (const building of model.parsed.buildings) {
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
-    const kind = model.kinds.get(building.id) ?? "yes";
-    const seed = idHash(building.id);
     const own = model.tags.get(building.id) ?? {};
     const pieces = piecesOf.get(building.id);
     // Dense downtowns can hit the download quota partway through a
@@ -920,64 +817,24 @@ function buildCity(model: CityModel): Built {
       occupancy.markHeight(ring, peak);
       continue;
     }
-    if (HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED)) {
-      const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
-      const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
-      const peak = house(wall, roof, stone, ring, seed);
-      occupancy.markRing(ring, 0.9);
-      occupancy.markHeight(ring, peak);
-      continue;
-    }
-    const real = HOUSE_KINDS.has(kind) ? null : realHeights(own);
-    if (real && facade(own) !== null) {
+    const real = realHeights(own);
+    if (!real) continue;
+    const shape = String(own["roof:shape"] ?? "").trim().toLowerCase();
+    if ((shape && shape !== "flat") || facade(own) !== null) {
       // The mapper recorded its real height and look: use them, not a guess.
       const peak = drawPiece(surface(own, building.id), metal, ring, own, centroid(ring));
       occupancy.markRing(ring, 0.9);
       occupancy.markHeight(ring, peak);
       continue;
     }
-    // Height but no look recorded: the usual glass tower, at its real height.
-    const floors = real
-      ? Math.max(1, Math.round((real.top * REAL_TO_SCENE - PODIUM_H) / FLOOR_H))
-      : (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
-    const top = PODIUM_H + floors * FLOOR_H;
+    // Glass extrusion of the footprint. No extra floors, and no roof unless roof:shape was set above.
+    const top = Math.max(PODIUM_H + 0.08, real.top * REAL_TO_SCENE);
     const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
-    const style = Math.floor(idHash(`${building.id}m`) * 3);
-
     const podium = shrink(ring, 1.03);
     walls(stone, podium, 0, PODIUM_H);
     cap(stone, podium, PODIUM_H);
-    // Same glass city, three silhouettes so the skyline is not one box.
-    if (floors >= 8 && style === 2) {
-      const step1 = PODIUM_H + Math.max(2, Math.floor(floors * 0.42)) * FLOOR_H;
-      const step2 = PODIUM_H + Math.max(4, Math.floor(floors * 0.72)) * FLOOR_H;
-      walls(tint, ring, PODIUM_H, step1);
-      cap(metal, ring, step1);
-      const mid = shrink(ring, 0.74);
-      walls(tint, mid, step1, step2);
-      cap(metal, mid, step2);
-      const crown = shrink(ring, 0.46 + seed * 0.12);
-      const crownTop = top + (1 + Math.floor(seed * 3)) * FLOOR_H;
-      walls(tint, crown, step2, crownTop);
-      cap(metal, crown, crownTop);
-    } else if (floors >= 6 && style === 1) {
-      const waist = PODIUM_H + Math.max(2, Math.floor(floors * 0.58)) * FLOOR_H;
-      walls(tint, ring, PODIUM_H, waist);
-      cap(metal, ring, waist);
-      const upper = shrink(ring, 0.58 + seed * 0.18);
-      walls(tint, upper, waist, top);
-      cap(seed > 0.5 ? metal : garden, upper, top);
-    } else if (floors >= 9) {
-      walls(tint, ring, PODIUM_H, top);
-      const crown = shrink(ring, 0.52 + seed * 0.22);
-      const crownTop = top + (2 + Math.floor(seed * 3)) * FLOOR_H;
-      cap(metal, ring, top);
-      walls(tint, crown, top, crownTop);
-      cap(metal, crown, crownTop);
-    } else {
-      walls(tint, ring, PODIUM_H, top);
-      cap(garden, ring, top);
-    }
+    walls(tint, ring, PODIUM_H, top);
+    cap(metal, ring, top);
     occupancy.markRing(ring, 0.9);
     occupancy.markHeight(ring, top);
   }
@@ -1628,8 +1485,34 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   useEffect(() => () => pondShape.dispose(), [pondShape]);
   const furniture = useFurniture();
   const { shapes, looks } = furniture;
+  const source = geoJson ?? TOWN_GEOJSON;
+  const [loaded, setLoaded] = useState<{ key: string; json: unknown } | null>(null);
+  const boxKey = (() => {
+    const box = bboxOf(source);
+    return box ? `${box.west.toFixed(5)},${box.south.toFixed(5)},${box.east.toFixed(5)},${box.north.toFixed(5)}` : "";
+  })();
+  const enriched = loaded?.key === boxKey ? loaded.json : null;
+  useEffect(() => {
+    const box = bboxOf(source);
+    if (!box) return;
+    let cancelled = false;
+    fetchOvertureBuildings({ west: box.west, south: box.south, east: box.east, north: box.north })
+      .then((footprints) => {
+        if (!cancelled) setLoaded({ key: boxKey, json: withOvertureBuildings(source, footprints) });
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded({ key: boxKey, json: withOvertureBuildings(source, []) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [boxKey, source]);
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
-  const built = useMemo(() => buildCity(model), [model]);
+  const cityModel = useMemo(() => {
+    if (!enriched) return model;
+    return buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center);
+  }, [enriched, geoJson, model]);
+  const built = useMemo(() => buildCity(cityModel), [cityModel]);
   const masonryLooks = useMemo(
     () =>
       built.masonry.map(
@@ -1645,19 +1528,20 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   );
 
   useEffect(() => publishMap(mapFor(model)), [model]);
+  useEffect(() => publishMap(mapFor(cityModel)), [cityModel]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {
-    const source = geoJson ?? town;
-    const issues = detectIssues(source).map((issue) => {
-      const [x, z] = model.project(issue.point[0], issue.point[1]);
+    const issueSource = geoJson ?? town;
+    const issues = detectIssues(issueSource).map((issue) => {
+      const [x, z] = cityModel.project(issue.point[0], issue.point[1]);
       const path = issue.line.map(([lon, lat]) => {
-        const [px, pz] = model.project(lon, lat);
+        const [px, pz] = cityModel.project(lon, lat);
         return [px, pz] as [number, number];
       });
       return { ...issue, x, z, path };
     });
-    publishIssues(issues, source, !geoJson);
-  }, [model, geoJson]);
+    publishIssues(issues, issueSource, !geoJson);
+  }, [cityModel, geoJson]);
   useEffect(
     () => () => {
       for (const g of [
