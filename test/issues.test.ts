@@ -89,3 +89,13 @@ test("Improve, Compare, and Propose use the map's issues", async () => {
   assert.match(schema, /issueIds: z\.array\(z\.string\(\)\.min\(1\)\.max\(120\)\)\.max\(12\)\.optional\(\)/);
   assert.match(gemini, /additionalIssues/);
 });
+
+test("a busy Gemini is retried briefly instead of falling back at once", async () => {
+  const gemini = await readFile("packages/api/src/draft/gemini.ts", "utf8");
+  assert.match(gemini, /const BUSY_RETRY_MS = \[1000, 2000\];/);
+  assert.match(gemini, /const CALL_TIMEOUT_MS = 14_000;/);
+  assert.match(gemini, /if \(wait === undefined \|\| !isBusy\(message\)\) throw err;/);
+  assert.match(gemini, /maxOutputTokens: 2048/);
+  const api = await readFile("src/data/api.ts", "utf8");
+  assert.match(api, /AbortSignal\.timeout\(55_000\)/);
+});

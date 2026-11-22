@@ -86,6 +86,23 @@ const RESPONSE_SCHEMA = {
   ],
 } as const;
 
+/** Wait this long before retrying a "model busy" reply (503 / 429). */
+const BUSY_RETRY_MS = [1000, 2000];
+/** Give up on one call after this long, so the request never hangs. */
+const CALL_TIMEOUT_MS = 14_000;
+
+function isBusy(message: string) {
+  return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(message);
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Gemini timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
+
 export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
@@ -100,16 +117,34 @@ export async function draftWithGemini(
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: geminiModel(),
-      contents: `${PROMPT_CONTRACT}\n\nFacts:\n${buildUserPayload(facts)}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.4,
-        maxOutputTokens: 1024,
-      },
-    });
+    const call = () =>
+      withTimeout(
+        ai.models.generateContent({
+          model: geminiModel(),
+          contents: `${PROMPT_CONTRACT}\n\nFacts:\n${buildUserPayload(facts)}`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
+            temperature: 0.4,
+            // Room for several extra issues in one proposal.
+            maxOutputTokens: 2048,
+          },
+        }),
+        CALL_TIMEOUT_MS,
+      );
+    // Gemini sometimes answers "high demand"; a short retry usually succeeds.
+    let response: Awaited<ReturnType<typeof call>> | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        response = await call();
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const wait = BUSY_RETRY_MS[attempt];
+        if (wait === undefined || !isBusy(message)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
 
     const text = response.text;
     if (!text) {
