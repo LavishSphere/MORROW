@@ -222,9 +222,82 @@ const COLUMNS = [
   "bbox",
 ];
 
+type ParquetFile = Awaited<ReturnType<typeof asyncBufferFromUrl>>;
+type ParquetMeta = Awaited<ReturnType<typeof parquetMetadataAsync>>;
+
+/**
+ * Each parquet file's footer, read once per session. A city that grows
+ * tile by tile asks the same few files again and again.
+ */
+const opened = new Map<string, Promise<{ file: ParquetFile; metadata: ParquetMeta }>>();
+
+function openParquet(url: string) {
+  let entry = opened.get(url);
+  if (!entry) {
+    entry = (async () => {
+      const file = await asyncBufferFromUrl({ url });
+      return { file, metadata: await parquetMetadataAsync(file) };
+    })();
+    // A failed read is not kept, so a later call can try again.
+    entry.catch(() => opened.delete(url));
+    opened.set(url, entry);
+  }
+  return entry;
+}
+
+/** The release's file index, read once per session. */
+let stacIndex: Promise<Row[]> | null = null;
+
+function readIndex(): Promise<Row[]> {
+  if (!stacIndex) {
+    const index = (async () => {
+      const file = await asyncBufferFromUrl({ url: STAC });
+      return (await parquetReadObjects({
+        file,
+        columns: ["collection", "bbox", "assets"],
+        compressors,
+      })) as Row[];
+    })();
+    index.catch(() => {
+      if (stacIndex === index) stacIndex = null;
+    });
+    stacIndex = index;
+  }
+  return stacIndex;
+}
+
+/**
+ * The parts of `box` not inside any of `covered`, as boxes. Parts thinner
+ * than `minSize` degrees are dropped: footprints that cross a covered
+ * edge were already read with it.
+ */
+export function uncoveredParts(
+  box: NeighborhoodBox,
+  covered: readonly NeighborhoodBox[],
+  minSize = 0,
+): NeighborhoodBox[] {
+  let parts: NeighborhoodBox[] = [box];
+  for (const cover of covered) {
+    const next: NeighborhoodBox[] = [];
+    for (const part of parts) {
+      if (!intersects(cover, part.west, part.south, part.east, part.north)) {
+        next.push(part);
+        continue;
+      }
+      const west = Math.max(part.west, cover.west);
+      const east = Math.min(part.east, cover.east);
+      if (part.west < cover.west) next.push({ ...part, east: cover.west });
+      if (part.east > cover.east) next.push({ ...part, west: cover.east });
+      if (part.south < cover.south) next.push({ west, east, south: part.south, north: cover.south });
+      if (part.north > cover.north) next.push({ west, east, south: cover.north, north: part.north });
+    }
+    parts = next;
+  }
+  return parts.filter((part) => part.east - part.west >= minSize && part.north - part.south >= minSize);
+}
+
 async function rowsInBox(url: string, box: NeighborhoodBox): Promise<OvertureFootprint[]> {
-  const file = await asyncBufferFromUrl({ url });
-  const metadata = await parquetMetadataAsync(file);
+  const { file, metadata } = await openParquet(url);
   const footprints: OvertureFootprint[] = [];
   let start = 0;
   for (const group of metadata.row_groups) {
@@ -254,12 +327,7 @@ async function rowsInBox(url: string, box: NeighborhoodBox): Promise<OvertureFoo
  * An empty list means the extract could not be read; callers keep OSM heights.
  */
 export async function fetchOvertureBuildings(box: NeighborhoodBox): Promise<OvertureFootprint[]> {
-  const index = await asyncBufferFromUrl({ url: STAC });
-  const files = await parquetReadObjects({
-    file: index,
-    columns: ["collection", "bbox", "assets"],
-    compressors,
-  });
+  const files = await readIndex();
   const urls: string[] = [];
   for (const file of files) {
     const row = file as Row;

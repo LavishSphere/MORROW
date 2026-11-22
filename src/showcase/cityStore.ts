@@ -44,6 +44,13 @@ export type CameraPose = {
   dirZ: number;
   /** Distance from the camera to what it looks at. */
   distance: number;
+  /** Where the camera itself is, for what it can see. */
+  eyeX?: number;
+  eyeY?: number;
+  eyeZ?: number;
+  /** Vertical field of view in degrees, and width over height. */
+  fov?: number;
+  aspect?: number;
 };
 
 /** A searched address, pinned in the city. */
@@ -120,7 +127,9 @@ export function publishPose(pose: CameraPose) {
     Math.abs(p.z - pose.z) < 0.05 &&
     Math.abs(p.dirX - pose.dirX) < 0.005 &&
     Math.abs(p.dirZ - pose.dirZ) < 0.005 &&
-    Math.abs(p.distance - pose.distance) < 0.05
+    Math.abs(p.distance - pose.distance) < 0.05 &&
+    Math.abs((p.eyeY ?? 0) - (pose.eyeY ?? 0)) < 0.05 &&
+    Math.abs((p.aspect ?? 0) - (pose.aspect ?? 0)) < 0.01
   ) {
     return;
   }

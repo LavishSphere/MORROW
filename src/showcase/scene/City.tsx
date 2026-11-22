@@ -1,10 +1,10 @@
 import { Sparkles } from "@react-three/drei";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
 import waterMap from "../../../data/wellesley/water.geojson";
 import { DEFAULT_HEIGHT_METRES, withOvertureBuildings, type OvertureFootprint } from "../../data/buildingHeight.ts";
-import { fetchOvertureBuildings } from "../../data/overtureBuildings.ts";
+import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -114,6 +114,24 @@ function bboxOf(geoJson: unknown): ShowcaseBBox | null {
   }
   if (!Number.isFinite(west)) return null;
   return { west, east, south, north, center: [(west + east) / 2, (south + north) / 2] };
+}
+
+/**
+ * Overture ground thinner than this (degrees, ~150 m) is not downloaded on
+ * its own: it is the edge of a box already read.
+ */
+const OVERTURE_MIN_PART = 0.0015;
+
+/** Add `?buildTimings` to the URL in development to log how long rebuilds take. */
+const LOG_TIMINGS =
+  import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).has("buildTimings");
+
+function timed<T>(label: string, run: () => T): T {
+  if (!LOG_TIMINGS) return run();
+  const start = performance.now();
+  const out = run();
+  console.info(`[city] ${label} ${(performance.now() - start).toFixed(1)} ms`);
+  return out;
 }
 
 /** Parse any basemap-shaped FeatureCollection into the city's model. */
@@ -977,6 +995,43 @@ function drawPiece(wall: Bucket, roof: Bucket, ring: Ring, tags: Record<string, 
   return yTop;
 }
 
+/**
+ * Buildings bucketed on a coarse grid by their bounding box, so finding the
+ * one a point is inside checks a handful of outlines, not all of them.
+ */
+class RingIndex<T extends { ring: Ring }> {
+  private cells = new Map<string, T[]>();
+  private readonly size = 8;
+  constructor(items: readonly T[]) {
+    for (const item of items) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const [x, z] of item.ring) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, z);
+        maxZ = Math.max(maxZ, z);
+      }
+      if (!Number.isFinite(minX)) continue;
+      for (let cz = Math.floor(minZ / this.size); cz <= Math.floor(maxZ / this.size); cz += 1) {
+        for (let cx = Math.floor(minX / this.size); cx <= Math.floor(maxX / this.size); cx += 1) {
+          const key = `${cx}:${cz}`;
+          const list = this.cells.get(key);
+          if (list) list.push(item);
+          else this.cells.set(key, [item]);
+        }
+      }
+    }
+  }
+  /** The first item (in input order) whose ring holds the point. */
+  find(x: number, z: number): T | undefined {
+    const list = this.cells.get(`${Math.floor(x / this.size)}:${Math.floor(z / this.size)}`);
+    return list?.find((item) => insideRing(x, z, item.ring));
+  }
+}
+
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
   const siding = SIDING.map(() => new Bucket());
@@ -1002,11 +1057,17 @@ function buildCity(model: CityModel): Built {
   // Which building each 3D piece belongs to (the piece's middle is inside it).
   const piecesOf = new Map<string, Part[]>();
   const orphanPieces: Part[] = [];
+  const outlines = new RingIndex(model.parsed.buildings);
   for (const part of model.parts) {
     const [px, pz] = centroid(part.ring);
-    const owner = model.parsed.buildings.find((b) => insideRing(px, pz, b.ring));
-    if (owner) piecesOf.set(owner.id, [...(piecesOf.get(owner.id) ?? []), part]);
-    else orphanPieces.push(part);
+    const owner = outlines.find(px, pz);
+    if (!owner) {
+      orphanPieces.push(part);
+      continue;
+    }
+    const list = piecesOf.get(owner.id);
+    if (list) list.push(part);
+    else piecesOf.set(owner.id, [part]);
   }
   // A piece with no building under it yet (Overture still loading) draws only
   // if it stands on the ground or on another unowned piece that does. A dome
@@ -1759,30 +1820,49 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   const furniture = useFurniture();
   const { shapes, looks } = furniture;
   const source = geoJson ?? TOWN_GEOJSON;
-  const box = bboxOf(source);
+  const box = useMemo(() => bboxOf(source), [source]);
   const boxKey = box
     ? `${box.west.toFixed(5)},${box.south.toFixed(5)},${box.east.toFixed(5)},${box.north.toFixed(5)}`
     : "";
-  // Footprints from the last Overture download. When the city grows by a
-  // tile they stay in use (those inside the new box) while the bigger box
-  // downloads, so the buildings already on screen do not drop out.
+  // One loaded place, named by its fixed center; the Wellesley town otherwise.
+  const own = (geoJson as { center?: unknown } | undefined)?.center;
+  const placeKey = Array.isArray(own) ? own.join(",") : "town";
+  // Overture footprints gathered so far for this place. When the city grows
+  // by a tile only the new ground is downloaded; the buildings already on
+  // screen keep theirs.
+  const gathered = useRef<{ place: string; covered: NeighborhoodBox[]; byId: Map<string, OvertureFootprint> }>({
+    place: "",
+    covered: [],
+    byId: new Map(),
+  });
   const [overture, setOverture] = useState<OvertureFootprint[]>([]);
   useEffect(() => {
-    const box = bboxOf(source);
-    if (!box) return;
-    let cancelled = false;
-    fetchOvertureBuildings({ west: box.west, south: box.south, east: box.east, north: box.north })
-      .then((footprints) => {
-        // An empty list means the extract could not be read: keep what we have.
-        if (!cancelled && footprints.length > 0) setOverture(footprints);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [boxKey, source]);
+    if (!boxKey) return;
+    const [west = 0, south = 0, east = 0, north = 0] = boxKey.split(",").map(Number);
+    if (gathered.current.place !== placeKey) {
+      gathered.current = { place: placeKey, covered: [], byId: new Map() };
+    }
+    const store = gathered.current;
+    for (const part of uncoveredParts({ west, south, east, north }, store.covered, OVERTURE_MIN_PART)) {
+      store.covered.push(part);
+      fetchOvertureBuildings(part)
+        .then((footprints) => {
+          if (gathered.current !== store) return;
+          // An empty list means the extract could not be read: try this ground again later.
+          if (footprints.length === 0) {
+            store.covered = store.covered.filter((item) => item !== part);
+            return;
+          }
+          for (const footprint of footprints) store.byId.set(footprint.id, footprint);
+          setOverture([...store.byId.values()]);
+        })
+        .catch(() => {
+          store.covered = store.covered.filter((item) => item !== part);
+        });
+    }
+  }, [boxKey, placeKey]);
   const enriched = useMemo(() => {
-    const here = bboxOf(source);
+    const here = box;
     // Footprints from another place (a different city was loaded) are dropped.
     const footprints = here
       ? overture.filter((f) => {
@@ -1791,12 +1871,12 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         })
       : [];
     return withOvertureBuildings(source, footprints);
-  }, [source, overture]);
+  }, [source, box, overture]);
   const cityModel = useMemo(
-    () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center),
+    () => timed("buildModel", () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center)),
     [enriched, geoJson],
   );
-  const built = useMemo(() => buildCity(cityModel), [cityModel]);
+  const built = useMemo(() => timed("buildCity", () => buildCity(cityModel)), [cityModel]);
   const masonryLooks = useMemo(
     () =>
       built.masonry.map(
