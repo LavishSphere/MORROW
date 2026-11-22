@@ -220,10 +220,15 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   const bounds: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  // Buildings and streets set the city's extent. Water does not: a bay or
+  // ocean shape can be kilometres across, and every grid over the city
+  // (trees, parks, occupancy) would then crawl over empty water.
   const rings = [
     ...parsed.buildings.map((b) => b.ring),
-    ...parsed.water.map((body) => body.ring),
+    // Without buildings yet (an Overture street tile before its footprints
+    // arrive), the streets set it; long landmark bridges would stretch it.
     ...(parsed.buildings.length === 0 ? parsed.ways.map((w) => w.points) : []),
+    ...(parsed.buildings.length === 0 && parsed.ways.length === 0 ? parsed.water.map((body) => body.ring) : []),
   ];
   for (const ring of rings) {
     for (const [x, z] of ring) {
@@ -234,6 +239,13 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   if (!Number.isFinite(bounds.minX)) Object.assign(bounds, { minX: -40, maxX: 40, minZ: -40, maxZ: 40 });
+  // Water beyond the city is clipped to a margin around it: the sea still
+  // reaches past the streets, and huge shapes stay cheap to draw and mark.
+  const reach = WATER_REACH;
+  parsed.water = parsed.water.flatMap((body) => {
+    const ring = clipToBox(body.ring, bounds.minX - reach, bounds.minZ - reach, bounds.maxX + reach, bounds.maxZ + reach);
+    return ring.length >= 3 ? [{ ...body, ring }] : [];
+  });
   return {
     parsed,
     kinds,
@@ -936,6 +948,34 @@ class Occupancy {
     const k = this.index(x, z);
     return k < 0 || this.data[k] === 1;
   }
+}
+
+/** How far past the streets water is still drawn, in scene units (about 400 m). */
+const WATER_REACH = 56;
+
+/** Clip a closed ring to a box (Sutherland-Hodgman; the box is convex). */
+function clipToBox(ring: Ring, minX: number, minZ: number, maxX: number, maxZ: number): [number, number][] {
+  type P = [number, number];
+  let out: P[] = ring.map(([x, z]) => [x, z] as P);
+  if (out.length > 1 && out[0]![0] === out[out.length - 1]![0] && out[0]![1] === out[out.length - 1]![1]) out.pop();
+  const lerp = (a: P, b: P, t: number): P => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const sides: [(p: P) => number][] = [[(p) => p[0] - minX], [(p) => maxX - p[0]], [(p) => p[1] - minZ], [(p) => maxZ - p[1]]];
+  for (const [side] of sides) {
+    const input = out;
+    out = [];
+    for (let i = 0; i < input.length; i += 1) {
+      const cur = input[i]!;
+      const prev = input[(i + input.length - 1) % input.length]!;
+      const dc = side(cur);
+      const dp = side(prev);
+      if (dc >= 0) {
+        if (dp < 0) out.push(lerp(prev, cur, dp / (dp - dc)));
+        out.push(cur);
+      } else if (dp >= 0) out.push(lerp(prev, cur, dp / (dp - dc)));
+    }
+    if (!out.length) return [];
+  }
+  return out;
 }
 
 /* —— Streets —— */
