@@ -8,6 +8,7 @@ import { asyncBufferFromUrl, parquetMetadataAsync, parquetReadObjects } from "hy
 import { compressors } from "hyparquet-compressors";
 import {
   OVERTURE_RELEASE,
+  osmRelationId,
   osmWayId,
   type HeightSource,
   type OvertureFootprint,
@@ -205,6 +206,7 @@ function footprintFromRow(row: Row, box: NeighborhoodBox): OvertureFootprint | n
     minHeight: asNumber(row.min_height),
     sources,
     osmId: osmWayId(sources),
+    osmRelationId: osmRelationId(sources),
   };
 }
 

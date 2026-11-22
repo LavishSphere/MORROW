@@ -4,6 +4,8 @@ import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
 
 export type OsmWay = {
   id: number
+  /** Set when the shape came from a multipolygon relation, whose ids can repeat way ids. */
+  osmType?: 'relation'
   name: string | null
   /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
   kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline'
@@ -75,6 +77,15 @@ const KEEP_TAGS = [
   'building:material',
   'roof:colour',
 ]
+
+/** OSM reference for a loaded shape: the way id, or `r<id>` for a relation. */
+export function osmRef(way: Pick<OsmWay, 'id' | 'osmType'>): number | string {
+  return way.osmType === 'relation' ? `r${way.id}` : way.id
+}
+
+function wayKey(way: OsmWay) {
+  return `${way.kind}:${osmRef(way)}`
+}
 
 /** Areas snap to a grid, so nearby requests share one download. */
 export function tileKey(lng: number, lat: number) {
@@ -163,6 +174,7 @@ function relationWater(row: OverpassElement): OsmWay[] {
   if (coast && !wet) {
     return lines.map((points) => ({
       id: row.id as number,
+      osmType: 'relation' as const,
       name,
       kind: 'coastline' as const,
       water: null,
@@ -173,10 +185,54 @@ function relationWater(row: OverpassElement): OsmWay[] {
   const rings = stitchRings(lines)
   return rings.map((points) => ({
     id: row.id as number,
+    osmType: 'relation' as const,
     name,
     kind: 'water' as const,
     water,
     waterway,
+    points,
+  }))
+}
+
+function keptTags(raw: Record<string, unknown> | undefined) {
+  const tags: Record<string, string> = {}
+  for (const key of KEEP_TAGS) {
+    const value = raw?.[key]
+    if (typeof value === 'string') tags[key] = value
+  }
+  return tags
+}
+
+/**
+ * Buildings and building parts mapped as multipolygon relations (SF City
+ * Hall's outline and its ground floors are). Their member ways carry no
+ * tags, so the relation is the only place the shape and height live. Outer
+ * members are stitched into closed rings, one shape per ring. Inner rings
+ * (courtyards) are left out: the city extrudes plain outlines.
+ */
+function relationBuilding(row: OverpassElement): OsmWay[] {
+  if (typeof row.id !== 'number' || !Array.isArray(row.members)) return []
+  const part = typeof row.tags?.['building:part'] === 'string'
+  const building = !part && typeof row.tags?.building === 'string'
+  if (!part && !building) return []
+  const lines: [number, number][][] = []
+  for (const member of row.members) {
+    if (!member || member.role === 'inner') continue
+    const line = asLonLatLine(member.geometry)
+    if (line.length >= 2) lines.push(line)
+  }
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = keptTags(row.tags)
+  return stitchRings(lines).map((points) => ({
+    id: row.id as number,
+    osmType: 'relation' as const,
+    name,
+    kind: part ? ('part' as const) : ('building' as const),
+    highway: null,
+    building: building ? String(row.tags?.building) : null,
+    water: null,
+    waterway: null,
+    ...(Object.keys(tags).length > 0 ? { tags } : {}),
     points,
   }))
 }
@@ -191,7 +247,8 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     if (!element || typeof element !== 'object') continue
     const row = element as OverpassElement
     if (row.type === 'relation') {
-      ways.push(...relationWater(row))
+      const shapes = relationBuilding(row)
+      ways.push(...(shapes.length > 0 ? shapes : relationWater(row)))
       continue
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -224,11 +281,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
                 ? 'waterway'
                 : null
     if (!kind) continue
-    const tags: Record<string, string> = {}
-    for (const key of KEEP_TAGS) {
-      const value = row.tags?.[key]
-      if (typeof value === 'string') tags[key] = value
-    }
+    const tags = keptTags(row.tags)
     const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
     ways.push({
       id: row.id,
@@ -268,7 +321,9 @@ async function interpret(query: string): Promise<OsmWay[]> {
 export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
   // Streets, buildings, landmark pieces, and water get separate quotas.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
+  // Some landmarks (SF City Hall) map their outline and lower floors as
+  // relations, so building relations are asked for too.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;relation["building:part"](${box});out tags geom 400;relation["building"](${box});out tags geom 600;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
   return interpret(query)
 }
 
@@ -288,8 +343,8 @@ export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]
 }
 
 function withCoast(ways: OsmWay[], coast: OsmWay[]) {
-  const seen = new Set(ways.map((way) => `${way.kind}:${way.id}`))
-  return [...ways, ...coast.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
+  const seen = new Set(ways.map(wayKey))
+  return [...ways, ...coast.filter((way) => !seen.has(wayKey(way)))]
 }
 
 function describe(place: UsPlace, ways: OsmWay[]) {
@@ -344,8 +399,8 @@ export async function extendNeighborhood(
   const tiles = neighborhood.tiles ?? []
   if (neighborhood.procedural || tiles.includes(key)) return neighborhood
   const fresh = await fetchArea(lng, lat)
-  const seen = new Set(neighborhood.ways.map((way) => `${way.kind}:${way.id}`))
-  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
+  const seen = new Set(neighborhood.ways.map(wayKey))
+  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(wayKey(way)))]
   return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
 }
 
@@ -398,7 +453,8 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
         properties: {
-          osmId: way.id,
+          // Relations keep their `r` so they never share a key with a way of the same number.
+          osmId: osmRef(way),
           layer: way.kind === 'part' ? 'building_part' : 'building',
           name: way.name,
           building: way.building ?? 'yes',

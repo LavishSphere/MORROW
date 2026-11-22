@@ -702,6 +702,8 @@ function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
 /** Real metres → scene units, with the same ~1.5× height boost the city uses. */
 const REAL_TO_SCENE = 0.14 * 1.5;
 const METRES_PER_LEVEL = 3;
+/** A piece starting this close to the ground counts as standing on it. */
+const GROUND_SLACK_M = 1;
 
 /** "443.2", "75 m" → number; anything else → null. */
 function metres(value: unknown): number | null {
@@ -897,7 +899,18 @@ function buildCity(model: CityModel): Built {
     if (owner) piecesOf.set(owner.id, [...(piecesOf.get(owner.id) ?? []), part]);
     else orphanPieces.push(part);
   }
+  // A piece with no building under it yet (Overture still loading) draws only
+  // if it stands on the ground or on another unowned piece that does. A dome
+  // whose drum and floors have not arrived waits instead of floating.
+  const grounded = orphanPieces.filter((part) => {
+    const h = realHeights(part.tags);
+    return h !== null && h.bottom <= GROUND_SLACK_M;
+  });
   for (const part of orphanPieces) {
+    if ((realHeights(part.tags)?.bottom ?? 0) > GROUND_SLACK_M) {
+      const [px, pz] = centroid(part.ring);
+      if (!grounded.some((under) => insideRing(px, pz, under.ring))) continue;
+    }
     const peak = drawPiece(surface(part.tags, part.id), metal, part.ring, part.tags, centroid(part.ring));
     if (peak > 0) occupancy.markHeight(part.ring, peak);
   }
@@ -907,18 +920,33 @@ function buildCity(model: CityModel): Built {
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const own = model.tags.get(building.id) ?? {};
     const pieces = piecesOf.get(building.id);
+    // Pieces borrow the outline's look and height, never its bottom: in
+    // Simple 3D Buildings a part with no min_height starts at the ground.
+    const base: Record<string, unknown> = { ...own };
+    delete base.min_height;
+    delete base["building:min_level"];
+    const pieceTags = (piece: Part) => ({ ...base, ...piece.tags });
     // Dense downtowns can hit the download quota partway through a
     // landmark. If its pieces stop well short of its own recorded height,
     // they are incomplete: draw the whole building at that height instead.
     const ownTop = realHeights(own)?.top ?? 0;
-    const piecesTop = Math.max(0, ...(pieces ?? []).map((piece) => realHeights({ ...own, ...piece.tags })?.top ?? 0));
+    const piecesTop = Math.max(0, ...(pieces ?? []).map((piece) => realHeights(pieceTags(piece))?.top ?? 0));
     const complete = piecesTop >= ownTop * 0.9;
     if (pieces && complete && pieces.some((piece) => realHeights(piece.tags))) {
       // A detailed landmark: draw its mapped 3D pieces, not the outline.
       const middle = centroid(ring);
       let peak = 0;
+      // Only upper pieces downloaded (the floors below are missing): stand
+      // them on the outline, so nothing floats over an empty plaza.
+      const lowest = Math.min(...pieces.map((piece) => realHeights(pieceTags(piece))?.bottom ?? Infinity));
+      if (Number.isFinite(lowest) && lowest > GROUND_SLACK_M) {
+        const y = Math.min(lowest, ownTop || lowest) * REAL_TO_SCENE;
+        walls(surface(own, building.id), ring, 0, y);
+        cap(metal, ring, y);
+        peak = y;
+      }
       for (const piece of pieces) {
-        const tags = { ...own, ...piece.tags };
+        const tags = pieceTags(piece);
         peak = Math.max(peak, drawPiece(surface(tags, piece.id), metal, piece.ring, tags, middle));
       }
       occupancy.markRing(ring, 0.9);

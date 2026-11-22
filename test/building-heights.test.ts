@@ -5,6 +5,8 @@ import {
   buildingHeightOrFallback,
   DEFAULT_HEIGHT_METRES,
   isMicrosoftDataset,
+  osmRelationId,
+  osmWayId,
   resolveBuildingHeight,
   withOvertureBuildings,
   type OvertureFootprint,
@@ -149,4 +151,38 @@ test("a footprint with no measured height or floors still draws", () => {
     assert.equal(building.properties.height, DEFAULT_HEIGHT_METRES);
     assert.equal(building.properties.height_kind, "default");
   }
+});
+
+test("an Overture footprint citing an OSM relation matches the relation building, not a way", () => {
+  const sources = [{ property: "", dataset: "OpenStreetMap", record_id: "r7261820@17" }];
+  assert.equal(osmWayId(sources), null);
+  assert.equal(osmRelationId(sources), 7261820);
+  const geo = withOvertureBuildings(
+    {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [ring] },
+          properties: { layer: "building", osmId: "r7261820", name: "San Francisco City Hall", building: "public", height: "30" },
+        },
+        {
+          // A way that happens to share the relation's number stays its own building.
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [ring] },
+          properties: { layer: "building", osmId: 7261820, building: "house" },
+        },
+      ],
+    },
+    [footprint({ id: "ov1", osmId: null, osmRelationId: osmRelationId(sources), sources })],
+  ) as { features: { properties: Record<string, unknown> }[] };
+  const buildings = geo.features.filter((feature) => feature.properties.layer === "building");
+  assert.equal(buildings.length, 2);
+  const hall = buildings.find((feature) => feature.properties.osmId === "r7261820");
+  assert.equal(hall?.properties.source, "Overture Maps");
+  assert.equal(hall?.properties.name, "San Francisco City Hall");
+  assert.equal(hall?.properties.building, "public");
+  assert.equal(hall?.properties.height, 30);
+  const house = buildings.find((feature) => feature.properties.osmId === 7261820);
+  assert.equal(house?.properties.building, "house");
 });
