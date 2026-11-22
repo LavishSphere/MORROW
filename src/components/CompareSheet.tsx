@@ -1,4 +1,5 @@
 import { potholeById, usePotholeFix } from '../city/potholeFix'
+import { improvementsByIds, useStreetImprovements } from '../city/streetImprovements'
 import { IssueComparisons } from './IssueComparisons'
 
 /**
@@ -10,6 +11,7 @@ export function CompareSheet() {
   const fix = usePotholeFix()
   const hole = potholeById(fix.selectedId)
   const patched = hole ? fix.patchedIds.includes(hole.id) : false
+  const improvements = improvementsByIds(useStreetImprovements().selectedIds)
 
   return (
     <section className="mode-page compare-sheet" aria-label="Modeled comparison">
@@ -33,6 +35,27 @@ export function CompareSheet() {
               : 'Still open. Patch it from the city or from Improve.'}{' '}
             Not a Gemini estimate.
           </p>
+        </>
+      )}
+      {improvements.length > 0 && (
+        <>
+          <h2 className="compare-sheet__title">Street improvements</h2>
+          {improvements.map((item) => (
+            <div key={item.id} className="compare-sheet__improvement">
+              <p className="compare-sheet__note">{item.name}</p>
+              <dl className="compare-sheet__meters" aria-label={item.name}>
+                <div>
+                  <dt>Before</dt>
+                  <dd>None</dd>
+                </div>
+                <div>
+                  <dt>After</dt>
+                  <dd>Proposed</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+          <p>Illustrative only. Not a Gemini estimate.</p>
         </>
       )}
     </section>

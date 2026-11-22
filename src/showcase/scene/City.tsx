@@ -2,6 +2,7 @@ import { Sparkles } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
+import waterMap from "../../../data/wellesley/water.geojson";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -12,14 +13,16 @@ import { parseBasemap, type ParsedBasemap, type WayRibbon } from "./parseBasemap
 import { AddressPin } from "./AddressPin";
 import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
+import { useStreetImprovements } from "../../city/streetImprovements";
 
 /**
  * Wellesley, reimagined. Every building, road, and footpath comes from
  * OpenStreetMap at its true position and outline: by default the wider
  * town extract in data/wellesley/town.geojson (College, Wellesley Square,
- * and the streets around them), or a loaded US city. Buildings are rebuilt
- * as glass with green roofs; heights are a design choice (OSM has none
- * here), not a survey.
+ * and the streets around them), or a loaded US city. Lakes, ponds, and
+ * brooks come from the same map. That water is the shoreline, not a defect.
+ * Buildings are rebuilt as glass with green roofs; heights are a design
+ * choice (OSM has none here), not a survey.
  *
  * Thousands of buildings stay fast because each kind of surface is merged
  * into one mesh, and trees and street furniture are instanced.
@@ -137,7 +140,12 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   const box = bboxOf(geoJson) ?? SHOWCASE_BBOX;
   const bbox: ShowcaseBBox = center ? { ...box, center: [center[0], center[1]] } : box;
   const projector = createProjector(bbox, CITY_SCALE);
-  const parsed = parseBasemap(geoJson, projector) ?? { buildings: [], ways: [] };
+  const parsed = parseBasemap(geoJson, projector) ?? {
+    buildings: [],
+    ways: [],
+    water: [],
+    waterways: [],
+  };
   const kinds = new Map<string, string>();
   const tags = new Map<string, Record<string, unknown>>();
   const parts: Part[] = [];
@@ -165,8 +173,11 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   const bounds: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-  const rings =
-    parsed.buildings.length > 0 ? parsed.buildings.map((b) => b.ring) : parsed.ways.map((w) => w.points);
+  const rings = [
+    ...parsed.buildings.map((b) => b.ring),
+    ...parsed.water.map((body) => body.ring),
+    ...(parsed.buildings.length === 0 ? parsed.ways.map((w) => w.points) : []),
+  ];
   for (const ring of rings) {
     for (const [x, z] of ring) {
       bounds.minX = Math.min(bounds.minX, x);
@@ -192,8 +203,17 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   };
 }
 
-/** The Wellesley town extract, centered on the College showcase. */
-const TOWN = buildModel(town, SHOWCASE_BBOX.center);
+/** The Wellesley town extract plus its mapped water, centered on the College. */
+const TOWN = buildModel(
+  {
+    type: "FeatureCollection",
+    features: [
+      ...(town as { features: unknown[] }).features,
+      ...(waterMap as { features: unknown[] }).features,
+    ],
+  },
+  SHOWCASE_BBOX.center,
+);
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
@@ -502,6 +522,35 @@ function along(points: Ring, spacing: number, offset: number) {
   return out;
 }
 
+/* —— Proposed street improvements —— */
+
+/** Proposed props glow with a ring so they read as additions, not existing furniture. */
+const PROPOSED_RING = "#f7ffff";
+const TRASH_BODY = "#5b6f78";
+const TRASH_GLOW = "#c9f6ff";
+const RECYCLE_BODY = "#2fa58a";
+const RECYCLE_GLOW = "#7dffd8";
+
+type ProposedSpots = {
+  /** Litter bins beside benches (rest points) and at curbs near crossings. */
+  garbage: Placement[];
+  /** Waste stations that recycling pairs with. */
+  stations: Placement[];
+  benches: Placement[];
+  lamps: Placement[];
+};
+
+/** Distance from a bench to the litter bin beside it. */
+const BENCH_BIN_STEP = 0.55;
+/** Recycling sits just down the street from the waste station it pairs with. */
+const RECYCLE_PAIR_STEP = 0.28;
+
+/** Move a spot `dist` along its heading. */
+function stepAlong(spot: Placement, dist: number): Placement {
+  const rot = spot.rot ?? 0;
+  return { x: spot.x + Math.sin(rot) * dist, z: spot.z + Math.cos(rot) * dist, rot };
+}
+
 /* —— Build everything once per map —— */
 
 type Placement = { x: number; z: number; rot?: number; s?: number; color?: string };
@@ -527,7 +576,11 @@ type Built = {
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
+  /** Spots for the street improvements a proposal can add. */
+  proposed: ProposedSpots;
   signs: SignSpot[];
+  water: THREE.BufferGeometry;
+  streams: THREE.BufferGeometry;
 };
 
 /* —— Suburban houses: siding walls and a pitched gable roof —— */
@@ -929,6 +982,20 @@ function buildCity(model: CityModel): Built {
     occupancy.markHeight(ring, top);
   }
 
+  // Shorelines stay clear of trees. The water is the map, not a barrier.
+  const water = new Bucket();
+  for (const body of model.parsed.water) {
+    if (body.ring.length < 3) continue;
+    cap(water, body.ring, 0.04);
+    occupancy.markRing(body.ring, 0.3);
+  }
+  const streams = new Bucket();
+  for (const brook of model.parsed.waterways) {
+    const half = brook.wide ? 0.22 : 0.07;
+    strip(streams, brook.points, half, 0.045);
+    occupancy.markLine(brook.points, half + 0.12);
+  }
+
   const roads = new Bucket();
   const lines = new Bucket();
   const lit = new Bucket();
@@ -1080,6 +1147,20 @@ function buildCity(model: CityModel): Built {
     .filter((way) => way.layer === "footway")
     .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
 
+  // Proposed street improvements: cans beside benches and at curbs, recycling
+  // paired with those stations, extra benches and lamps along footways.
+  const footWays = model.parsed.ways.filter((way) => way.layer === "footway");
+  const curbBins = roadWays.flatMap((way) => along(way.points, 23, -(WAY_HALF_WIDTH.road + 0.45)));
+  const garbageSpots = [...benches.map((bench) => stepAlong(bench, BENCH_BIN_STEP)), ...curbBins];
+  const proposed: ProposedSpots = {
+    garbage: garbageSpots,
+    stations: garbageSpots,
+    benches: footWays
+      .flatMap((way) => along(way.points, 13, -(WAY_HALF_WIDTH.footway + 0.3)))
+      .map((spot) => ({ ...spot, rot: spot.rot + Math.PI })),
+    lamps: footWays.flatMap((way) => along(way.points, 9, WAY_HALF_WIDTH.footway + 0.35)),
+  };
+
   // Street signs along named roads, spaced so one street never crowds a block.
   const signs: SignSpot[] = [];
   for (const way of roadWays) {
@@ -1112,9 +1193,12 @@ function buildCity(model: CityModel): Built {
     ponds,
     cars,
     people,
+    water: water.geometry(),
+    streams: streams.geometry(),
     lamps,
     hydrants,
     benches,
+    proposed,
     signs,
   };
 }
@@ -1140,6 +1224,10 @@ function mapFor(model: CityModel): CityMap {
     }
   }
   const buildings = model.parsed.buildings.map((b) => `${line(b.ring)}Z`).join("");
+  const water = [
+    ...model.parsed.water.map((body) => `${line(body.ring)}Z`),
+    ...model.parsed.waterways.map((brook) => line(brook.points)),
+  ].join("");
   const places = model.parsed.buildings.flatMap((b) => {
     if (!b.name) return [];
     const [x, z] = centroid(b.ring);
@@ -1154,6 +1242,7 @@ function mapFor(model: CityModel): CityMap {
     buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
     roads: roads.join(""),
     walks: walks.join(""),
+    water,
     buildings,
     streets,
     places,
@@ -1220,10 +1309,22 @@ function useMaterials() {
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
         park: plain("#3e7c4c", { roughness: 0.95 }),
-        water: new THREE.MeshStandardMaterial({
-          color: "#3f8fd4",
+        water: new THREE.MeshPhysicalMaterial({
+          color: "#1c6f96",
           roughness: 0.08,
           metalness: 0.55,
+          transmission: 0.35,
+          thickness: 0.4,
+          transparent: true,
+          opacity: 0.92,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+        stream: new THREE.MeshStandardMaterial({
+          color: "#2f8eb4",
+          roughness: 0.2,
+          metalness: 0.35,
         }),
       },
     };
@@ -1339,6 +1440,10 @@ function useFurniture() {
         ]),
         body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
         head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
+        canBody: at(new THREE.CylinderGeometry(0.09, 0.08, 0.32, 10), 0.16),
+        canBand: at(new THREE.CylinderGeometry(0.092, 0.092, 0.03, 10), 0.24),
+        canLid: at(new THREE.CylinderGeometry(0.075, 0.1, 0.04, 10), 0.34),
+        ring: at(new THREE.RingGeometry(0.9, 1, 24).rotateX(-Math.PI / 2), 0.03),
       },
       looks: {
         bark: new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
@@ -1370,6 +1475,38 @@ function useFurniture() {
         }),
         shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
         skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
+        trashBody: new THREE.MeshStandardMaterial({
+          color: TRASH_BODY,
+          emissive: TRASH_GLOW,
+          emissiveIntensity: 0.18,
+          roughness: 0.5,
+        }),
+        trashGlow: new THREE.MeshStandardMaterial({
+          color: TRASH_GLOW,
+          emissive: TRASH_GLOW,
+          emissiveIntensity: 1.2,
+          toneMapped: false,
+        }),
+        trashLid: new THREE.MeshStandardMaterial({ color: "#eef8fb", roughness: 0.4 }),
+        recycleBody: new THREE.MeshStandardMaterial({
+          color: RECYCLE_BODY,
+          emissive: RECYCLE_GLOW,
+          emissiveIntensity: 0.18,
+          roughness: 0.5,
+        }),
+        recycleGlow: new THREE.MeshStandardMaterial({
+          color: RECYCLE_GLOW,
+          emissive: RECYCLE_GLOW,
+          emissiveIntensity: 1.2,
+          toneMapped: false,
+        }),
+        recycleLid: new THREE.MeshStandardMaterial({ color: "#e9fff7", roughness: 0.4 }),
+        proposedRing: new THREE.MeshBasicMaterial({
+          color: PROPOSED_RING,
+          transparent: true,
+          opacity: 0.85,
+          toneMapped: false,
+        }),
       },
     };
   }, []);
@@ -1421,6 +1558,65 @@ function Instanced({
   return <primitive object={mesh} />;
 }
 
+type Furniture = ReturnType<typeof useFurniture>;
+
+/** A glowing ring under each proposed prop; `size` scales the unit ring. */
+function ProposedRings({ furniture, items, size }: { furniture: Furniture; items: Placement[]; size: number }) {
+  const rings = useMemo(() => items.map((item) => ({ x: item.x, z: item.z, s: size })), [items, size]);
+  return (
+    <Instanced geometry={furniture.shapes.ring} material={furniture.looks.proposedRing} items={rings} shadows={false} />
+  );
+}
+
+/** Proposed garbage or recycling cans: slate or green body, glowing band, light lid, ring. */
+function ProposedCans({ furniture, items, kind }: { furniture: Furniture; items: Placement[]; kind: "garbage" | "recycling" }) {
+  const { shapes, looks } = furniture;
+  const recycling = kind === "recycling";
+  return (
+    <group name={`proposed-${kind}`}>
+      <Instanced geometry={shapes.canBody} material={recycling ? looks.recycleBody : looks.trashBody} items={items} />
+      <Instanced geometry={shapes.canBand} material={recycling ? looks.recycleGlow : looks.trashGlow} items={items} shadows={false} />
+      <Instanced geometry={shapes.canLid} material={recycling ? looks.recycleLid : looks.trashLid} items={items} />
+      <ProposedRings furniture={furniture} items={items} size={0.17} />
+    </group>
+  );
+}
+
+/** Shows the street improvements selected for the proposal as glowing additions. */
+function ProposedStreetImprovements({ furniture, spots }: { furniture: Furniture; spots: ProposedSpots }) {
+  const { selectedIds } = useStreetImprovements();
+  const garbage = selectedIds.includes("add-garbage-cans");
+  const recycling = selectedIds.includes("add-recycling");
+  const benches = selectedIds.includes("add-benches");
+  const lighting = selectedIds.includes("add-better-lighting");
+  const recyclingSpots = useMemo(
+    () => spots.stations.map((station) => stepAlong(station, RECYCLE_PAIR_STEP)),
+    [spots],
+  );
+  if (!garbage && !recycling && !benches && !lighting) return null;
+  const { shapes, looks } = furniture;
+  return (
+    <group name="proposed-street-improvements">
+      {garbage ? <ProposedCans kind="garbage" furniture={furniture} items={spots.garbage} /> : null}
+      {recycling ? <ProposedCans kind="recycling" furniture={furniture} items={recyclingSpots} /> : null}
+      {benches ? (
+        <group name="proposed-benches">
+          <Instanced geometry={shapes.seat} material={looks.wood} items={spots.benches} />
+          <Instanced geometry={shapes.back} material={looks.wood} items={spots.benches} />
+          <ProposedRings furniture={furniture} items={spots.benches} size={0.42} />
+        </group>
+      ) : null}
+      {lighting ? (
+        <group name="proposed-lamps">
+          <Instanced geometry={shapes.pole} material={looks.steel} items={spots.lamps} />
+          <Instanced geometry={shapes.bulb} material={looks.glow} items={spots.lamps} shadows={false} />
+          <ProposedRings furniture={furniture} items={spots.lamps} size={0.2} />
+        </group>
+      ) : null}
+    </group>
+  );
+}
+
 /**
  * The glass city. With no map it shows the Wellesley town; given a loaded
  * neighborhood (same FeatureCollection shape) it rebuilds from that.
@@ -1430,7 +1626,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   const houses = useHouseMaterials();
   const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
   useEffect(() => () => pondShape.dispose(), [pondShape]);
-  const { shapes, looks } = useFurniture();
+  const furniture = useFurniture();
+  const { shapes, looks } = furniture;
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
   const masonryLooks = useMemo(
@@ -1471,6 +1668,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         built.garden,
         built.metal,
         built.stone,
+        built.water,
+        built.streams,
         built.roads,
         built.lines,
         built.lit,
@@ -1493,6 +1692,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
+      <mesh geometry={built.water} material={surfaces.water} receiveShadow raycast={() => null} />
+      <mesh geometry={built.streams} material={surfaces.stream} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />
       <mesh geometry={built.lines} material={surfaces.line} raycast={() => null} />
       <mesh geometry={built.lit} material={surfaces.lit} raycast={() => null} />
@@ -1580,6 +1781,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} />
       <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
+      <ProposedStreetImprovements furniture={furniture} spots={built.proposed} />
 
       <IssueLayer reducedMotion={reducedMotion} />
       <AddressPin />

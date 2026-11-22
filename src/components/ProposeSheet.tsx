@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PATCH_DESCRIPTION,
   draftForPothole,
   potholeById,
   usePotholeFix,
 } from '../city/potholeFix'
+import {
+  draftForStreetImprovements,
+  improvementsByIds,
+  useStreetImprovements,
+} from '../city/streetImprovements'
 import { generateProposal } from '../data/api'
 import { useCityState } from '../showcase/cityStore'
 import { chosenFacts, useIssueState } from '../showcase/issueStore'
@@ -23,6 +28,8 @@ export function ProposeSheet() {
   const fix = usePotholeFix()
   const hole = potholeById(fix.selectedId)
   const patched = hole ? fix.patchedIds.includes(hole.id) : false
+  const { selectedIds } = useStreetImprovements()
+  const improvements = useMemo(() => improvementsByIds(selectedIds), [selectedIds])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<GenerateProposalResponse | null>(null)
   const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
@@ -33,8 +40,10 @@ export function ProposeSheet() {
 
   useEffect(() => {
     if (!baseDraft) return
-    setDraft(draftForPothole(baseDraft, hole, patched))
-  }, [baseDraft, hole, patched])
+    setDraft(
+      draftForStreetImprovements(draftForPothole(baseDraft, hole, patched), improvements),
+    )
+  }, [baseDraft, hole, patched, improvements])
 
   const onGenerate = async () => {
     if (count === 0) return
@@ -47,7 +56,9 @@ export function ProposeSheet() {
       })
       setResult(next)
       setBaseDraft(next.draft)
-      setDraft(draftForPothole(next.draft, hole, patched))
+      setDraft(
+        draftForStreetImprovements(draftForPothole(next.draft, hole, patched), improvements),
+      )
     } finally {
       setLoading(false)
     }
@@ -62,6 +73,9 @@ export function ProposeSheet() {
             {count === 0
               ? `Pick issues in ${placeLabel} to propose.`
               : `${count} issue${count === 1 ? '' : 's'} in ${placeLabel}.`}
+            {improvements.length > 0
+              ? ` Includes: ${improvements.map((item) => item.name).join(', ')}.`
+              : null}
           </p>
         </div>
         <button
