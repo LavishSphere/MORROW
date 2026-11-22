@@ -103,6 +103,7 @@ export function handleHealth(
     service: "@morrow/api",
     barriers: listBarriers().length,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
+    openRouterFallback: Boolean(process.env.OPENROUTER_API_KEY?.trim()),
     tigerData: tigerLive(),
     databaseUrlConfigured: databaseUrlConfigured(),
     tigerError: tigerLive() ? null : tigerLastError(),
