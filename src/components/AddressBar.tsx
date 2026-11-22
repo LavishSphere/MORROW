@@ -7,6 +7,14 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { decideAddressQuery } from '../data/addressQuery'
+import {
+  canUseLocation,
+  LOCATE_OPTIONS,
+  locationErrorMessage,
+  NO_PLACE_MESSAGE,
+  OUTSIDE_US_MESSAGE,
+  reverseGeocode,
+} from '../data/myLocation'
 import { loadUsNeighborhood, type LoadedNeighborhood } from '../data/overpass'
 import {
   geocodeUsPlace,
@@ -40,6 +48,7 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
   const [active, setActive] = useState(-1)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
+  const [locating, setLocating] = useState(false)
   const picked = useRef<string | null>(null)
   const submitted = useRef(false)
   const pending = useRef<PendingPin | null>(null)
@@ -135,6 +144,54 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
     }
   }
 
+  // Geolocation needs HTTPS or localhost; without it the button is hidden.
+  const canLocate = canUseLocation({
+    isSecureContext: window.isSecureContext,
+    geolocation: navigator.geolocation,
+  })
+
+  /**
+   * Name the point with the same geocoder, then load it exactly as if the
+   * address had been typed. The point itself is not kept anywhere.
+   */
+  const locate = () => {
+    if (busy || locating || !canLocate) return
+    setLocating(true)
+    setOpen(false)
+    setStatus('Finding your location…')
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { longitude, latitude } = position.coords
+          const place = await reverseGeocode(longitude, latitude)
+          if (!place) {
+            setStatus(NO_PLACE_MESSAGE)
+            return
+          }
+          if (!place.inUs) {
+            setStatus(OUTSIDE_US_MESSAGE)
+            return
+          }
+          const shown = shortName(place.label)
+          picked.current = shown
+          setQuery(shown)
+          setSuggestions([])
+          setStatus('')
+          await go(place.label)
+        } catch {
+          setStatus(NO_PLACE_MESSAGE)
+        } finally {
+          setLocating(false)
+        }
+      },
+      (error) => {
+        setLocating(false)
+        setStatus(locationErrorMessage(error.code))
+      },
+      LOCATE_OPTIONS,
+    )
+  }
+
   const pick = (choice: CitySuggestion) => {
     const shown = shortName(choice.label)
     picked.current = shown
@@ -228,6 +285,32 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
             ))}
           </ul>
         </div>
+        {canLocate && (
+          <button
+            type="button"
+            className="place-search__locate"
+            aria-label="Use my location"
+            title="Use my location"
+            aria-busy={locating}
+            disabled={busy || locating}
+            onClick={locate}
+          >
+            {locating ? (
+              <span className="place-search__spinner" aria-hidden="true" />
+            ) : (
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+                <path
+                  d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </button>
+        )}
         <button type="submit" className="place-search__go" disabled={busy || query.trim().length < 2}>
           {busy ? 'Finding' : 'Go'}
         </button>

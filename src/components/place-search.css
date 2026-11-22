@@ -64,6 +64,59 @@
   cursor: default;
 }
 
+/* —— Use my location: square, same glass as Go —— */
+.place-search__locate {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--bar-control-h, 2.5rem);
+  height: var(--bar-control-h, 2.5rem);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(12, 20, 17, 0.55);
+  color: #f7faf8;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 160ms ease;
+}
+
+.place-search__locate:not(:disabled):hover {
+  background: rgba(12, 20, 17, 0.8);
+}
+
+.place-search__locate:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.place-search__locate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.place-search__spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(247, 250, 248, 0.3);
+  border-top-color: #f7faf8;
+  border-radius: 50%;
+  animation: place-search-spin 800ms linear infinite;
+}
+
+@keyframes place-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .place-search__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 /* —— Suggestions dropdown —— */
 .place-search__list {
   position: absolute;
