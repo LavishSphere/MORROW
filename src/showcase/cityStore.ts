@@ -33,7 +33,11 @@ export type CityMap = {
   buildings: string;
   streets: NamedSegment[];
   places: NamedPlace[];
+  /** Rail lines as Path2D strings, with line colour; tunnels draw dashed. */
+  rail?: RailPath[];
 };
+
+export type RailPath = { d: string; colour: string | null; tunnel: boolean };
 
 export type CameraPose = {
   /** What the camera looks at, on the ground. */

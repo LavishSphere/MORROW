@@ -1,4 +1,5 @@
 import { resolveRoadWidth, type WidthKind } from "../../data/roadWidth.ts";
+import { parseRail, type RailNetwork } from "../../data/rail.ts";
 import { isFeatureCollection, type SceneProjector } from "../geo";
 
 export type BasemapLayer =
@@ -65,7 +66,11 @@ export type ParsedBasemap = {
   water: WaterBody[];
   waterways: Waterway[];
   coastlines: Coastline[];
+  /** Rail track, platforms, and stations (features with layer rail, rail_platform, station). */
+  rail: RailNetwork;
 };
+
+export type { RailLine, RailPlatform, Station, RailNetwork } from "../../data/rail.ts";
 
 const BUILDING_HEIGHTS: Record<string, number> = {
   dormitory: 2.4,
@@ -234,6 +239,8 @@ export function parseBasemap(
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
     ) {
+      // A platform edge mapped as highway=platform is not a street.
+      if (f.properties?.highway === "platform") continue;
       const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
       if (points.length < 2) continue;
       const width = resolveRoadWidth(f.properties ?? null);
@@ -253,14 +260,16 @@ export function parseBasemap(
     }
   }
 
+  const rail = parseRail(geoJson.features, projector.project);
   if (
     buildings.length === 0 &&
     ways.length === 0 &&
     water.length === 0 &&
     waterways.length === 0 &&
-    coastlines.length === 0
+    coastlines.length === 0 &&
+    rail.lines.length === 0
   ) {
     return null;
   }
-  return { buildings, ways, water, waterways, coastlines };
+  return { buildings, ways, water, waterways, coastlines, rail };
 }

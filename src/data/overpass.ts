@@ -1,12 +1,13 @@
 import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
 import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
+import { lineColour, railRefsFrom, railTags, railWayKind, STATION_NODE_TYPES, type RailRef } from './rail.ts'
 
 export type OsmWay = {
   id: number
   name: string | null
   /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
-  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline'
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'rail' | 'platform' | 'station'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -29,6 +30,10 @@ export type OsmWay = {
   widthKind?: WidthKind | null
   /** Meters-per-lane assumption. Set only when widthKind is lanes. */
   metersPerLane?: number | null
+  /** Rail line colour from the way or its route relations; null is neutral track. */
+  lineColour?: string | null
+  /** Route refs the way carries (Red, Green-B, CR-Worcester…), joined with ';'. */
+  lineRef?: string | null
 }
 
 export type LoadedNeighborhood = {
@@ -187,11 +192,22 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   const elements = (body as { elements?: unknown }).elements
   if (!Array.isArray(elements)) return []
   const ways: OsmWay[] = []
+  // Route relations' colour and ref, per rail way id.
+  const railRefs = railRefsFrom(elements)
+  const seenRail = new Set<string>()
   for (const element of elements) {
     if (!element || typeof element !== 'object') continue
     const row = element as OverpassElement
     if (row.type === 'relation') {
       ways.push(...relationWater(row))
+      continue
+    }
+    if (row.type === 'node') {
+      const station = stationNode(row)
+      if (station && !seenRail.has(`station:${station.id}`)) {
+        seenRail.add(`station:${station.id}`)
+        ways.push(station)
+      }
       continue
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -201,6 +217,17 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       points.push([point.lon, point.lat])
     }
     if (points.length < 2) continue
+    // Track and platforms. A platform canopy mapped as a building stays a building.
+    const shell = typeof row.tags?.building === 'string' || typeof row.tags?.['building:part'] === 'string'
+    const railKind = shell ? null : railWayKind(row.tags)
+    // highway=platform is a platform edge, not a street.
+    if (row.tags?.highway === 'platform' && !shell && railKind !== 'platform') continue
+    if (railKind && (railKind === 'platform' || typeof row.tags?.highway !== 'string')) {
+      if (seenRail.has(`${railKind}:${row.id}`)) continue
+      seenRail.add(`${railKind}:${row.id}`)
+      ways.push(railWay(row, railKind, points, railRefs.get(row.id)))
+      continue
+    }
     const part = typeof row.tags?.['building:part'] === 'string'
     const building = !part && typeof row.tags?.building === 'string'
     const highway = typeof row.tags?.highway === 'string'
@@ -250,6 +277,41 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   return ways
 }
 
+/** A rail track or platform way, with its line colour from route relations. */
+function railWay(
+  row: OverpassElement,
+  kind: 'rail' | 'platform',
+  points: [number, number][],
+  ref: RailRef | undefined,
+): OsmWay {
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = railTags(row.tags)
+  const refs = ref?.refs.length ? ref.refs.join(';') : (tags.ref ?? null)
+  return {
+    id: row.id as number,
+    name,
+    kind,
+    tags,
+    points,
+    lineColour: kind === 'rail' ? lineColour(tags, ref, name) : null,
+    lineRef: refs,
+  }
+}
+
+/** Stations, stops, and subway entrances are OSM nodes. */
+function stationNode(row: OverpassElement & { lat?: unknown; lon?: unknown }): OsmWay | null {
+  const railway = row.tags?.railway
+  if (typeof row.id !== 'number' || typeof row.lat !== 'number' || typeof row.lon !== 'number') return null
+  if (typeof railway !== 'string' || !(STATION_NODE_TYPES as readonly string[]).includes(railway)) return null
+  return {
+    id: row.id,
+    name: typeof row.tags?.name === 'string' ? row.tags.name : null,
+    kind: 'station',
+    tags: railTags(row.tags),
+    points: [[row.lon, row.lat]],
+  }
+}
+
 async function interpret(query: string): Promise<OsmWay[]> {
   const res = await fetch(OVERPASS, {
     method: 'POST',
@@ -268,8 +330,16 @@ async function interpret(query: string): Promise<OsmWay[]> {
 export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
   // Streets, buildings, landmark pieces, and water get separate quotas.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;${railQuery(box)}`
   return interpret(query)
+}
+
+/**
+ * Track, platforms, and station nodes, plus one "railref" row per track way
+ * carrying its route relations' colour, ref, and network.
+ */
+function railQuery(box: string) {
+  return `way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge|funicular)$"](${box})->.rail;.rail out tags geom 600;way["railway"="platform"](${box});out tags geom 150;node["railway"~"^(station|halt|tram_stop|subway_entrance)$"](${box});out body 250;foreach.rail->.w(rel(bw.w)["route"~"^(subway|light_rail|train|tram|monorail)$"]->.rr;make railref way=w.u(id()),colour=rr.set(t["colour"]),ref=rr.set(t["ref"]),network=rr.set(t["network"]);out;);`
 }
 
 /**
@@ -349,6 +419,38 @@ export async function extendNeighborhood(
   return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
 }
 
+/** Rail track, platforms, and stations as basemap features. */
+function railFeature(way: OsmWay) {
+  const base = { ...way.tags, osmId: way.id, name: way.name }
+  if (way.kind === 'station') {
+    return {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: way.points[0] },
+      properties: { ...base, layer: 'station' },
+    }
+  }
+  if (way.kind === 'platform') {
+    const closed = way.points.length >= 4 && isClosedRing(way.points)
+    return {
+      type: 'Feature',
+      geometry: closed
+        ? { type: 'Polygon', coordinates: [way.points] }
+        : { type: 'LineString', coordinates: way.points },
+      properties: { ...base, layer: 'rail_platform' },
+    }
+  }
+  return {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: way.points },
+    properties: {
+      ...base,
+      layer: 'rail',
+      colour: way.lineColour ?? null,
+      ref: way.lineRef ?? way.tags?.ref ?? null,
+    },
+  }
+}
+
 const FOOT = new Set(['footway', 'pedestrian', 'steps', 'corridor', 'living_street'])
 const PATH = new Set(['path', 'track', 'cycleway', 'bridleway'])
 
@@ -386,6 +488,10 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         geometry: { type: 'LineString', coordinates: way.points },
         properties: { osmId: way.id, layer: 'coastline', name: way.name },
       })
+      continue
+    }
+    if (way.kind === 'rail' || way.kind === 'platform' || way.kind === 'station') {
+      features.push(railFeature(way))
       continue
     }
     if (way.kind === 'building' || way.kind === 'part') {
