@@ -77,14 +77,14 @@ export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
 
-export async function draftWithGemini(
+function isCapacityMiss(reason: string): boolean {
+  return /503|UNAVAILABLE|high demand/i.test(reason);
+}
+
+async function requestDraft(
+  apiKey: string,
   facts: ProposalFacts,
 ): Promise<GeminiDraftResult> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, reason: "GEMINI_API_KEY not set" };
-  }
-
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
@@ -116,4 +116,18 @@ export async function draftWithGemini(
     const message = err instanceof Error ? err.message : "Gemini call failed";
     return { ok: false, reason: message };
   }
+}
+
+export async function draftWithGemini(
+  facts: ProposalFacts,
+): Promise<GeminiDraftResult> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, reason: "GEMINI_API_KEY not set" };
+  }
+
+  const first = await requestDraft(apiKey, facts);
+  if (first.ok || !isCapacityMiss(first.reason)) return first;
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  return requestDraft(apiKey, facts);
 }
