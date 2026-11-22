@@ -45,7 +45,7 @@ export const HIGHWAY_WIDTH_PRIOR_METERS: Record<string, number> = {
   corridor: 2,
 }
 
-const DEFAULT_PRIOR_METERS = HIGHWAY_WIDTH_PRIOR_METERS.residential
+const DEFAULT_PRIOR_METERS = 6
 
 const FOOT_TO_METERS = 0.3048
 
@@ -127,7 +127,8 @@ export function resolveRoadWidth(tags: Record<string, unknown> | null | undefine
       taggedWidthMeters: null,
     }
   }
-  const widthMeters = (highway && HIGHWAY_WIDTH_PRIOR_METERS[highway]) || DEFAULT_PRIOR_METERS
+  const known = highway ? HIGHWAY_WIDTH_PRIOR_METERS[highway] : undefined
+  const widthMeters = typeof known === 'number' ? known : DEFAULT_PRIOR_METERS
   return {
     widthMeters,
     widthKind: 'prior',
