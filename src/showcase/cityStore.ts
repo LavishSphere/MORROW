@@ -19,6 +19,8 @@ export type CityMap = {
   geoBounds: GeoBounds;
   /** Longitude/latitude → scene [x, z] for this map. */
   project: (lon: number, lat: number) => readonly [number, number];
+  /** Scene [x, z] → [longitude, latitude], the inverse of project. */
+  unproject: (x: number, z: number) => readonly [number, number];
   /** Center of every building, for "what is near this fix". */
   buildingPoints: [number, number][];
   /** OpenStreetMap building type for each entry of buildingPoints. */
@@ -56,6 +58,8 @@ type State = {
   pin: AddressPin | null;
   /** The city on screen, for labels and offline drafts. */
   placeLabel: string;
+  /** True while more of a loaded city is downloading as you explore. */
+  loadingMore: boolean;
 };
 
 let state: State = {
@@ -64,6 +68,7 @@ let state: State = {
   fly: null,
   pin: null,
   placeLabel: "Wellesley, MA",
+  loadingMore: false,
 };
 const listeners = new Set<() => void>();
 
@@ -88,6 +93,10 @@ export function useCityState() {
 export function publishMap(map: CityMap) {
   // A new map: an old address pin would point into the wrong place.
   emit({ map, pin: null });
+}
+
+export function setLoadingMore(loadingMore: boolean) {
+  if (state.loadingMore !== loadingMore) emit({ loadingMore });
 }
 
 export function setPlaceLabel(placeLabel: string) {

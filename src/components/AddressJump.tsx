@@ -30,7 +30,7 @@ function insideMap(map: CityMap, lng: number, lat: number) {
 
 /**
  * Type an address. If it is already on the map, the camera flies there.
- * Otherwise a whole procedural city is built around it and the pin drops
+ * Otherwise the real streets around it load from OpenStreetMap and the pin drops
  * once that map is up. Wellesley stays until the address is somewhere else.
  */
 export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborhood) => void }) {
@@ -102,7 +102,7 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
         setStatus('')
         return
       }
-      setStatus('Building a city around that address.')
+      setStatus('Loading the streets around that address.')
       pending.current = { lng: place.lng, lat: place.lat, label }
       const loaded = await loadUsNeighborhood(text, magicKey)
       onLoad(loaded)

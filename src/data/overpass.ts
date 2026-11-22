@@ -9,6 +9,8 @@ export type OsmWay = {
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
   building?: string | null
+  /** Accessibility tags the issue detector reads (crossing, sidewalk, surface…). */
+  tags?: Record<string, string>
   /** [longitude, latitude] */
   points: [number, number][]
 }
@@ -18,6 +20,21 @@ export type LoadedNeighborhood = {
   ways: OsmWay[]
   /** Honest status. Never claims a barrier inventory. */
   note: string
+  /** True when OpenStreetMap was unreachable and a seeded stand-in was built. */
+  procedural?: boolean
+  /** Areas already downloaded, so walking on does not fetch them twice. */
+  tiles?: string[]
+}
+
+const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
+/** Half-size of one downloaded area in degrees: about 1.4 km across. */
+const HALF = 0.0065
+/** Accessibility tags kept from OpenStreetMap for issue detection. */
+const KEEP_TAGS = ['footway', 'crossing', 'surface', 'sidewalk', 'sidewalk:both', 'sidewalk:left', 'sidewalk:right']
+
+/** Areas snap to a grid, so nearby requests share one download. */
+export function tileKey(lng: number, lat: number) {
+  return `${Math.round(lng / (HALF * 2))}:${Math.round(lat / (HALF * 2))}`
 }
 
 /** Read way geometries from an Overpass JSON body. */
@@ -30,7 +47,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     if (!element || typeof element !== 'object') continue
     const row = element as {
       id?: unknown
-      tags?: { name?: unknown; highway?: unknown; building?: unknown }
+      tags?: Record<string, unknown>
       geometry?: { lat?: unknown; lon?: unknown }[]
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -42,22 +59,53 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     if (points.length < 2) continue
     const building = typeof row.tags?.building === 'string'
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+    const tags: Record<string, string> = {}
+    for (const key of KEEP_TAGS) {
+      const value = row.tags?.[key]
+      if (typeof value === 'string') tags[key] = value
+    }
     ways.push({
       id: row.id,
       name,
       kind: building ? 'building' : 'road',
       highway: typeof row.tags?.highway === 'string' ? row.tags.highway : null,
       building: building ? String(row.tags?.building) : null,
+      ...(Object.keys(tags).length > 0 ? { tags } : {}),
       points,
     })
   }
   return ways
 }
 
+/** Real streets and buildings in one area around a point, from OpenStreetMap. */
+export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
+  const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
+  // Streets and buildings get separate quotas, so a dense downtown's
+  // buildings cannot crowd out its streets.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 3000;`
+  const res = await fetch(OVERPASS, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ data: query }),
+    signal: AbortSignal.timeout(60000),
+  })
+  if (!res.ok) throw new Error(`Overpass ${res.status}`)
+  return waysFromOverpass(await res.json())
+}
+
+function describe(place: UsPlace, ways: OsmWay[]) {
+  const roads = ways.filter((way) => way.kind === 'road').length
+  return `${place.label}. OpenStreetMap: ${roads} streets and ${ways.length - roads} buildings so far; more load as you explore. Not a barrier inventory.`
+}
+
 /**
- * Geocode a US place and build a whole procedural city around it.
- * Wellesley itself stays the bundled map. This is not a survey of the
- * named city's streets.
+ * Geocode a US place and load its real streets and buildings from
+ * OpenStreetMap. Only if OpenStreetMap cannot be reached is a seeded
+ * procedural stand-in built, and the note says so. Wellesley itself stays
+ * the bundled map.
  */
 export async function loadUsNeighborhood(
   query: string,
@@ -67,14 +115,39 @@ export async function loadUsNeighborhood(
   if (!place) {
     throw new Error('No US place matched that name.')
   }
+  try {
+    const ways = await fetchArea(place.lng, place.lat)
+    if (ways.length > 0) {
+      return { place, ways, note: describe(place, ways), tiles: [tileKey(place.lng, place.lat)] }
+    }
+  } catch {
+    // Fall through to the labeled stand-in below.
+  }
   const ways = generateCity(place)
-  const roads = ways.filter((way) => way.kind === 'road').length
-  const buildings = ways.length - roads
   return {
     place,
     ways,
-    note: `${place.label}. Procedural city, ${roads} streets and ${buildings} buildings, centered on that place. Not a survey of its real streets. Not a barrier inventory.`,
+    procedural: true,
+    note: `${place.label}. OpenStreetMap could not be reached, so this is a procedural stand-in, not its real streets. Not a barrier inventory.`,
   }
+}
+
+/**
+ * Walked near the edge: download the real area around (lng, lat) and add
+ * it to the neighborhood. Ways already loaded are kept once.
+ */
+export async function extendNeighborhood(
+  neighborhood: LoadedNeighborhood,
+  lng: number,
+  lat: number,
+): Promise<LoadedNeighborhood> {
+  const key = tileKey(lng, lat)
+  const tiles = neighborhood.tiles ?? []
+  if (neighborhood.procedural || tiles.includes(key)) return neighborhood
+  const fresh = await fetchArea(lng, lat)
+  const seen = new Set(neighborhood.ways.map((way) => way.id))
+  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(way.id))]
+  return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
 }
 
 const FOOT = new Set(['footway', 'pedestrian', 'steps', 'corridor', 'living_street'])
@@ -96,7 +169,7 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
       features.push({
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
-        properties: { osmId: way.id, layer: 'building', name: way.name, building: way.building ?? 'yes' },
+        properties: { osmId: way.id, layer: 'building', name: way.name, building: way.building ?? 'yes', ...way.tags },
       })
       continue
     }
@@ -105,8 +178,9 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
     features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: way.points },
-      properties: { osmId: way.id, layer, name: way.name, highway },
+      properties: { osmId: way.id, layer, name: way.name, highway, ...way.tags },
     })
   }
-  return { type: 'FeatureCollection', features }
+  // The center keeps scene coordinates stable as more areas load in.
+  return { type: 'FeatureCollection', features, center: [neighborhood.place.lng, neighborhood.place.lat] }
 }

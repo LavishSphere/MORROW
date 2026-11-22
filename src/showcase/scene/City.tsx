@@ -72,6 +72,8 @@ type CityModel = {
   bounds: Bounds;
   /** Longitude/latitude → scene [x, z] for this map. */
   project: (lon: number, lat: number) => readonly [number, number];
+  /** Scene [x, z] → longitude/latitude. */
+  unproject: (x: number, z: number) => readonly [number, number];
   /** Longitude / latitude box of the map's buildings. */
   geoBounds: { west: number; south: number; east: number; north: number };
 };
@@ -121,6 +123,11 @@ function bboxOf(geoJson: unknown): ShowcaseBBox | null {
 
 /** Parse any basemap-shaped FeatureCollection into the city's model. */
 function buildModel(geoJson: unknown, center?: readonly [number, number]): CityModel {
+  const own = (geoJson as { center?: unknown })?.center;
+  if (!center && Array.isArray(own) && typeof own[0] === "number" && typeof own[1] === "number") {
+    // A loaded city keeps one fixed center, so adding areas never moves the scene.
+    center = [own[0], own[1]];
+  }
   const box = bboxOf(geoJson) ?? SHOWCASE_BBOX;
   const bbox: ShowcaseBBox = center ? { ...box, center: [center[0], center[1]] } : box;
   const projector = createProjector(bbox, CITY_SCALE);
@@ -149,6 +156,11 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     kinds,
     bounds,
     project: projector.project,
+    unproject: (x: number, z: number) => {
+      const [lon0, lat0] = bbox.center;
+      const metersPerDegLon = 111_320 * Math.max(0.2, Math.cos((lat0 * Math.PI) / 180));
+      return [lon0 + x / (CITY_SCALE * metersPerDegLon), lat0 - z / (CITY_SCALE * 111_320)] as const;
+    },
     geoBounds: { west: box.west, south: box.south, east: box.east, north: box.north },
   };
 }
@@ -469,6 +481,8 @@ type Placement = { x: number; z: number; rot?: number; s?: number; color?: strin
 
 type Built = {
   glass: THREE.BufferGeometry[];
+  siding: THREE.BufferGeometry[];
+  shingles: THREE.BufferGeometry[];
   garden: THREE.BufferGeometry;
   metal: THREE.BufferGeometry;
   stone: THREE.BufferGeometry;
@@ -487,8 +501,117 @@ type Built = {
   signs: SignSpot[];
 };
 
+/* —— Suburban houses: siding walls and a pitched gable roof —— */
+
+/** OpenStreetMap building types drawn as houses rather than glass. */
+const HOUSE_KINDS = new Set(["house", "detached", "semidetached_house", "bungalow", "terrace", "residential"]);
+/**
+ * Untyped buildings ("yes") smaller than this footprint (about 250 m², in
+ * scene units²) are almost always homes or garages, so they get houses too.
+ */
+const SMALL_UNTYPED = 250 * 0.14 * 0.14;
+const SIDING = ["#f2efe8", "#e8dcc4", "#c9d4dc", "#d9c4a6"] as const;
+const SHINGLE = ["#4a4f55", "#6b4f3f", "#3f4a5a"] as const;
+
+type Point3 = readonly [number, number, number];
+
+/** One flat-shaded triangle. */
+function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  bucket.push([...a, ...b, ...c], [nx, ny, nz], [0, 0, 1, 0, 0, 1]);
+}
+
+/**
+ * A house on a real footprint: one or two stories of siding, and a gable
+ * roof whose ridge runs along the footprint's longest side. Returns the
+ * roof peak height.
+ */
+function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: number) {
+  const stories = seed > 0.55 ? 2 : 1;
+  const wallTop = 0.08 + stories * 0.62;
+  walls(siding, ring, 0, wallTop);
+
+  // Orient a box to the longest wall so the ridge follows the house.
+  let longest = 0;
+  let angle = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len > longest) {
+      longest = len;
+      angle = Math.atan2(bz - az, bx - ax);
+    }
+  }
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  let umin = Infinity;
+  let umax = -Infinity;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  for (const [x, z] of ring) {
+    const u = x * cos + z * sin;
+    const v = -x * sin + z * cos;
+    umin = Math.min(umin, u);
+    umax = Math.max(umax, u);
+    vmin = Math.min(vmin, v);
+    vmax = Math.max(vmax, v);
+  }
+  const eave = 0.12;
+  umin -= eave;
+  umax += eave;
+  vmin -= eave;
+  vmax += eave;
+  const vmid = (vmin + vmax) / 2;
+  const rise = Math.min(1.1, ((vmax - vmin) / 2) * 0.8);
+  const at = (u: number, v: number, y: number): Point3 => [u * cos - v * sin, y, u * sin + v * cos];
+  const A = at(umin, vmin, wallTop);
+  const B = at(umax, vmin, wallTop);
+  const C = at(umax, vmax, wallTop);
+  const D = at(umin, vmax, wallTop);
+  const R1 = at(umin, vmid, wallTop + rise);
+  const R2 = at(umax, vmid, wallTop + rise);
+  tri(roof, A, B, R2);
+  tri(roof, A, R2, R1);
+  tri(roof, D, R1, R2);
+  tri(roof, D, R2, C);
+  // Gable ends in the siding color.
+  tri(siding, A, R1, D);
+  tri(siding, B, C, R2);
+
+  if (seed > 0.5) {
+    const cu = umin + (umax - umin) * 0.75;
+    const cv = vmin + (vmax - vmin) * 0.3;
+    const half = 0.11;
+    const box: Ring = [
+      [cu - half, cv - half],
+      [cu + half, cv - half],
+      [cu + half, cv + half],
+      [cu - half, cv + half],
+    ].map(([u, v]) => [u * cos - v * sin, u * sin + v * cos] as const);
+    const chimneyTop = wallTop + rise + 0.25;
+    walls(chimney, box, wallTop, chimneyTop);
+    cap(chimney, box, chimneyTop);
+  }
+  return wallTop + rise;
+}
+
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
+  const siding = SIDING.map(() => new Bucket());
+  const shingles = SHINGLE.map(() => new Bucket());
   const garden = new Bucket();
   const metal = new Bucket();
   const stone = new Bucket();
@@ -499,6 +622,14 @@ function buildCity(model: CityModel): Built {
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const kind = model.kinds.get(building.id) ?? "yes";
     const seed = idHash(building.id);
+    if (HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED)) {
+      const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
+      const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
+      const peak = house(wall, roof, stone, ring, seed);
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
     const floors = (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
     const top = PODIUM_H + floors * FLOOR_H;
     const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
@@ -706,6 +837,8 @@ function buildCity(model: CityModel): Built {
 
   return {
     glass: glass.map((b) => b.geometry()),
+    siding: siding.map((b) => b.geometry()),
+    shingles: shingles.map((b) => b.geometry()),
     garden: garden.geometry(),
     metal: metal.geometry(),
     stone: stone.geometry(),
@@ -759,6 +892,7 @@ function mapFor(model: CityModel): CityMap {
     bounds: model.bounds,
     geoBounds: model.geoBounds,
     project: model.project,
+    unproject: model.unproject,
     buildingPoints: model.parsed.buildings.map((b) => centroid(b.ring)),
     buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
     roads: roads.join(""),
@@ -770,6 +904,28 @@ function mapFor(model: CityModel): CityMap {
 }
 
 /* —— Materials and shared shapes —— */
+
+/** Siding and shingle colors for houses; double-sided so gables always show. */
+function useHouseMaterials() {
+  const houses = useMemo(
+    () => ({
+      siding: SIDING.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+      ),
+      shingles: SHINGLE.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide }),
+      ),
+    }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      for (const m of [...houses.siding, ...houses.shingles]) m.dispose();
+    },
+    [houses],
+  );
+  return houses;
+}
 
 function useMaterials() {
   const materials = useMemo(() => {
@@ -1014,6 +1170,7 @@ function Instanced({
  */
 export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
   const { glass, surfaces } = useMaterials();
+  const houses = useHouseMaterials();
   const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
   useEffect(() => () => pondShape.dispose(), [pondShape]);
   const { shapes, looks } = useFurniture();
@@ -1038,6 +1195,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     () => () => {
       for (const g of [
         ...built.glass,
+        ...built.siding,
+        ...built.shingles,
         built.garden,
         built.metal,
         built.stone,
@@ -1072,6 +1231,26 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           key={`glass-${i}`}
           geometry={geometry}
           material={glass[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.siding.map((geometry, i) => (
+        <mesh
+          key={`siding-${i}`}
+          geometry={geometry}
+          material={houses.siding[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.shingles.map((geometry, i) => (
+        <mesh
+          key={`roof-${i}`}
+          geometry={geometry}
+          material={houses.shingles[i]}
           castShadow
           receiveShadow
           raycast={() => null}
