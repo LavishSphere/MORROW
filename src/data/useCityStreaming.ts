@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { getCityState, setLoadingMore, subscribeCity, useCitySelector, type CityMap } from '../showcase/cityStore'
+import { cameraMotion } from '../showcase/motion'
+import { frameStrain } from '../showcase/viewBudget'
 import {
   fetchTile,
   mergeAreas,
@@ -20,6 +22,7 @@ import {
   nextTile,
   ringOrder,
   shouldCommit,
+  URGENT_STILL_MS,
   viewTiles,
 } from './tileQueue'
 
@@ -166,9 +169,18 @@ export function useCityStreaming(
       })
     }
 
+    /**
+     * How long the camera has been still: no pose change, and no scroll,
+     * drag, or key, which can come before the camera reacts.
+     */
+    const stillFor = () => {
+      const now = Date.now()
+      return Math.min(now - lastMove.current, cameraMotion.idleFor(now))
+    }
+
     /** Rings around the place, only while the camera rests. */
     const background = () => {
-      if (Date.now() - lastMove.current < IDLE_FILL_MS) return []
+      if (stillFor() < IDLE_FILL_MS) return []
       const { map: cityMap, pose: view } = getCityState()
       if (!cityMap || !mapIsFor(cityMap, place)) return ringOrder(origin, BACKGROUND_RADIUS)
       const tile = TILE_HALF * 2
@@ -187,6 +199,11 @@ export function useCityStreaming(
       const base = latest.current
       const batch = pending.current
       if (signal.aborted || !base || base.place !== place || batch.keys.length === 0) return
+      // The camera moved while this waited for an idle moment: wait again.
+      if (stillFor() < URGENT_STILL_MS) {
+        if (!commitTimer.current) commitTimer.current = setTimeout(checkCommit, COMMIT_CHECK_MS)
+        return
+      }
       pending.current = { ways: [], keys: [], urgent: false }
       lastCommit.current = Date.now()
       const next = mergeAreas(base, batch.ways, batch.keys)
@@ -203,7 +220,7 @@ export function useCityStreaming(
         pending: pending.current.keys.length,
         urgent: pending.current.urgent,
         sinceCommitMs: now - lastCommit.current,
-        stillMs: now - lastMove.current,
+        stillMs: stillFor(),
       })
       if (ready) cancelIdle.current = whenIdle(commit)
       else commitTimer.current = setTimeout(checkCommit, COMMIT_CHECK_MS)
@@ -217,7 +234,8 @@ export function useCityStreaming(
     const pump = () => {
       pumpTimer.current = null
       if (signal.aborted || inflight.current) return
-      const roomy = !full()
+      // While frames are slow, only the edge you move toward loads.
+      const roomy = !full() && !frameStrain.strained
       const pick = nextTile({
         urgent: urgent.current,
         view: roomy ? visible.current : [],

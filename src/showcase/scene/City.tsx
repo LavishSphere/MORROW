@@ -9,6 +9,7 @@ import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "..
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
+import { REBUILD_QUIET_MS, whenCameraRests } from "../motion";
 import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
 import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
@@ -2477,17 +2478,23 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   // Overture footprints gathered so far for this place. When the city grows
   // by a tile only the new ground is downloaded; the buildings already on
   // screen keep theirs.
-  const gathered = useRef<{ place: string; covered: NeighborhoodBox[]; byId: Map<string, OvertureFootprint> }>({
+  const gathered = useRef<{
+    place: string;
+    covered: NeighborhoodBox[];
+    byId: Map<string, OvertureFootprint>;
+    waiting: boolean;
+  }>({
     place: "",
     covered: [],
     byId: new Map(),
+    waiting: false,
   });
   const [overture, setOverture] = useState<OvertureFootprint[]>([]);
   useEffect(() => {
     if (!boxKey) return;
     const [west = 0, south = 0, east = 0, north = 0] = boxKey.split(",").map(Number);
     if (gathered.current.place !== placeKey) {
-      gathered.current = { place: placeKey, covered: [], byId: new Map() };
+      gathered.current = { place: placeKey, covered: [], byId: new Map(), waiting: false };
     }
     const store = gathered.current;
     for (const part of uncoveredParts({ west, south, east, north }, store.covered, OVERTURE_MIN_PART)) {
@@ -2501,7 +2508,14 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
             return;
           }
           for (const footprint of footprints) store.byId.set(footprint.id, footprint);
-          setOverture([...store.byId.values()]);
+          // The new footprints rebuild the city: wait until the camera rests,
+          // and fold parts that arrive meanwhile into one rebuild.
+          if (store.waiting) return;
+          store.waiting = true;
+          whenCameraRests(() => {
+            store.waiting = false;
+            if (gathered.current === store) setOverture([...store.byId.values()]);
+          }, REBUILD_QUIET_MS);
         })
         .catch(() => {
           store.covered = store.covered.filter((item) => item !== part);

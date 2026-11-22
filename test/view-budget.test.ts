@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { MotionTracker, SETTLE_MS } from "../src/showcase/motion.ts";
-import { FramePace, pickDpr } from "../src/showcase/viewBudget.ts";
+import { MotionTracker, REBUILD_QUIET_MS, SETTLE_MS, whenCameraRests } from "../src/showcase/motion.ts";
+import { FramePace, FrameStrain, pickDpr } from "../src/showcase/viewBudget.ts";
 
 const still = Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 1 : 0));
 
@@ -50,4 +50,32 @@ test("the canvas caps its resolution and spends less while the camera moves", as
   assert.match(budget, /export const DPR_MAX = 1\.5;/);
   assert.match(budget, /const dpr = pickDpr\(/);
   assert.match(town, /<ViewBudget \/>/);
+});
+
+test("more map tiles wait while frames are slow, and resume once they are fast again", () => {
+  const strain = new FrameStrain(3, 26, 19);
+  for (const ms of [17, 17, 17]) strain.add(ms);
+  assert.equal(strain.strained, false);
+  for (const ms of [33, 33, 33]) strain.add(ms);
+  assert.equal(strain.strained, true);
+  // In between: still strained until clearly fast.
+  for (const ms of [22, 22, 22]) strain.add(ms);
+  assert.equal(strain.strained, true);
+  for (const ms of [16, 16, 16]) strain.add(ms);
+  assert.equal(strain.strained, false);
+});
+
+test("a rebuild waits until the camera has rested", async () => {
+  const motion = new MotionTracker();
+  let ran = 0;
+  motion.input(Date.now());
+  const cancel = whenCameraRests(() => (ran += 1), 40, 10, motion);
+  assert.equal(ran, 0);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(ran, 1);
+  cancel();
+  // Already resting: runs at once.
+  whenCameraRests(() => (ran += 1), 0, 10, motion);
+  assert.equal(ran, 2);
+  assert.ok(REBUILD_QUIET_MS >= 2000);
 });

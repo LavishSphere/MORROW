@@ -7,6 +7,11 @@
 
 /** After this long without a camera change or input, the view counts as resting. */
 export const SETTLE_MS = 300;
+/**
+ * A city rebuild stalls a frame, so it waits this long after the last
+ * camera move or input: a pause between two scrolls is not a rest.
+ */
+export const REBUILD_QUIET_MS = 3000;
 
 export class MotionTracker {
   private last = new Float64Array(16);
@@ -48,3 +53,26 @@ export class MotionTracker {
 
 /** The one camera in the city. Times are `Date.now()` milliseconds. */
 export const cameraMotion = new MotionTracker();
+
+/**
+ * Run `run` once the camera has rested for `quietMs`, checking every
+ * `everyMs`. Returns a cancel function. For work that would stall a
+ * frame, like rebuilding the city, so it never lands mid-gesture.
+ */
+export function whenCameraRests(
+  run: () => void,
+  quietMs: number,
+  everyMs = 500,
+  motion: MotionTracker = cameraMotion,
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const check = () => {
+    timer = null;
+    if (motion.idleFor(Date.now()) >= quietMs) run();
+    else timer = setTimeout(check, everyMs);
+  };
+  check();
+  return () => {
+    if (timer !== null) clearTimeout(timer);
+  };
+}

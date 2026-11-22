@@ -44,3 +44,35 @@ export function pickDpr(options: { sharp: number; busy: boolean; slowMoving: boo
   if (options.slowResting) return 1;
   return options.busy && options.slowMoving ? 1 : options.sharp;
 }
+
+/**
+ * Whether the city is too heavy for this machine right now: the average
+ * frame over the last `size` frames is slower than `slowMs`, until it is
+ * back under `fastMs`. More map tiles wait while it is strained.
+ */
+export class FrameStrain {
+  private times: number[] = [];
+  strained = false;
+  private size: number;
+  private slowMs: number;
+  private fastMs: number;
+  constructor(size = 90, slowMs = 26, fastMs = 19) {
+    this.size = size;
+    this.slowMs = slowMs;
+    this.fastMs = fastMs;
+  }
+
+  add(ms: number): boolean {
+    if (!(ms > 0) || ms > 250) return this.strained;
+    this.times.push(ms);
+    if (this.times.length > this.size) this.times.shift();
+    if (this.times.length < this.size) return this.strained;
+    const mean = this.times.reduce((sum, t) => sum + t, 0) / this.size;
+    if (!this.strained && mean > this.slowMs) this.strained = true;
+    else if (this.strained && mean < this.fastMs) this.strained = false;
+    return this.strained;
+  }
+}
+
+/** The canvas's own frame times, fed by ViewBudget, read by the tile loader. */
+export const frameStrain = new FrameStrain();

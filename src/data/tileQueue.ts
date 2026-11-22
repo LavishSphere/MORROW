@@ -28,8 +28,13 @@ export const BUILDING_LIMIT = 60_000
 export const COMMIT_EVERY_MS = 8000
 /** …or join as soon as this many are waiting. */
 export const COMMIT_TILES = 3
-/** The camera must have been still this long, so a rebuild never interrupts a move. */
-export const STILL_MS = 1500
+/**
+ * The camera must have been still this long, so a rebuild never interrupts
+ * a move. A pause between two scrolls is shorter than this.
+ */
+export const STILL_MS = 3000
+/** Even the tile you are walking toward waits for this much of a pause. */
+export const URGENT_STILL_MS = 600
 
 export type TileIndex = { x: number; y: number }
 
@@ -110,9 +115,10 @@ export function givesUp(attempts: number): boolean {
 }
 
 /**
- * Whether the waiting tiles should join the city now. A tile at the edge
- * of the view goes in right away; background tiles wait for a batch or a
- * few seconds, and only while the camera is still.
+ * Whether the waiting tiles should join the city now. Joining rebuilds
+ * the city, which stalls a frame, so nothing joins mid-move. A tile at the
+ * edge of the view goes in at the first short pause; background tiles
+ * wait for a batch or a few seconds, and for the camera to rest.
  */
 export function shouldCommit(options: {
   pending: number
@@ -121,7 +127,7 @@ export function shouldCommit(options: {
   stillMs: number
 }): boolean {
   if (options.pending <= 0) return false
-  if (options.urgent) return true
+  if (options.urgent) return options.stillMs >= URGENT_STILL_MS
   if (options.stillMs < STILL_MS) return false
   return options.pending >= COMMIT_TILES || options.sinceCommitMs >= COMMIT_EVERY_MS
 }
