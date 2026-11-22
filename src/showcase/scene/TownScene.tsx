@@ -56,7 +56,7 @@ export function TownScene({
         shadow-bias={-0.0004}
       />
       <directionalLight position={[-24, 18, 30]} intensity={0.58} color="#7ee0ea" />
-      <Sky reducedMotion={reducedMotion} />
+      <Sky reducedMotion={reducedMotion} follow />
       {/* Reflections: the glass towers mirror this same sky. Rendered once
           into an environment map, so it costs nothing per frame. */}
       <Environment frames={1} resolution={256}>

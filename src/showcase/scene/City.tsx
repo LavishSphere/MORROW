@@ -437,10 +437,12 @@ type Built = {
   hydrants: Placement[];
   benches: Placement[];
   signs: SignSpot[];
+  brick: THREE.BufferGeometry;
 };
 
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
+  const brick = new Bucket();
   const garden = new Bucket();
   const metal = new Bucket();
   const stone = new Bucket();
@@ -457,7 +459,9 @@ function buildCity(model: CityModel): Built {
     const podium = shrink(ring, 1.03);
     walls(stone, podium, 0, PODIUM_H);
     cap(stone, podium, PODIUM_H);
-    walls(tint, ring, PODIUM_H, top);
+    // Houses stay brick. Taller blocks keep the glass curtain wall.
+    if (floors < 7) walls(brick, ring, PODIUM_H, top);
+    else walls(tint, ring, PODIUM_H, top);
     // Lower buildings carry roof gardens; towers finish in a glass crown.
     if (floors >= 9) {
       const crown = shrink(ring, 0.68);
@@ -532,6 +536,7 @@ function buildCity(model: CityModel): Built {
     garden: garden.geometry(),
     metal: metal.geometry(),
     stone: stone.geometry(),
+    brick: brick.geometry(),
     roads: roads.geometry(),
     lines: lines.geometry(),
     lit: lit.geometry(),
@@ -589,9 +594,43 @@ function mapFor(model: CityModel): CityMap {
 
 /* —— Materials and shared shapes —— */
 
+/** Brick courses and a few windows, tiled in world-unit UVs. */
+function brickMap() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return texture;
+  ctx.fillStyle = "#c46b52";
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = "#ead7cb";
+  for (let row = 0; row < 8; row += 1) {
+    ctx.fillRect(0, row * 16, 128, 2);
+    const offset = row % 2 === 0 ? 0 : 32;
+    for (let x = offset; x < 128; x += 64) ctx.fillRect(x, row * 16, 2, 16);
+  }
+  ctx.fillStyle = "#d5e3ea";
+  for (const [x, y] of [
+    [20, 28],
+    [76, 28],
+    [20, 92],
+    [76, 92],
+  ] as const) {
+    ctx.fillRect(x, y, 22, 26);
+  }
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function useMaterials() {
   const materials = useMemo(() => {
     const maps = worldCurtainWall(BAY, FLOOR_H);
+    const bricks = brickMap();
     const plain = (color: string, extra: THREE.MeshStandardMaterialParameters = {}) =>
       new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
     return {
@@ -613,6 +652,7 @@ function useMaterials() {
         metal: plain(ROOF_METAL, { metalness: 0.5, roughness: 0.35 }),
         garden: plain(ROOF_GARDEN, { roughness: 0.95 }),
         stone: plain(STONE, { roughness: 0.72 }),
+        brick: new THREE.MeshStandardMaterial({ map: bricks, roughness: 0.86 }),
         road: plain("#3b4448", { roughness: 0.85 }),
         line: new THREE.MeshStandardMaterial({
           color: SMART_LINE,
@@ -631,6 +671,7 @@ function useMaterials() {
     () => () => {
       materials.maps.color.dispose();
       materials.maps.rough.dispose();
+      materials.surfaces.brick.map?.dispose();
       for (const m of materials.glass) m.dispose();
       for (const m of Object.values(materials.surfaces)) m.dispose();
     },
@@ -746,6 +787,7 @@ export function City({ geoJson }: { geoJson?: unknown }) {
         built.garden,
         built.metal,
         built.stone,
+        built.brick,
         built.roads,
         built.lines,
         built.lit,
@@ -782,6 +824,7 @@ export function City({ geoJson }: { geoJson?: unknown }) {
           raycast={() => null}
         />
       ))}
+      <mesh geometry={built.brick} material={surfaces.brick} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.stone} material={surfaces.stone} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
       <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />

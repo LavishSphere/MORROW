@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /** Pale haze where the sky meets the ground. Fog uses the same color. */
@@ -64,7 +64,9 @@ void main() {
   float up = clamp(h, 0.0, 1.0);
   vec3 col = mix(horizon, midSky, smoothstep(0.0, 0.28, up));
   col = mix(col, zenith, smoothstep(0.28, 0.95, up));
-  col = mix(col, horizon * 0.96, smoothstep(0.0, -0.2, h));
+  // smoothstep is undefined when the first edge is greater than the second,
+  // and that NaN painted the whole dome black.
+  col = mix(col, horizon * 0.96, 1.0 - smoothstep(-0.2, 0.0, h));
 
   // Sun: wide warm glow, tighter halo, small bright disk.
   float sun = max(dot(dir, uSun), 0.0);
@@ -93,9 +95,12 @@ void main() {
 type SkyProps = {
   /** Clouds hold still when reduced motion is on. */
   reducedMotion?: boolean;
+  /** Keep the dome around the viewer. The town is wider than a fixed sphere. */
+  follow?: boolean;
 };
 
-export function Sky({ reducedMotion = false }: SkyProps) {
+export function Sky({ reducedMotion = false, follow = false }: SkyProps) {
+  const mesh = useRef<THREE.Mesh>(null);
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
@@ -104,14 +109,15 @@ export function Sky({ reducedMotion = false }: SkyProps) {
     [],
   );
 
-  useFrame((_, delta) => {
+  useFrame(({ camera }, delta) => {
+    if (follow && mesh.current) mesh.current.position.copy(camera.position);
     if (reducedMotion) return;
     uniforms.uTime.value += delta;
   });
 
   return (
-    <mesh frustumCulled={false} renderOrder={-20} raycast={() => null}>
-      <sphereGeometry args={[250, 96, 64]} />
+    <mesh ref={mesh} frustumCulled={false} renderOrder={-20} raycast={() => null}>
+      <sphereGeometry args={[900, 48, 32]} />
       <shaderMaterial
         side={THREE.BackSide}
         depthWrite={false}

@@ -23,6 +23,9 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   const glass = await readFile("src/showcase/scene/glass.ts", "utf8");
   assert.match(city, /worldCurtainWall\(/);
   assert.match(city, /walls\(tint, ring, PODIUM_H, top\)/);
+  assert.match(city, /walls\(brick, ring, PODIUM_H, top\)/);
+  assert.match(sky, /follow && mesh.current/);
+  assert.equal(sky.includes("smoothstep(0.0, -0.2, h)"), false);
   assert.match(glass, /Mullions and floor slabs/);
   assert.match(city, /MeshPhysicalMaterial/);
   assert.equal(city.includes("<Edges"), false);

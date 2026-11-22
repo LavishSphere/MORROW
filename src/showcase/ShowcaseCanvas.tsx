@@ -83,7 +83,7 @@ export function ShowcaseCanvas({
         camera={{
           fov: 34,
           near: 0.1,
-          far: 420,
+          far: 2500,
           position: [46, 34, 50],
         }}
         dpr={[1, 1.75]}
