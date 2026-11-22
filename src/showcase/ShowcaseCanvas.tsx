@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import basemap from "../../data/wellesley/basemap.geojson";
 import { CityLoader } from "../brand/CityLoader";
+import { PERF_PROBE, PerfProbe } from "./scene/PerfProbe";
 import { TownScene } from "./scene/TownScene";
 import type { ShowcaseCanvasProps } from "./types";
 
@@ -118,6 +119,7 @@ export function ShowcaseCanvas({
           onSelectIntervention={onSelectIntervention}
         />
         {covered ? <CityPainted onPainted={handlePainted} /> : null}
+        {PERF_PROBE ? <PerfProbe /> : null}
       </Canvas>
       <CityLoader active={covered} reducedMotion={reducedMotion} />
       <p className="map-mark">MORROW</p>
