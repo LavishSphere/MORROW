@@ -21,6 +21,10 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   assert.match(city, /data\/wellesley\/water\.geojson/);
   assert.match(city, /SHOWCASE_BBOX\.center/);
   assert.match(city, /cap\(water, body\.ring/);
+  assert.match(city, /shoreBand\(/);
+  assert.match(city, /RIVER_HALF/);
+  assert.match(city, /STREAM_HALF/);
+  assert.equal(city.includes("transmission:"), false);
   assert.match(city, /parseBasemap\(geoJson, projector\)/);
   assert.match(city, /for \(const building of model\.parsed\.buildings\)/);
   assert.equal(city.includes("function Pothole"), false);

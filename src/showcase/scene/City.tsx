@@ -145,6 +145,7 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     ways: [],
     water: [],
     waterways: [],
+    coastlines: [],
   };
   const kinds = new Map<string, string>();
   const tags = new Map<string, Record<string, unknown>>();
@@ -302,14 +303,103 @@ function walls(bucket: Bucket, ring: Ring, y0: number, y1: number) {
   }
 }
 
-/** A flat roof over a footprint. */
+/** A flat roof over a footprint. A fan covers a ring earcut cannot triangulate. */
 function cap(bucket: Bucket, ring: Ring, y: number) {
-  const contour = ring.map(([x, z]) => new THREE.Vector2(x, z));
-  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
-    const a = ring[i!];
-    const b = ring[j!];
-    const c = ring[k!];
-    if (a && b && c) bucket.up(a, b, c, y);
+  const fan = () => {
+    const [cx, cz] = centroid(ring);
+    for (let i = 0; i < ring.length; i += 1) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      if (a && b) bucket.up(a, b, [cx, cz], y);
+    }
+  };
+  try {
+    const contour = ring.map(([x, z]) => new THREE.Vector2(x, z));
+    const faces = THREE.ShapeUtils.triangulateShape(contour, []);
+    if (faces.length === 0) {
+      fan();
+      return;
+    }
+    for (const [i, j, k] of faces) {
+      const a = ring[i!];
+      const b = ring[j!];
+      const c = ring[k!];
+      if (a && b && c) bucket.up(a, b, c, y);
+    }
+  } catch {
+    fan();
+  }
+}
+
+/** Join coastline pieces that share an endpoint so the ocean is one shore. */
+function stitchChains(lines: Ring[]): Ring[] {
+  const pool = lines
+    .map((line) => line.map((p) => [p[0], p[1]] as [number, number]))
+    .filter((line) => line.length >= 2);
+  const chains: Ring[] = [];
+  const near = (a: readonly [number, number], b: readonly [number, number]) =>
+    Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05;
+  while (pool.length > 0) {
+    const chain = pool.pop();
+    if (!chain) break;
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (let i = 0; i < pool.length; i += 1) {
+        const other = pool[i]!;
+        const head = chain[0]!;
+        const tail = chain[chain.length - 1]!;
+        const start = other[0]!;
+        const end = other[other.length - 1]!;
+        if (near(tail, start)) chain.push(...other.slice(1));
+        else if (near(tail, end)) chain.push(...other.slice(0, -1).reverse());
+        else if (near(head, end)) chain.unshift(...other.slice(0, -1));
+        else if (near(head, start)) chain.unshift(...other.slice(1).reverse());
+        else continue;
+        pool.splice(i, 1);
+        progressed = true;
+        break;
+      }
+    }
+    chains.push(chain);
+  }
+  return chains;
+}
+
+/**
+ * OSM coastline keeps water on the right. The band covers that side
+ * past the city edge, so the ocean stays visible when you look outward.
+ */
+function shoreBand(bucket: Bucket, points: Ring, width: number, y: number) {
+  const clean = points.filter(
+    (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1]![0], p[1] - points[i - 1]![1]) > 1e-4,
+  );
+  if (clean.length < 2 || width <= 0) return;
+  const edge: [number, number][] = [];
+  const waterSide: [number, number][] = [];
+  for (let i = 0; i < clean.length; i += 1) {
+    const prev = clean[Math.max(0, i - 1)]!;
+    const next = clean[Math.min(clean.length - 1, i + 1)]!;
+    const here = clean[i]!;
+    const inLen = Math.hypot(here[0] - prev[0], here[1] - prev[1]) || 1;
+    const outLen = Math.hypot(next[0] - here[0], next[1] - here[1]) || 1;
+    // Right of travel in this x-east, z-south frame: (-dz, dx).
+    const r1x = i === 0 ? -(next[1] - here[1]) / outLen : -(here[1] - prev[1]) / inLen;
+    const r1z = i === 0 ? (next[0] - here[0]) / outLen : (here[0] - prev[0]) / inLen;
+    const r2x = i === clean.length - 1 ? r1x : -(next[1] - here[1]) / outLen;
+    const r2z = i === clean.length - 1 ? r1z : (next[0] - here[0]) / outLen;
+    let mx = r1x + r2x;
+    let mz = r1z + r2z;
+    const mLen = Math.hypot(mx, mz) || 1;
+    mx /= mLen;
+    mz /= mLen;
+    const w = width * Math.min(2.5, 1 / Math.max(0.2, mx * r1x + mz * r1z));
+    edge.push([here[0], here[1]]);
+    waterSide.push([here[0] + mx * w, here[1] + mz * w]);
+  }
+  for (let i = 0; i < clean.length - 1; i += 1) {
+    bucket.up(edge[i]!, edge[i + 1]!, waterSide[i]!, y);
+    bucket.up(waterSide[i]!, edge[i + 1]!, waterSide[i + 1]!, y);
   }
 }
 
@@ -484,6 +574,13 @@ class Occupancy {
 }
 
 /* —— Streets —— */
+
+/**
+ * Centerline half-widths in scene units. CITY_SCALE is 0.14 scene units
+ * per real meter, so a river reads at about 36 m and a stream at about 6 m.
+ */
+const RIVER_HALF = 2.5;
+const STREAM_HALF = 0.42;
 
 /** Ground width for each OSM way type, in scene units. */
 const WAY_HALF_WIDTH: Record<WayRibbon["layer"], number> = {
@@ -983,16 +1080,29 @@ function buildCity(model: CityModel): Built {
   }
 
   // Shorelines stay clear of trees. The water is the map, not a barrier.
+  // Lakes sit just above the lawn and under the roads.
   const water = new Bucket();
   for (const body of model.parsed.water) {
     if (body.ring.length < 3) continue;
-    cap(water, body.ring, 0.04);
+    cap(water, body.ring, 0.025);
     occupancy.markRing(body.ring, 0.3);
+  }
+  // Wider than the city, on the water side only, so looking past the edge
+  // shows ocean instead of stopping at the streets. Not a wall.
+  const citySpan = Math.max(
+    80,
+    model.bounds.maxX - model.bounds.minX,
+    model.bounds.maxZ - model.bounds.minZ,
+  );
+  const shoreWidth = citySpan * 1.5;
+  for (const coast of stitchChains(model.parsed.coastlines.map((line) => line.points))) {
+    shoreBand(water, coast, shoreWidth, 0.02);
+    occupancy.markLine(coast, 1.2);
   }
   const streams = new Bucket();
   for (const brook of model.parsed.waterways) {
-    const half = brook.wide ? 0.22 : 0.07;
-    strip(streams, brook.points, half, 0.045);
+    const half = brook.wide ? RIVER_HALF : STREAM_HALF;
+    strip(streams, brook.points, half, 0.035);
     occupancy.markLine(brook.points, half + 0.12);
   }
 
@@ -1018,7 +1128,8 @@ function buildCity(model: CityModel): Built {
   const ponds: Built["ponds"] = [];
   const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
   const parkTarget = Math.min(48, Math.max(10, Math.round(area / 7000)));
-  const pondTarget = Math.min(36, Math.max(8, Math.round(area / 10000)));
+  // Mapped lakes and brooks are the only water. These ovals are not.
+  const pondTarget = 0;
   const spotStep = 7.5;
   const ellipseBlocked = (x: number, z: number, rx: number, rz: number, rot: number, pad: number) => {
     const cos = Math.cos(rot);
@@ -1227,6 +1338,7 @@ function mapFor(model: CityModel): CityMap {
   const water = [
     ...model.parsed.water.map((body) => `${line(body.ring)}Z`),
     ...model.parsed.waterways.map((brook) => line(brook.points)),
+    ...model.parsed.coastlines.map((coast) => line(coast.points)),
   ].join("");
   const places = model.parsed.buildings.flatMap((b) => {
     if (!b.name) return [];
@@ -1309,22 +1421,23 @@ function useMaterials() {
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
         park: plain("#3e7c4c", { roughness: 0.95 }),
-        water: new THREE.MeshPhysicalMaterial({
-          color: "#1c6f96",
-          roughness: 0.08,
-          metalness: 0.55,
-          transmission: 0.35,
-          thickness: 0.4,
-          transparent: true,
-          opacity: 0.92,
+        water: new THREE.MeshStandardMaterial({
+          color: "#1a6e96",
+          roughness: 0.35,
+          metalness: 0.08,
+          side: THREE.DoubleSide,
           polygonOffset: true,
           polygonOffsetFactor: -2,
           polygonOffsetUnits: -2,
         }),
         stream: new THREE.MeshStandardMaterial({
-          color: "#2f8eb4",
-          roughness: 0.2,
-          metalness: 0.35,
+          color: "#2a86ae",
+          roughness: 0.4,
+          metalness: 0.05,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
         }),
       },
     };
@@ -1692,8 +1805,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
-      <mesh geometry={built.water} material={surfaces.water} receiveShadow raycast={() => null} />
-      <mesh geometry={built.streams} material={surfaces.stream} receiveShadow raycast={() => null} />
+      <mesh geometry={built.water} material={surfaces.water} renderOrder={2} receiveShadow raycast={() => null} />
+      <mesh geometry={built.streams} material={surfaces.stream} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />
       <mesh geometry={built.lines} material={surfaces.line} raycast={() => null} />
       <mesh geometry={built.lit} material={surfaces.lit} raycast={() => null} />
@@ -1766,7 +1879,6 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           raycast={() => null}
         />
       ))}
-
       <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
       <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
       <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />

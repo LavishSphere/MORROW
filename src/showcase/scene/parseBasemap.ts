@@ -8,7 +8,8 @@ export type BasemapLayer =
   | "path"
   | "sidewalk"
   | "water"
-  | "waterway";
+  | "waterway"
+  | "coastline";
 
 export type BuildingFootprint = {
   id: string;
@@ -22,7 +23,7 @@ export type BuildingFootprint = {
 export type WayRibbon = {
   id: string;
   edgeId?: string;
-  layer: Exclude<BasemapLayer, "building" | "water" | "waterway">;
+  layer: Exclude<BasemapLayer, "building" | "water" | "waterway" | "coastline">;
   name?: string;
   points: readonly (readonly [number, number])[];
   /** Scene units. Half of the resolved carriageway width, scaled into the miniature. */
@@ -51,11 +52,19 @@ export type Waterway = {
   wide: boolean;
 };
 
+/** OSM coastline. Water is on the right of the directed line. */
+export type Coastline = {
+  id: string;
+  name?: string;
+  points: readonly (readonly [number, number])[];
+};
+
 export type ParsedBasemap = {
   buildings: BuildingFootprint[];
   ways: WayRibbon[];
   water: WaterBody[];
   waterways: Waterway[];
+  coastlines: Coastline[];
 };
 
 const BUILDING_HEIGHTS: Record<string, number> = {
@@ -115,7 +124,8 @@ function layerOf(properties: Record<string, unknown> | null): BasemapLayer | nul
     layer === "path" ||
     layer === "sidewalk" ||
     layer === "water" ||
-    layer === "waterway"
+    layer === "waterway" ||
+    layer === "coastline"
   ) {
     return layer;
   }
@@ -140,6 +150,7 @@ export function parseBasemap(
   const ways: WayRibbon[] = [];
   const water: WaterBody[] = [];
   const waterways: Waterway[] = [];
+  const coastlines: Coastline[] = [];
 
   for (const feature of geoJson.features) {
     if (typeof feature !== "object" || feature === null) continue;
@@ -173,12 +184,29 @@ export function parseBasemap(
       continue;
     }
 
-    if (layer === "water" && f.geometry.type === "Polygon") {
-      const rings = f.geometry.coordinates as unknown[];
-      if (!Array.isArray(rings) || !Array.isArray(rings[0])) continue;
-      const ring = projectRing(rings[0] as unknown[], projector.project);
-      if (ring.length < 3) continue;
-      water.push({ id, name, ring });
+    if (layer === "water" && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) {
+      const polygons =
+        f.geometry.type === "Polygon"
+          ? [f.geometry.coordinates]
+          : (f.geometry.coordinates as unknown[]);
+      if (!Array.isArray(polygons)) continue;
+      polygons.forEach((polygon, index) => {
+        if (!Array.isArray(polygon) || !Array.isArray(polygon[0])) return;
+        const ring = projectRing(polygon[0] as unknown[], projector.project);
+        if (ring.length < 3) return;
+        water.push({ id: index === 0 ? id : `${id}:${index}`, name, ring });
+      });
+      continue;
+    }
+
+    if (
+      layer === "coastline" &&
+      f.geometry.type === "LineString" &&
+      Array.isArray(f.geometry.coordinates)
+    ) {
+      const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
+      if (points.length < 2) continue;
+      coastlines.push({ id, name, points });
       continue;
     }
 
@@ -202,6 +230,7 @@ export function parseBasemap(
       layer !== "building" &&
       layer !== "water" &&
       layer !== "waterway" &&
+      layer !== "coastline" &&
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
     ) {
@@ -224,8 +253,14 @@ export function parseBasemap(
     }
   }
 
-  if (buildings.length === 0 && ways.length === 0 && water.length === 0 && waterways.length === 0) {
+  if (
+    buildings.length === 0 &&
+    ways.length === 0 &&
+    water.length === 0 &&
+    waterways.length === 0 &&
+    coastlines.length === 0
+  ) {
     return null;
   }
-  return { buildings, ways, water, waterways };
+  return { buildings, ways, water, waterways, coastlines };
 }
