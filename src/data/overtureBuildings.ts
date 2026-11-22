@@ -39,18 +39,23 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * The file's HTTPS address. The S3 copy comes first: it sends CORS headers
+ * and the Azure copy does not, so a browser can only read it from S3.
+ */
 function httpsHref(assets: unknown): string | null {
   if (!assets || typeof assets !== "object") return null;
   const row = assets as { azure?: { href?: unknown }; aws?: { href?: unknown } };
+  const aws = row.aws?.href;
+  if (typeof aws === "string") {
+    if (aws.startsWith("http")) return aws;
+    const prefix = "s3://overturemaps-us-west-2/";
+    if (aws.startsWith(prefix)) {
+      return `https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/${aws.slice(prefix.length)}`;
+    }
+  }
   const azure = row.azure?.href;
   if (typeof azure === "string" && azure.startsWith("http")) return azure;
-  const aws = row.aws?.href;
-  if (typeof aws !== "string") return null;
-  if (aws.startsWith("http")) return aws;
-  const prefix = "s3://overturemaps-us-west-2/";
-  if (aws.startsWith(prefix)) {
-    return `https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/${aws.slice(prefix.length)}`;
-  }
   return null;
 }
 
