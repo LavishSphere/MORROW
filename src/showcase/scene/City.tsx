@@ -6,7 +6,7 @@ import waterMap from "../../../data/wellesley/water.geojson";
 import { DEFAULT_HEIGHT_METRES, withOvertureBuildings, type OvertureFootprint } from "../../data/buildingHeight.ts";
 import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
-import { publishMap, type Bounds, type CityMap } from "../cityStore";
+import { flyTo, getCityState, publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
 import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
 import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
@@ -43,6 +43,13 @@ import { useStreetImprovements } from "../../city/streetImprovements";
 const CITY_SCALE = 0.14;
 /** Width of the Wellesley College showcase; the opening camera frames this. */
 export const CITY_SPAN = createProjector(SHOWCASE_BBOX, CITY_SCALE).span;
+
+/** How far from a loaded place's center its towers count for the opening view (about 500 m). */
+const SKYLINE_RADIUS = 70;
+/** Towers taller than this (about 60 m) lift the opening view above the rooftops. */
+const TALL_SKYLINE = 8.5;
+/** Sine of the overhead view's 58° downward look (see CameraRig). */
+const OVERHEAD_SIN = Math.sin((58 * Math.PI) / 180);
 
 /** One glass bay and one floor, in scene units (about 4 m and 5 m). */
 const BAY = 0.55;
@@ -972,6 +979,8 @@ type Built = {
   /** Spots for the street improvements a proposal can add. */
   proposed: ProposedSpots;
   signs: SignSpot[];
+  /** Tallest building top near the place's center, scene units. */
+  skyline: number;
   water: THREE.BufferGeometry;
   streams: THREE.BufferGeometry;
   /** Road surface of the big bridges, drawn clear of the fog. */
@@ -1538,6 +1547,7 @@ function buildCity(model: CityModel): Built {
     occupancy.markRing(ring, 0.9);
     occupancy.markHeight(ring, top);
   }
+  const skyline = occupancy.nearbyHeight(0, 0, SKYLINE_RADIUS);
 
   // Shorelines stay clear of trees. The water is the map, not a barrier.
   // Lakes sit just above the lawn and under the roads.
@@ -1891,6 +1901,7 @@ function buildCity(model: CityModel): Built {
     benches,
     proposed,
     signs,
+    skyline,
   };
 }
 
@@ -2465,6 +2476,22 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   );
 
   useEffect(() => publishMap(mapFor(cityModel)), [cityModel]);
+  // A newly loaded place opens on its center. Where real towers stand there
+  // (a downtown), the view rises and looks down over their roofs instead of
+  // starting inside them. Runs in the same commit as publishMap, so an
+  // address pin set after the map arrives still wins.
+  const framedPlace = useRef(placeKey);
+  useEffect(() => {
+    if (framedPlace.current === placeKey) return;
+    framedPlace.current = placeKey;
+    if (!geoJson) return;
+    if (built.skyline < TALL_SKYLINE) {
+      flyTo(0, 0, { instant: true });
+      return;
+    }
+    const above = (built.skyline * 1.5 + 6) / OVERHEAD_SIN;
+    flyTo(0, 0, { instant: true, overhead: true, distance: Math.max(getCityState().pose.distance, above) });
+  }, [built, placeKey, geoJson]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {
     const source = geoJson ?? town;
