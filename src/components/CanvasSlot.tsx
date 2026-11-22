@@ -4,6 +4,7 @@ import { setPlaceLabel } from '../showcase/cityStore'
 import { neighborhoodGeoJson, type LoadedNeighborhood } from '../data/overpass'
 import { useCityStreaming } from '../data/useCityStreaming'
 import type { AppMode } from '../types'
+import { IssueLegend } from './IssueLegend'
 import { Minimap } from './Minimap'
 import { MoveHints } from './MoveHints'
 import { PotholePopup } from './PotholePopup'
@@ -43,6 +44,7 @@ export function CanvasSlot({ mode, reducedMotion, neighborhood, onNeighborhood }
     >
       <ShowcaseCanvas reducedMotion={reducedMotion} barriers={[]} geoJson={geoJson} />
       <PotholePopup />
+      <IssueLegend />
       <Minimap placeLabel={neighborhood?.place.label ?? 'Wellesley, MA'} />
       <MoveHints />
       <p className="sr-only">
