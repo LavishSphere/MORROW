@@ -10,20 +10,20 @@ test("the navbar shows which city is on screen", async () => {
   assert.match(app, /placeLabel=\{neighborhood\?\.place\.label \?\? 'Wellesley, MA'\}/);
 });
 
-test("jump to an address stays inside the loaded map and drops a pin", async () => {
+test("an address builds a procedural city when it is not already on the map", async () => {
   const jump = await readFile("src/components/AddressJump.tsx", "utf8");
   const places = await readFile("src/data/places.ts", "utf8");
   const bar = await readFile("src/components/TopBar.tsx", "utf8");
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  assert.match(bar, /<AddressJump \/>/);
-  // Suggestions are limited to the map's own area.
-  assert.match(places, /searchExtent/);
-  assert.match(jump, /suggestAddresses\(text, map\.geoBounds/);
-  // An address off the map is refused, not jumped to.
-  assert.match(jump, /That address is outside this map/);
-  assert.match(jump, /setPin\(\{ label: shortName\(text\), x, z \}\)/);
+  const generated = await readFile("src/data/proceduralCity.ts", "utf8");
+  assert.match(bar, /<AddressJump onLoad=\{onPlace\} \/>/);
+  assert.match(jump, /suggestAddresses\(text, controller\.signal\)/);
+  assert.equal(places.includes("searchExtent"), false);
+  assert.match(jump, /loadUsNeighborhood\(text, magicKey\)/);
+  assert.match(jump, /setPin\(\{ label, x, z \}\)/);
   assert.match(jump, /flyTo\(x, z, \{ distance: 16 \}\)/);
   assert.match(city, /<AddressPin \/>/);
+  assert.match(generated, /export function generateCity/);
 });
 
 test("Compare switches between today and the fixes and shows their benefits", async () => {

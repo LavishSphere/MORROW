@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { geocodeUsPlace, suggestAddresses, type CitySuggestion } from '../data/places'
-import { flyTo, setPin, useCityState } from '../showcase/cityStore'
+import { loadUsNeighborhood, type LoadedNeighborhood } from '../data/overpass'
+import { flyTo, setPin, useCityState, type CityMap } from '../showcase/cityStore'
 
 /** "Clapp Library, 106 Central St, Wellesley, MA…" → "Clapp Library" */
 const shortName = (label: string) => label.split(',')[0]?.trim() || label
@@ -15,11 +16,24 @@ const shortName = (label: string) => label.split(',')[0]?.trim() || label
 /** Degrees of slack around the map edge before an address counts as outside. */
 const EDGE = 0.003
 
+type PendingPin = { lng: number; lat: number; label: string }
+
+function insideMap(map: CityMap, lng: number, lat: number) {
+  const box = map.geoBounds
+  return (
+    lng >= box.west - EDGE &&
+    lng <= box.east + EDGE &&
+    lat >= box.south - EDGE &&
+    lat <= box.north + EDGE
+  )
+}
+
 /**
- * Jump to an address or named place inside the loaded map: suggestions are
- * limited to the map's area, and picking one flies there and drops a pin.
+ * Type an address. If it is already on the map, the camera flies there.
+ * Otherwise a whole procedural city is built around it and the pin drops
+ * once that map is up. Wellesley stays until the address is somewhere else.
  */
-export function AddressJump() {
+export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborhood) => void }) {
   const { map } = useCityState()
   const ids = useId()
   const inputId = `${ids}-input`
@@ -32,16 +46,27 @@ export function AddressJump() {
   const [status, setStatus] = useState('')
   const picked = useRef<string | null>(null)
   const submitted = useRef(false)
+  const pending = useRef<PendingPin | null>(null)
+
+  useEffect(() => {
+    const want = pending.current
+    if (!map || !want || !insideMap(map, want.lng, want.lat)) return
+    pending.current = null
+    const [x, z] = map.project(want.lng, want.lat)
+    setPin({ label: want.label, x, z })
+    flyTo(x, z, { distance: 16 })
+    setStatus('')
+  }, [map])
 
   useEffect(() => {
     const text = query.trim()
-    if (!map || text.length < 3 || picked.current === query) {
+    if (text.length < 3 || picked.current === query) {
       setSuggestions([])
       return
     }
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      suggestAddresses(text, map.geoBounds, controller.signal)
+      suggestAddresses(text, controller.signal)
         .then((next) => {
           if (submitted.current) return
           setSuggestions(next)
@@ -56,10 +81,10 @@ export function AddressJump() {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [query, map])
+  }, [query])
 
   const jump = async (text: string, magicKey?: string) => {
-    if (!map || busy || text.trim().length < 3) return
+    if (busy || text.trim().length < 3) return
     submitted.current = true
     setOpen(false)
     setBusy(true)
@@ -69,21 +94,20 @@ export function AddressJump() {
         setStatus('No address matched that.')
         return
       }
-      const box = map.geoBounds
-      const inside =
-        place.lng >= box.west - EDGE &&
-        place.lng <= box.east + EDGE &&
-        place.lat >= box.south - EDGE &&
-        place.lat <= box.north + EDGE
-      if (!inside) {
-        setStatus('That address is outside this map. Load its city first.')
+      const label = shortName(place.label)
+      if (map && insideMap(map, place.lng, place.lat)) {
+        const [x, z] = map.project(place.lng, place.lat)
+        setPin({ label, x, z })
+        flyTo(x, z, { distance: 16 })
+        setStatus('')
         return
       }
-      const [x, z] = map.project(place.lng, place.lat)
-      setPin({ label: shortName(text), x, z })
-      flyTo(x, z, { distance: 16 })
-      setStatus('')
+      setStatus('Building a city around that address.')
+      pending.current = { lng: place.lng, lat: place.lat, label }
+      const loaded = await loadUsNeighborhood(text, magicKey)
+      onLoad(loaded)
     } catch {
+      pending.current = null
       setStatus('Address search failed. Try again.')
     } finally {
       setBusy(false)
@@ -132,7 +156,7 @@ export function AddressJump() {
             id={inputId}
             className="place-search__input"
             value={query}
-            placeholder={busy ? 'Finding…' : 'Jump to an address'}
+            placeholder={busy ? 'Finding…' : 'Type an address'}
             autoComplete="off"
             spellCheck={false}
             role="combobox"

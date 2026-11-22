@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { neighborhoodGeoJson, waysFromOverpass } from "../src/data/overpass.ts";
+import { generateCity } from "../src/data/proceduralCity.ts";
 import { placeFromEsri, suggestionsFromEsri } from "../src/data/places.ts";
 
 test("typed text lists every matching US city the geocoder suggests", () => {
@@ -22,6 +23,25 @@ test("typed text lists every matching US city the geocoder suggests", () => {
   assert.equal(list[0]?.magicKey, "a");
   assert.deepEqual(suggestionsFromEsri({}), []);
   assert.deepEqual(suggestionsFromEsri(null), []);
+});
+
+test("a procedural city is a whole town around the address, and the same place repeats", () => {
+  const place = { label: "106 Central St, Wellesley, MA", lng: -71.292, lat: 42.296 };
+  const ways = generateCity(place);
+  const again = generateCity(place);
+  assert.equal(ways.length, again.length);
+  assert.equal(ways[0]?.points[0]?.[0], again[0]?.points[0]?.[0]);
+  const roads = ways.filter((way) => way.kind === "road" && way.highway !== "footway");
+  const buildings = ways.filter((way) => way.kind === "building");
+  assert.ok(roads.length > 40);
+  assert.ok(buildings.length > 400);
+  const lons = ways.flatMap((way) => way.points.map((point) => point[0]));
+  const lats = ways.flatMap((way) => way.points.map((point) => point[1]));
+  const width = Math.max(...lons) - Math.min(...lons);
+  const height = Math.max(...lats) - Math.min(...lats);
+  assert.ok(width > 0.03 && height > 0.02);
+  assert.ok(place.lng > Math.min(...lons) && place.lng < Math.max(...lons));
+  assert.ok(place.lat > Math.min(...lats) && place.lat < Math.max(...lats));
 });
 
 test("a US place comes from the geocoder match", () => {

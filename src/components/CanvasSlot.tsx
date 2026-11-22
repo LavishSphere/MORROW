@@ -17,8 +17,7 @@ type Props = {
 export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
   const place = neighborhood?.place.label ?? 'Wellesley College'
   useEffect(() => setPlaceLabel(neighborhood?.place.label ?? 'Wellesley, MA'), [neighborhood])
-  // A loaded city rebuilds the glass city from its OpenStreetMap streets
-  // and buildings. Without one, the Wellesley showcase stays.
+  // A loaded place rebuilds the glass city. Without one, the Wellesley showcase stays.
   const geoJson = useMemo(
     () =>
       neighborhood && neighborhood.ways.length > 0
