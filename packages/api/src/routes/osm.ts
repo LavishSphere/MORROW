@@ -116,41 +116,70 @@ async function slot<T>(work: () => Promise<T>, background: boolean): Promise<T> 
   }
 }
 
-/** Ask each public server in turn; the body is checked to be JSON before it is kept. */
+/** Wait for a response to start; a server that stays silent this long is skipped. */
+async function startsWithin(work: Promise<Response>, ms: number): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer within ${ms / 1000} s`)), ms);
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Ask Overpass. The main server (overpass-api.de) is the one that reliably
+ * answers, often after queueing, so it gets three tries with a pause when it
+ * says it is busy; the backups are asked last and skipped quickly if silent.
+ * The body is checked to be complete JSON before it is kept.
+ */
 async function askOverpass(query: string): Promise<Buffer> {
   let last = "no server answered";
-  for (const url of UPSTREAMS) {
+  const [main, ...backups] = UPSTREAMS;
+  const plan: { url: string; startMs: number }[] = [
+    { url: main, startMs: 110_000 },
+    { url: main, startMs: 110_000 },
+    { url: main, startMs: 110_000 },
+    ...backups.map((url) => ({ url, startMs: 25_000 })),
+  ];
+  for (const [i, { url, startMs }] of plan.entries()) {
+    const host = new URL(url).host;
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/x-www-form-urlencoded",
-          "user-agent": USER_AGENT,
-        },
-        body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(85_000),
-      });
+      const res = await startsWithin(
+        fetch(url, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+            "user-agent": USER_AGENT,
+          },
+          body: new URLSearchParams({ data: query }),
+          signal: AbortSignal.timeout(150_000),
+        }),
+        startMs,
+      );
       if (!res.ok) {
-        last = `${new URL(url).host} answered ${res.status}`;
+        last = `${host} answered ${res.status}`;
         // A bad query fails the same way everywhere.
         if (res.status === 400) break;
+        // Busy: Overpass frees a slot within seconds.
+        if (url === main && (res.status === 429 || res.status === 504) && i < 2) await pause(8_000 * (i + 1));
         continue;
       }
       const text = await res.text();
       const body = JSON.parse(text) as { remark?: unknown; elements?: unknown };
       if (!Array.isArray(body.elements)) {
-        last = `${new URL(url).host} sent no elements`;
+        last = `${host} sent no elements`;
         continue;
       }
       // A query cut short by the server's own time limit is not worth keeping.
       if (typeof body.remark === "string" && /runtime error|timed out|out of memory/i.test(body.remark)) {
-        last = `${new URL(url).host}: ${body.remark.slice(0, 120)}`;
+        last = `${host}: ${body.remark.slice(0, 120)}`;
         continue;
       }
       return gzipSync(text);
     } catch (err) {
-      last = `${new URL(url).host}: ${err instanceof Error ? err.message : "failed"}`;
+      last = `${host}: ${err instanceof Error ? err.message : "failed"}`;
     }
   }
   throw new Error(last);
