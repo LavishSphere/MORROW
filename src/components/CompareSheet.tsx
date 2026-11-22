@@ -1,6 +1,7 @@
 import { potholeById, usePotholeFix } from '../city/potholeFix'
 import { compareByIds, getDemoScenario } from '../data/api'
 import { formatImprovement, formatMeters } from '../satellite/stats/format'
+import { IssueComparisons } from './IssueComparisons'
 
 /**
  * Compare shows the routing result for the bundled Wellesley intervention.
@@ -27,6 +28,7 @@ export function CompareSheet() {
 
   return (
     <section className="mode-page compare-sheet" aria-label="Modeled comparison">
+      <IssueComparisons />
       {hole && (
         <>
           <h2 className="compare-sheet__title">{hole.label}</h2>
@@ -49,7 +51,7 @@ export function CompareSheet() {
           </p>
         </>
       )}
-      <h2 className="compare-sheet__title">Before and after</h2>
+      <h2 className="compare-sheet__title">Showcase: curb ramp</h2>
       {failed ? (
         <p>Modeled route unavailable.</p>
       ) : (

@@ -4,9 +4,11 @@
  */
 
 import { compareScenario } from "@morrow/routing";
+import { detectIssues, issueFact, type MapIssue } from "../../../shared/issues.ts";
 import type {
   Barrier,
   Intervention,
+  IssueFact,
   ProposalFacts,
 } from "../../../shared/types.ts";
 import {
@@ -16,6 +18,7 @@ import {
   getScenario,
   graphChangesForIntervention,
   scenario as demoScenario,
+  townGeoJSON,
 } from "./data/dataset.ts";
 
 const DEFAULT_NEXT_STEPS =
@@ -38,10 +41,28 @@ export type ResolvedGenerateInput = {
   facts: ProposalFacts;
 };
 
+let townIssues: Map<string, MapIssue> | null = null;
+
+/**
+ * Rebuild trusted facts for extra issues from ids alone: re-detect them in
+ * the bundled town map and recompute what fixing them changes.
+ */
+export function resolveIssues(ids: readonly string[] | undefined): IssueFact[] {
+  if (!ids || ids.length === 0) return [];
+  townIssues ??= new Map(detectIssues(townGeoJSON()).map((issue) => [issue.id, issue]));
+  const known = townIssues;
+  return [...new Set(ids)].map((id) => {
+    const issue = known.get(id);
+    if (!issue) throw new ProposalInputError(`Unknown issueId: ${id}`, 400);
+    return issueFact(issue, townGeoJSON());
+  });
+}
+
 export function resolveGenerateInput(body: {
   scenarioId: string;
   barrierId: string;
   interventionId: string;
+  issueIds?: string[];
 }): ResolvedGenerateInput {
   const scenario = getScenario(body.scenarioId);
   if (!scenario) {
@@ -129,6 +150,8 @@ export function resolveGenerateInput(body: {
     destinationLabel: scenario.destinationLabel,
     nextSteps: DEFAULT_NEXT_STEPS,
   };
+  const issues = resolveIssues(body.issueIds);
+  if (issues.length > 0) facts.issues = issues;
 
   return {
     scenarioId: scenario.id,

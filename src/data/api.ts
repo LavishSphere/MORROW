@@ -322,8 +322,10 @@ export async function generateProposal(
           scenarioId: req.scenarioId,
           barrierId: req.barrierId,
           interventionId: req.interventionId,
+          ...(req.issueIds && req.issueIds.length > 0 ? { issueIds: req.issueIds } : {}),
         }),
-        signal: AbortSignal.timeout(30_000),
+        // The API may retry a busy Gemini for up to ~45 s before answering.
+        signal: AbortSignal.timeout(55_000),
       })
       if (res.ok) {
         const body = (await res.json()) as GenerateProposalResponse

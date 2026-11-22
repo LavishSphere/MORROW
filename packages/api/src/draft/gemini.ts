@@ -40,6 +40,8 @@ export function modelCandidates(preferred = geminiModel()): string[] {
 const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
 State that results are modeled, retain the evidence status, and ask officials to assess feasibility.
 Do not invent real accessibility defects, agency names, source links, cost estimates, construction timelines, or outcome figures.
+If additionalIssues are supplied, the proposal covers every one of them: name where it is, what the problem is, the suggested fix, and its before/after exactly as given. Give each its own talking point when space allows.
+Their evidence status "community_reported" means OpenStreetMap mapper data, not a field survey; say so once.
 Return only the requested JSON fields.`;
 
 function buildUserPayload(facts: ProposalFacts): string {
@@ -60,6 +62,17 @@ function buildUserPayload(facts: ProposalFacts): string {
       },
       newlyReachableDestinations: facts.newlyReachableDestinations,
       assumptions: facts.modelAssumptions,
+      additionalIssues: (facts.issues ?? []).map((issue) => ({
+        title: issue.title,
+        where: issue.where,
+        evidenceStatus: issue.evidenceStatus,
+        source: issue.source,
+        suggestedFix: issue.fix,
+        before: issue.before,
+        after: issue.after,
+        numbers: issue.metrics,
+        modeled: issue.modeled,
+      })),
     },
     null,
     2,
@@ -89,12 +102,26 @@ const RESPONSE_SCHEMA = {
   ],
 } as const;
 
+/**
+ * Give up on one model after this long and try the next, so a request never
+ * hangs. Up to four models × 12 s stays under the 60 s proxy limit.
+ */
+const CALL_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Gemini timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
+
 export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
 
 function shouldTryNextModel(reason: string): boolean {
-  return /503|404|UNAVAILABLE|NOT_FOUND|high demand|no longer available/i.test(
+  return /503|404|429|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|high demand|no longer available|timed out/i.test(
     reason,
   );
 }
@@ -106,16 +133,23 @@ async function requestDraft(
 ): Promise<GeminiDraftResult> {
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model,
-      contents: `${PROMPT_CONTRACT}\n\nFacts:\n${buildUserPayload(facts)}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.4,
-        maxOutputTokens: 1024,
-      },
-    });
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model,
+        contents: `${PROMPT_CONTRACT}
+
+Facts:
+${buildUserPayload(facts)}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.4,
+          // Room for several extra issues in one proposal.
+          maxOutputTokens: 2048,
+        },
+      }),
+      CALL_TIMEOUT_MS,
+    );
 
     const text = response.text;
     if (!text) {

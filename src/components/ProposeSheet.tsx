@@ -13,7 +13,10 @@ import {
 } from '../data/api'
 import { formatImprovement, formatMeters } from '../satellite/stats/format'
 import type { DraftProposal, GenerateProposalResponse } from '../types'
+import { buildTemplateDraft } from '../data/templateProposal'
+import { chosenFacts, useIssueState } from '../showcase/issueStore'
 import { ProposalEditor } from './ProposalEditor'
+import { ProposalIssuePicker } from './ProposalIssues'
 
 /**
  * Propose stays on the scene without covering it.
@@ -29,6 +32,7 @@ export function ProposeSheet() {
   const [result, setResult] = useState<GenerateProposalResponse | null>(null)
   const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
   const [draft, setDraft] = useState<DraftProposal | null>(null)
+  const { chosen, serverKnown } = useIssueState()
 
   useEffect(() => {
     if (!baseDraft) return
@@ -52,11 +56,31 @@ export function ProposeSheet() {
   const onGenerate = async () => {
     setLoading(true)
     try {
-      const next = await generateProposal({
+      const issueIds = serverKnown ? [...chosen] : []
+      let next = await generateProposal({
         scenarioId: scenario.id,
         barrierId: scenario.barrierId,
         interventionId: scenario.interventionId,
+        ...(issueIds.length > 0 ? { issueIds } : {}),
       })
+      // The issues the resident picked must be in the proposal. If the server
+      // did not fold them in (an older API, the offline template, or a loaded
+      // city it does not have), add them from the same shared code here.
+      const wanted = chosenFacts()
+      if (wanted.length > 0 && !(next.facts.issues && next.facts.issues.length > 0)) {
+        const facts = { ...next.facts, issues: wanted }
+        next = {
+          ...next,
+          facts,
+          draft: next.aiGenerated ? next.draft : buildTemplateDraft(facts),
+          warnings: [
+            ...next.warnings,
+            next.aiGenerated
+              ? 'The selected issues are listed below but were not part of the Gemini draft.'
+              : 'Selected issues were added to the template in the browser.',
+          ],
+        }
+      }
       setResult(next)
       setBaseDraft(next.draft)
       setDraft(draftForPothole(next.draft, hole, patched))
@@ -86,6 +110,8 @@ export function ProposeSheet() {
           {loading ? 'Generating…' : result ? 'Regenerate' : 'Generate proposal'}
         </button>
       </header>
+
+      <ProposalIssuePicker />
 
       {!(result && draft) && (
         <>

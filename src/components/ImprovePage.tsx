@@ -5,6 +5,7 @@ import {
   usePotholeFix,
 } from '../city/potholeFix'
 import type { Barrier, Intervention } from '../types'
+import { IssueBrowser } from './IssueBrowser'
 
 type Props = {
   barrier: Barrier | null
@@ -25,7 +26,9 @@ export function ImprovePage({
   const patched = hole ? fix.patchedIds.includes(hole.id) : false
   return (
     <section className="mode-page" aria-label="Intervention options">
-      <h2>Options</h2>
+      <h2>Improve</h2>
+      <IssueBrowser />
+      <h3 className="issue-list__head">Showcase scenario</h3>
       {hole && (
         <>
           <p className="mode-page__lead">

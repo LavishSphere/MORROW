@@ -106,6 +106,7 @@ const loadEvidence = createStep({
       scenarioId: scenario.id,
       barrierId: barrier.id,
       interventionId: intervention.id,
+      ...(inputData.issueIds ? { issueIds: inputData.issueIds } : {}),
       barrierType: barrier.type,
       evidenceStatus: barrier.evidenceStatus,
       interventionDescription: intervention.description,
@@ -124,6 +125,7 @@ const collectRouteMetrics = createStep({
       scenarioId: inputData.scenarioId,
       barrierId: inputData.barrierId,
       interventionId: inputData.interventionId,
+      issueIds: inputData.issueIds,
     });
     return {
       ...inputData,

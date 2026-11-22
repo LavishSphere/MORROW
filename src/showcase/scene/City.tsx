@@ -2,11 +2,14 @@ import { Sparkles } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
+import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
+import { publishIssues } from "../issueStore";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
 import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
 import { GLASS_TINTS, worldCurtainWall } from "./glass";
 import { parseBasemap, type ParsedBasemap, type WayRibbon } from "./parseBasemap";
+import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
 
 /**
@@ -66,6 +69,8 @@ type CityModel = {
   /** OSM building tag per footprint id, for the height rule. */
   kinds: Map<string, string>;
   bounds: Bounds;
+  /** Longitude/latitude → scene [x, z] for this map. */
+  project: (lon: number, lat: number) => readonly [number, number];
 };
 
 function hash(a: number, b: number) {
@@ -136,7 +141,7 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   if (!Number.isFinite(bounds.minX)) Object.assign(bounds, { minX: -40, maxX: 40, minZ: -40, maxZ: 40 });
-  return { parsed, kinds, bounds };
+  return { parsed, kinds, bounds, project: projector.project };
 }
 
 /** The Wellesley town extract, centered on the College showcase. */
@@ -702,6 +707,19 @@ export function City({ geoJson }: { geoJson?: unknown }) {
   const built = useMemo(() => buildCity(model), [model]);
 
   useEffect(() => publishMap(mapFor(model)), [model]);
+  // Accessibility issues from the map's own OpenStreetMap tags.
+  useEffect(() => {
+    const source = geoJson ?? town;
+    const issues = detectIssues(source).map((issue) => {
+      const [x, z] = model.project(issue.point[0], issue.point[1]);
+      const path = issue.line.map(([lon, lat]) => {
+        const [px, pz] = model.project(lon, lat);
+        return [px, pz] as [number, number];
+      });
+      return { ...issue, x, z, path };
+    });
+    publishIssues(issues, source, !geoJson);
+  }, [model, geoJson]);
   useEffect(
     () => () => {
       for (const g of [
@@ -757,6 +775,7 @@ export function City({ geoJson }: { geoJson?: unknown }) {
       <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
 
+      <IssueLayer />
       <StreetSigns signs={built.signs} />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>

@@ -40,6 +40,8 @@ export const generateRequestSchema = z.object({
   scenarioId: z.string().min(1).max(120),
   barrierId: z.string().min(1).max(120),
   interventionId: z.string().min(1).max(120),
+  /** Extra town-map issues to fold in. Ids only; the server recomputes facts. */
+  issueIds: z.array(z.string().min(1).max(120)).max(12).optional(),
 });
 
 export const proposalFactsSchema = z.object({
@@ -62,4 +64,22 @@ export const proposalFactsSchema = z.object({
   originLabel: z.string(),
   destinationLabel: z.string(),
   nextSteps: z.string(),
+  issues: z
+    .array(
+      z.object({
+        id: z.string(),
+        kind: z.string(),
+        title: z.string(),
+        where: z.string(),
+        fix: z.string(),
+        evidenceStatus: z.enum(["verified", "community_reported", "illustrative"]),
+        source: z.string(),
+        sourceUrl: z.string(),
+        before: z.string(),
+        after: z.string(),
+        metrics: z.array(z.object({ label: z.string(), value: z.string() })),
+        modeled: z.boolean(),
+      }),
+    )
+    .optional(),
 });
