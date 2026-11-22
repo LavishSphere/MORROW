@@ -43,7 +43,7 @@ test("3D building pieces and their real shape tags survive loading", () => {
 
 test("landmarks are drawn from their real heights, roof shapes, and colors", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  const loader = await readFile("src/data/overpass.ts", "utf8");
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
   assert.match(loader, /way\["building:part"\]/);
   assert.match(city, /function drawPiece\(/);
   assert.match(city, /shape === "skillion"/);
@@ -137,9 +137,9 @@ test("buildings and parts mapped as relations load as closed, tagged shapes", ()
 });
 
 test("the area download asks for building relations and keeps relation water", async () => {
-  const loader = await readFile("src/data/overpass.ts", "utf8");
-  assert.match(loader, /relation\["building:part"\]\(\$\{box\}\);out tags geom \d+;/);
-  assert.match(loader, /relation\["building"\]\(\$\{box\}\);out tags geom \d+;/);
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
+  assert.match(loader, /relation\["building:part"\]\(\$\{b\}\);out tags geom \d+;/);
+  assert.match(loader, /relation\["building"\]\(\$\{b\}\);out tags geom \d+;/);
   assert.match(loader, /relation\["natural"="water"\]/);
 });
 

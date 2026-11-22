@@ -114,7 +114,7 @@ test("the street that leads onto a bridge ramps up to the deck", () => {
 
 test("the glass city lifts bridges and keeps the big ones clear of the fog", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  const loader = await readFile("src/data/overpass.ts", "utf8");
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
   assert.match(city, /planBridges\(/);
   assert.match(city, /function strip3\(/);
   assert.match(city, /fog: !far/);

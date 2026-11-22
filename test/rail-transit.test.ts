@@ -223,7 +223,7 @@ test("a point snaps to the nearest polyline of its colour", () => {
 });
 
 test("the loader asks Overpass for track, platforms, stations, and route colours", async () => {
-  const loader = await readFile("src/data/overpass.ts", "utf8");
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
   assert.match(loader, /way\["railway"~"\^\(rail\|subway\|light_rail\|tram\|monorail\|narrow_gauge\|funicular\)\$"\]/);
   assert.match(loader, /node\["railway"~"\^\(station\|halt\|tram_stop\|subway_entrance\)\$"\]/);
   assert.match(loader, /make railref way=w\.u\(id\(\)\),colour=r\.u\(t\["colour"\]\)/);

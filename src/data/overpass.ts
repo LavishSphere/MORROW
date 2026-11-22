@@ -2,6 +2,9 @@ import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
 import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
 import { lineColour, railRefsFrom, railTags, railWayKind, STATION_NODE_TYPES, type RailRef } from './rail.ts'
+import { coastQuery, landmarkQuery, tileCenter, tileKey, tileQuery, TILE_HALF } from '../../shared/osmQueries.ts'
+
+export { tileCenter, tileKey, TILE_HALF }
 
 export type OsmWay = {
   id: number
@@ -53,16 +56,29 @@ export type LoadedNeighborhood = {
 }
 
 /**
- * Public Overpass servers, tried in order. One may refuse some clients
- * (403) or be busy (429, 5xx); the next one is tried instead. The French
- * server answers only white-listed clients and sends no CORS header, so a
- * browser reaches it last.
+ * Public Overpass servers, tried in order when the MORROW API cannot answer.
+ * One may refuse some clients (403) or be busy (429, 5xx); the next one is
+ * tried instead. (The French server now answers only white-listed clients.)
  */
 export const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ] as const
+/**
+ * The MORROW API keeps every map answer on disk and pre-loads major cities,
+ * so most places load from there in a second. Unset in tests and local
+ * builds without an API.
+ */
+const OSM_API = (() => {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env
+  const base = env?.VITE_API_BASE?.trim().replace(/\/$/, '')
+  return base ? `${base}/api/osm` : null
+})()
+/** After the API fails, browsers go straight to Overpass for a while. */
+let apiDownUntil = 0
+/** A server that has not even started answering by now is skipped. */
+const FIRST_BYTE_MS = 20000
 /** Wait before asking every server a second time for a new place. */
 const RETRY_AFTER_MS = 4000
 /** Only a first try that failed this fast is worth a second. */
@@ -89,19 +105,6 @@ export function resetOverpassEndpoint() {
 export function currentOverpassEndpoint() {
   return workingEndpoint
 }
-/** Half-size of one downloaded area in degrees: about 1.4 km across. */
-const HALF = 0.0065
-/**
- * Coastline is searched wider than one street tile. A city on the coast
- * still gets the ocean when its center sits a few kilometers inland.
- * About 12 km across.
- */
-const COAST_HALF = 0.055
-/**
- * Landmark bridges are searched wider still, about 20 km across, so the
- * Golden Gate and the Bay Bridge stand on the skyline from downtown.
- */
-const LANDMARK_HALF = 0.09
 /** Accessibility tags kept from OpenStreetMap for issue detection. */
 const KEEP_TAGS = [
   'footway',
@@ -164,23 +167,6 @@ function underground(tags: Record<string, unknown> | undefined) {
   return Number.isFinite(layer) && layer < 0
 }
 
-/** Areas snap to a grid, so nearby requests share one download. */
-export function tileKey(lng: number, lat: number) {
-  return `${Math.round(lng / (HALF * 2))}:${Math.round(lat / (HALF * 2))}`
-}
-
-/**
- * Center of a grid tile, as [longitude, latitude]. Downloading the box
- * around this point covers exactly that tile, so neighbors meet edge to
- * edge with no gap and no overlap.
- */
-export function tileCenter(key: string): [number, number] {
-  const [x, y] = key.split(':').map(Number)
-  return [(x ?? 0) * HALF * 2, (y ?? 0) * HALF * 2]
-}
-
-/** Half-size of one tile in degrees, for tests and the loader. */
-export const TILE_HALF = HALF
 
 function closeEnough(a: [number, number], b: [number, number]) {
   return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6
@@ -444,36 +430,73 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
 }
 
 /** The request timeout, plus the caller's own cancel when there is one. */
-function requestSignal(signal?: AbortSignal) {
-  const timeout = AbortSignal.timeout(60000)
+function requestSignal(signal?: AbortSignal, ms = 60000) {
+  const timeout = AbortSignal.timeout(ms)
   if (!signal) return timeout
   return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
 }
 
+/** Ask the MORROW API, which answers from its cache or asks Overpass itself. */
+async function viaApi(query: string, signal?: AbortSignal): Promise<unknown | undefined> {
+  if (!OSM_API || Date.now() < apiDownUntil) return undefined
+  try {
+    const res = await fetch(OSM_API, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: requestSignal(signal, 90000),
+    })
+    if (res.ok) return await res.json()
+    // The API reached Overpass and every server said no: asking them again
+    // from the browser is unlikely to go better, but costs little.
+    if (res.status < 500) return undefined
+  } catch {
+    signal?.throwIfAborted()
+  }
+  apiDownUntil = Date.now() + 60000
+  return undefined
+}
+
+/** Wait for the response to start, but no longer than FIRST_BYTE_MS. */
+async function firstByte(work: Promise<Response>, ms: number): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms)
+  })
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer))
+}
+
 /**
- * POST one query, trying each server in turn until one answers. Requests
- * stay one at a time: the next server is asked only after the last one
- * failed. A cancel from the caller stops at once.
+ * POST one query: the MORROW API first, then each public server in turn
+ * until one answers. Requests stay one at a time: the next server is asked
+ * only after the last one failed. A cancel from the caller stops at once.
  */
 export async function postOverpass(
   query: string,
   signal?: AbortSignal,
   send: typeof fetch = fetch,
 ): Promise<unknown> {
+  if (send === fetch) {
+    const cached = await viaApi(query, signal)
+    if (cached !== undefined) return cached
+  }
   let lastError: unknown = new Error('Overpass unreachable')
   for (const url of endpointOrder(workingEndpoint)) {
     signal?.throwIfAborted()
     let res: Response
     try {
-      res = await send(url, {
-        method: 'POST',
-        headers: {
-          accept: 'application/json',
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ data: query }),
-        signal: requestSignal(signal),
-      })
+      res = await firstByte(
+        send(url, {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            'content-type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ data: query }),
+          signal: requestSignal(signal),
+        }),
+        FIRST_BYTE_MS,
+      )
     } catch (error) {
       signal?.throwIfAborted()
       lastError = error
@@ -529,20 +552,9 @@ function stationNode(row: OverpassElement & { lat?: unknown; lon?: unknown }): O
   }
 }
 
-/** Real streets and buildings in one area around a point, from OpenStreetMap. */
-export async function fetchArea(lng: number, lat: number, signal?: AbortSignal): Promise<OsmWay[]> {
-  const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
-  // Streets, buildings, landmark pieces, and water get separate quotas.
-  // Some landmarks (SF City Hall) map their outline and lower floors as
-  // relations, so building relations are asked for too.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;relation["building:part"](${box});out tags geom 400;relation["building"](${box});out tags geom 600;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;way["man_made"="bridge"](${box});out tags geom 80;relation["man_made"="bridge"](${box});out tags geom 20;${railQuery(box)}`
-  return interpret(query, signal)
-}
-
 /** One grid tile, downloaded around its snapped center. */
 export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
-  const [lng, lat] = tileCenter(key)
-  return fetchArea(lng, lat, signal)
+  return interpret(tileQuery(key), signal)
 }
 
 /**
@@ -551,21 +563,11 @@ export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> 
  * Failure returns nothing so the city still loads.
  */
 export async function fetchLandmarkBridges(lng: number, lat: number): Promise<OsmWay[]> {
-  const box = `${lat - LANDMARK_HALF},${lng - LANDMARK_HALF},${lat + LANDMARK_HALF},${lng + LANDMARK_HALF}`
-  const query = `[out:json][timeout:40];way["highway"~"^(motorway|trunk|primary)$"]["bridge"]["bridge"!="no"](${box})(if:length()>200);out tags geom 300;way["man_made"="bridge"](${box})(if:length()>600);out tags geom 60;relation["man_made"="bridge"](${box});out tags geom 30;`
   try {
-    return (await interpret(query)).filter((way) => way.kind === 'bridge' || (way.kind === 'road' && way.tags?.bridge))
+    return (await interpret(landmarkQuery(tileKey(lng, lat)))).filter((way) => way.kind === 'bridge' || (way.kind === 'road' && way.tags?.bridge))
   } catch {
     return []
   }
-}
-
-/**
- * Track, platforms, and station nodes, plus one "railref" row per track way
- * and route relation, carrying that relation's colour, ref, and network.
- */
-function railQuery(box: string) {
-  return `way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge|funicular)$"](${box})->.rail;.rail out tags geom 600;way["railway"="platform"](${box});out tags geom 150;node["railway"~"^(station|halt|tram_stop|subway_entrance)$"](${box});out body 250;foreach.rail->.w(rel(bw.w)["route"~"^(subway|light_rail|train|tram|monorail)$"]->.rr;foreach.rr->.r(make railref way=w.u(id()),colour=r.u(t["colour"]),ref=r.u(t["ref"]),network=r.u(t["network"]);out;););`
 }
 
 /**
@@ -574,10 +576,8 @@ function railQuery(box: string) {
  * so the city still loads.
  */
 export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]> {
-  const box = `${lat - COAST_HALF},${lng - COAST_HALF},${lat + COAST_HALF},${lng + COAST_HALF}`
-  const query = `[out:json][timeout:40];way["natural"="coastline"](${box});out tags geom 1500;relation["natural"="coastline"](${box});out tags geom 30;`
   try {
-    return (await interpret(query)).filter((way) => way.kind === 'coastline')
+    return (await interpret(coastQuery(tileKey(lng, lat)))).filter((way) => way.kind === 'coastline')
   } catch {
     return []
   }
@@ -613,21 +613,24 @@ export async function loadUsNeighborhood(
     // Busy servers (429, 502) often answer a few seconds later: when every
     // server said no quickly, ask once more before settling for the
     // stand-in. After slow timeouts, do not make the resident wait again.
+    // The first view is the place's own grid tile, so it is downloaded once
+    // (not again as a background tile) and the API can serve it from cache.
+    // Coastline and big bridges come at the same time, not after.
+    const key = tileKey(place.lng, place.lat)
     const asked = Date.now()
-    const streets = await fetchArea(place.lng, place.lat).catch(async (error: unknown) => {
-      if (Date.now() - asked > RETRY_WITHIN_MS) throw error
-      await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS))
-      return fetchArea(place.lng, place.lat)
-    })
-    const [coast, landmarks] = await Promise.all([
+    const coastAndBridges = Promise.all([
       fetchCoastline(place.lng, place.lat),
       fetchLandmarkBridges(place.lng, place.lat),
     ])
+    const streets = await fetchTile(key).catch(async (error: unknown) => {
+      if (Date.now() - asked > RETRY_WITHIN_MS) throw error
+      await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS))
+      return fetchTile(key)
+    })
+    const [coast, landmarks] = await coastAndBridges
     const ways = withCoast(withCoast(streets, coast), landmarks)
     if (ways.length > 0) {
-      // A quick preview centered on the place. Its grid tile is still
-      // downloaded in the background, so tiles stay aligned to the grid.
-      return { place, ways, note: describe(place, ways), tiles: [] }
+      return { place, ways, note: describe(place, ways), tiles: [key] }
     }
   } catch {
     // Fall through to the labeled stand-in below.
