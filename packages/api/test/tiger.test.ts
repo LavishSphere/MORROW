@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  connectionStringForNode,
   databaseUrlConfigured,
   readSchemaSql,
   schemaSqlPath,
   tigerLive,
 } from "../src/data/tiger.ts";
+
+test("sslmode=require uses libpq compatibility for Tiger Cloud", () => {
+  const url = "postgresql://user:secret@db.example:5432/tsdb?sslmode=require";
+  const next = connectionStringForNode(url);
+  assert.match(next, /uselibpqcompat=true/);
+  assert.equal(connectionStringForNode(next), next);
+  assert.equal(
+    connectionStringForNode("postgresql://db.example/tsdb?sslmode=verify-full"),
+    "postgresql://db.example/tsdb?sslmode=verify-full",
+  );
+  assert.equal(connectionStringForNode("postgresql://db.example/tsdb"), "postgresql://db.example/tsdb");
+});
 
 test("Tiger Data stays off without DATABASE_URL", () => {
   const previous = process.env.DATABASE_URL;

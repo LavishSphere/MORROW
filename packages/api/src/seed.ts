@@ -11,6 +11,7 @@ import {
   initTiger,
   readSchemaSql,
   schemaSqlPath,
+  connectionStringForNode,
   seedBarriersFromBundled,
 } from "./data/tiger.ts";
 import pg from "pg";
@@ -35,7 +36,9 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const client = new pg.Client({ connectionString: url });
+    const client = new pg.Client({
+      connectionString: connectionStringForNode(url),
+    });
     await client.connect();
     try {
       await client.query(sql);
