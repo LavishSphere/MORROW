@@ -8,8 +8,12 @@
 
 /** Tiles in each direction around the place's own tile: 2 → a 5×5 block. */
 export const BACKGROUND_RADIUS = 2
-/** Never more than this many tiles in one city, however far you look. */
-export const TILE_LIMIT = 80
+/**
+ * Never more than this many tiles in one city, however far you look. The
+ * fog hides ground past about 2.4 km, about a dozen tiles around the view,
+ * and every tile makes each rebuild longer and the page heavier.
+ */
+export const TILE_LIMIT = 40
 /** How far the camera sees in scene units: the far edge of the fog (~2.4 km). */
 export const VIEW_FAR = 340
 /** How often the visible ground is worked out again as the view changes. */
@@ -23,13 +27,18 @@ export const BACKOFF_MS = [5000, 15000, 60000] as const
 /** A tile is retried this many times before it is given up on. */
 export const MAX_RETRIES = 2
 /** Past this many buildings the city is big enough; background loading stops. */
-export const BUILDING_LIMIT = 60_000
+export const BUILDING_LIMIT = 30_000
 /** Finished tiles wait at most this long before they join the city. */
 export const COMMIT_EVERY_MS = 8000
 /** …or join as soon as this many are waiting. */
 export const COMMIT_TILES = 3
-/** The camera must have been still this long, so a rebuild never interrupts a move. */
-export const STILL_MS = 1500
+/**
+ * The camera must have been still this long, so a rebuild never interrupts
+ * a move. A pause between two scrolls is shorter than this.
+ */
+export const STILL_MS = 3000
+/** Even the tile you are walking toward waits for this much of a pause. */
+export const URGENT_STILL_MS = 600
 
 export type TileIndex = { x: number; y: number }
 
@@ -110,9 +119,10 @@ export function givesUp(attempts: number): boolean {
 }
 
 /**
- * Whether the waiting tiles should join the city now. A tile at the edge
- * of the view goes in right away; background tiles wait for a batch or a
- * few seconds, and only while the camera is still.
+ * Whether the waiting tiles should join the city now. Joining rebuilds
+ * the city, which stalls a frame, so nothing joins mid-move. A tile at the
+ * edge of the view goes in at the first short pause; background tiles
+ * wait for a batch or a few seconds, and for the camera to rest.
  */
 export function shouldCommit(options: {
   pending: number
@@ -121,7 +131,7 @@ export function shouldCommit(options: {
   stillMs: number
 }): boolean {
   if (options.pending <= 0) return false
-  if (options.urgent) return true
+  if (options.urgent) return options.stillMs >= URGENT_STILL_MS
   if (options.stillMs < STILL_MS) return false
   return options.pending >= COMMIT_TILES || options.sinceCommitMs >= COMMIT_EVERY_MS
 }

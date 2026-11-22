@@ -1,13 +1,16 @@
 import { Sparkles } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
 import waterMap from "../../../data/wellesley/water.geojson";
 import { DEFAULT_HEIGHT_METRES, withOvertureBuildings, type OvertureFootprint } from "../../data/buildingHeight.ts";
-import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "../../data/overtureBuildings.ts";
+import { fetchOvertureBuildings } from "../../data/overtureClient.ts";
+import { uncoveredParts, type NeighborhoodBox } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { flyTo, getCityState, publishMap, viewOver, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
+import { cameraMotion, cityBuild, REBUILD_QUIET_MS, whenCameraRests } from "../motion";
 import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
 import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
@@ -18,9 +21,10 @@ import { AddressPin } from "./AddressPin";
 import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
 import { Traffic } from "./Traffic";
-import { buildTrafficLanes, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
+import { buildTrafficLanesSteps, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
 import { RailLayer } from "./RailLayer";
 import { RAIL_CLEARANCE } from "./railGeometry";
+import { cellView, chunkPlacements, LOD_NEAR, VIEW_FAR } from "./chunks.ts";
 import { EMPTY_RAIL } from "../../data/rail.ts";
 import { useStreetImprovements } from "../../city/streetImprovements";
 
@@ -249,15 +253,42 @@ const TOWN_GEOJSON = {
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
+/** A growing Float32Array: half the memory of a number[] and no spread copies. */
+class Floats {
+  data = new Float32Array(1024);
+  length = 0;
+
+  reserve(extra: number) {
+    if (this.length + extra <= this.data.length) return;
+    let size = this.data.length * 2;
+    while (size < this.length + extra) size *= 2;
+    const next = new Float32Array(size);
+    next.set(this.data.subarray(0, this.length));
+    this.data = next;
+  }
+
+  add(values: readonly number[], times = 1) {
+    this.reserve(values.length * times);
+    for (let t = 0; t < times; t += 1) {
+      for (let i = 0; i < values.length; i += 1) this.data[this.length++] = values[i]!;
+    }
+  }
+
+  /** An exact-size copy; the growing buffer can then be collected. */
+  done() {
+    return this.data.slice(0, this.length);
+  }
+}
+
 class Bucket {
-  pos: number[] = [];
-  nor: number[] = [];
-  uv: number[] = [];
+  pos = new Floats();
+  nor = new Floats();
+  uv = new Floats();
 
   push(p: readonly number[], n: readonly number[], uv: readonly number[]) {
-    this.pos.push(...p);
-    this.nor.push(...n, ...n, ...n);
-    this.uv.push(...uv);
+    this.pos.add(p);
+    this.nor.add(n, 3);
+    this.uv.add(uv);
   }
 
   /** A ground-facing triangle, wound so it faces up. */
@@ -269,9 +300,9 @@ class Bucket {
 
   geometry() {
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
-    g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setAttribute("position", new THREE.BufferAttribute(this.pos.done(), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(this.nor.done(), 3));
+    g.setAttribute("uv", new THREE.BufferAttribute(this.uv.done(), 2));
     g.computeBoundingSphere();
     return g;
   }
@@ -712,17 +743,36 @@ function insideRing(x: number, z: number, ring: Ring) {
   return inside;
 }
 
-function nearRing(x: number, z: number, ring: Ring, margin: number) {
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    const dx = b[0] - a[0];
-    const dz = b[1] - a[1];
-    const len2 = dx * dx + dz * dz || 1;
-    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
-    if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) return true;
+/** from, from + step, … up to `to`, added up the way a `x += step` loop does. */
+function steps(from: number, to: number, step: number): number[] {
+  const out: number[] = [];
+  for (let v = from; v <= to; v += step) out.push(v);
+  return out;
+}
+
+/**
+ * Calls `visit(x, z)` for every sample point inside the ring, exactly the
+ * points insideRing accepts, one scanline per row instead of one ring
+ * walk per point.
+ */
+function eachInside(ring: Ring, xs: readonly number[], zs: readonly number[], visit: (x: number, z: number) => void) {
+  const cuts: number[] = [];
+  for (const z of zs) {
+    cuts.length = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [xi, zi] = ring[i]!;
+      const [xj, zj] = ring[j]!;
+      if (zi > z !== zj > z) cuts.push(((xj - xi) * (z - zi)) / (zj - zi) + xi);
+    }
+    if (cuts.length === 0) continue;
+    cuts.sort((p, q) => p - q);
+    // Inside when an odd number of cuts lie to the right of x (x < cut).
+    let k = 0;
+    for (const x of xs) {
+      while (k < cuts.length && cuts[k]! <= x) k += 1;
+      if ((cuts.length - k) % 2 === 1) visit(x, z);
+    }
   }
-  return false;
 }
 
 class Occupancy {
@@ -764,13 +814,12 @@ class Occupancy {
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
     }
-    for (let x = minX; x <= maxX; x += this.cell) {
-      for (let z = minZ; z <= maxZ; z += this.cell) {
-        if (!insideRing(x, z, ring)) continue;
-        const k = this.index(x, z);
-        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
-      }
-    }
+    const xs = steps(minX, maxX, this.cell);
+    const zs = steps(minZ, maxZ, this.cell);
+    eachInside(ring, xs, zs, (x, z) => {
+      const k = this.index(x, z);
+      if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+    });
   }
 
   nearbyHeight(x: number, z: number, radius: number) {
@@ -806,9 +855,29 @@ class Occupancy {
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
     }
-    for (let x = minX - margin; x <= maxX + margin; x += this.cell) {
-      for (let z = minZ - margin; z <= maxZ + margin; z += this.cell) {
-        if (insideRing(x, z, ring) || nearRing(x, z, ring, margin)) this.set(x, z);
+    // The same sample points as testing insideRing || nearRing at each one,
+    // but row by row and edge by edge: big footprints no longer cost
+    // (points × edges).
+    const xs = steps(minX - margin, maxX + margin, this.cell);
+    const zs = steps(minZ - margin, maxZ + margin, this.cell);
+    eachInside(ring, xs, zs, (x, z) => this.set(x, z));
+    for (let i = 0; i < ring.length; i += 1) {
+      const a = ring[i]!;
+      const b = ring[(i + 1) % ring.length]!;
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const len2 = dx * dx + dz * dz || 1;
+      const c0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - margin - xs[0]!) / this.cell) - 1);
+      const c1 = Math.min(xs.length - 1, Math.ceil((Math.max(a[0], b[0]) + margin - xs[0]!) / this.cell) + 1);
+      const r0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - margin - zs[0]!) / this.cell) - 1);
+      const r1 = Math.min(zs.length - 1, Math.ceil((Math.max(a[1], b[1]) + margin - zs[0]!) / this.cell) + 1);
+      for (let c = c0; c <= c1; c += 1) {
+        const x = xs[c]!;
+        for (let r = r0; r <= r1; r += 1) {
+          const z = zs[r]!;
+          const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
+          if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) this.set(x, z);
+        }
       }
     }
   }
@@ -1414,7 +1483,21 @@ function roadCrossing(ways: readonly WayRibbon[]) {
   };
 }
 
+/** Build the whole city at once. */
 function buildCity(model: CityModel): Built {
+  const steps = buildCitySteps(model);
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
+/**
+ * The city build, pausing (`yield`) after each building, way, and row of
+ * lawn, so a rebuild can run a few milliseconds per frame instead of
+ * stalling one frame for the whole city.
+ */
+function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
   const glass = GLASS_TINTS.map(() => new Bucket());
   const siding = SIDING.map(() => new Bucket());
   const shingles = SHINGLE.map(() => new Bucket());
@@ -1468,6 +1551,7 @@ function buildCity(model: CityModel): Built {
   }
 
   for (const building of model.parsed.buildings) {
+    yield;
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const own = model.tags.get(building.id) ?? {};
@@ -1547,6 +1631,7 @@ function buildCity(model: CityModel): Built {
   }
   const skyline = occupancy.nearbyHeight(0, 0, SKYLINE_RADIUS);
 
+  yield;
   // Shorelines stay clear of trees. The water is the map, not a barrier.
   // Lakes sit just above the lawn and under the roads.
   const water = new Bucket();
@@ -1569,6 +1654,7 @@ function buildCity(model: CityModel): Built {
     occupancy.markLine(brook.points, half + 0.12);
   }
 
+  yield;
   // Bridges: decks lifted over the water and streets below, with ramps,
   // piers, and the towers and cables of the big spans.
   const plan = planBridges(
@@ -1627,10 +1713,12 @@ function buildCity(model: CityModel): Built {
     for (let i = 0; i < cable.points.length - 1; i += 1) rod(bucket, cable.points[i]!, cable.points[i + 1]!, cable.radius);
   }
 
+  yield;
   // Roads stop short of the buildings beside them.
   const edges = new EdgeIndex();
   for (const building of model.parsed.buildings) edges.addRing(building.ring);
 
+  yield;
   // Surface track and platforms keep trees and furniture off them; tunnels do not.
   for (const track of model.parsed.rail.lines) {
     if (!track.underground) occupancy.markLine(track.points, RAIL_CLEARANCE);
@@ -1646,6 +1734,7 @@ function buildCity(model: CityModel): Built {
   const lit = new Bucket();
   const walks = { sidewalk: new Bucket(), footway: new Bucket(), path: new Bucket() };
   for (const way of model.parsed.ways) {
+    yield;
     const half = way.halfWidth;
     const deck = plan.decks.get(way.id);
     occupancy.markLine(way.points, half + 0.6);
@@ -1695,7 +1784,9 @@ function buildCity(model: CityModel): Built {
     reach: number,
   ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
   for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    yield;
     for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      yield;
       if (hash(gx + 3, gz + 11) > 0.55) continue;
       const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
       const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
@@ -1722,13 +1813,17 @@ function buildCity(model: CityModel): Built {
     }
   }
 
+  yield;
   // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
   const trees: Placement[] = [];
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
+    yield;
     for (let gz = minZ; gz <= maxZ; gz += step) {
       const r = hash(gx, gz);
       if (r < 0.45) continue;
+      // A big city has rows of hundreds of spots: pause between spots too.
+      yield;
       const x = gx + (hash(gz, gx) - 0.5) * step;
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (occupancy.taken(x, z)) continue;
@@ -1763,6 +1858,7 @@ function buildCity(model: CityModel): Built {
   const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
   const SKINS = ["#f1c9a5", "#e0ac83", "#c68a5e", "#a0673f", "#7a4a2a", "#5b3a24"];
   const PANTS = ["#2d3a4f", "#3b4552", "#1f2328", "#6b5a45", "#4a5f7a", "#8a8f96"];
+  yield;
   // Nobody stands or parks inside a building: one coarse grid of footprints, built once.
   const footprints = new FootprintGrid([
     ...model.parsed.buildings.map((b) => b.ring),
@@ -1772,6 +1868,7 @@ function buildCity(model: CityModel): Built {
   // traffic there), and on streets wide enough that the moving lane clears them.
   const cars: Placement[] = [];
   for (const way of model.parsed.ways) {
+    yield;
     // Parked cars stay on the ground: none on bridge decks.
     if (way.indoor || way.bridge) continue;
     const service = way.highway === "service";
@@ -1794,6 +1891,7 @@ function buildCity(model: CityModel): Built {
   const people: Placement[] = [];
   const outdoors = (x: number, z: number) => !footprints.inside(x, z);
   for (const way of model.parsed.ways) {
+    yield;
     if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
     // Drive aisles hold parked cars; corridors, tunnels, and covered ways are indoors.
     if (way.indoor || way.highway === "service" || way.highway === "corridor") continue;
@@ -1827,8 +1925,9 @@ function buildCity(model: CityModel): Built {
   }
   const peopleSkin = people.map((p) => ({ ...p, color: SKINS[Math.floor(hash(p.x + 3, p.z) * SKINS.length)] ?? SKINS[0] }));
   const peoplePants = people.map((p) => ({ ...p, color: PANTS[Math.floor(hash(p.x, p.z + 9) * PANTS.length)] ?? PANTS[0] }));
+  yield;
   // Moving traffic keeps to the ground for now; decks are drawn without it.
-  const traffic = buildTrafficLanes(model.parsed.ways.filter((way) => !way.bridge), footprints);
+  const traffic = yield* buildTrafficLanesSteps(model.parsed.ways.filter((way) => !way.bridge), footprints);
   const lamps = allRoads.flatMap((way) => {
     const deck = plan.decks.get(way.id);
     // On a deck the lamps stand just inside the railing.
@@ -1841,6 +1940,7 @@ function buildCity(model: CityModel): Built {
     .filter((way) => way.layer === "footway")
     .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
 
+  yield;
   // Proposed street improvements: cans beside benches and at curbs, recycling
   // paired with those stations, extra benches and lamps along footways.
   const footWays = model.parsed.ways.filter((way) => way.layer === "footway");
@@ -1855,6 +1955,7 @@ function buildCity(model: CityModel): Built {
     lamps: footWays.flatMap((way) => along(way.points, 9, WAY_HALF_WIDTH.footway + 0.35)),
   };
 
+  yield;
   // Street signs along named roads, spaced so one street never crowds a block.
   const signs: SignSpot[] = [];
   for (const way of roadWays) {
@@ -1866,6 +1967,7 @@ function buildCity(model: CityModel): Built {
     }
   }
 
+  yield;
   return {
     masonry: [...masonry].map(([color, bucket]) => ({ color, geometry: bucket.geometry() })),
     glass: glass.map((b) => b.geometry()),
@@ -2149,6 +2251,8 @@ function useFurniture() {
       shapes: {
         trunk: at(new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6), 0.45),
         canopy: at(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 1.15, 1), 1.15),
+        // Far trees: a quarter of the triangles, same size and colour.
+        canopyFar: at(new THREE.IcosahedronGeometry(0.62, 0).scale(1, 1.15, 1), 1.15),
         pole: at(new THREE.CylinderGeometry(0.025, 0.035, 1.16, 6), 0.58),
         bulb: at(new THREE.SphereGeometry(0.09, 8, 6), 1.18),
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
@@ -2280,6 +2384,8 @@ function Instanced({
   items,
   shadows = true,
   colored = false,
+  lod,
+  far = VIEW_FAR,
 }: {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
@@ -2287,31 +2393,81 @@ function Instanced({
   shadows?: boolean;
   /** Use each item's color (tree canopies); otherwise the material's. */
   colored?: boolean;
+  /** A simpler shape for cells past LOD_NEAR from the camera. */
+  lod?: THREE.BufferGeometry;
+  /** Cells farther than this from the camera are not drawn. */
+  far?: number;
 }) {
-  const mesh = useMemo(() => {
-    const m = new THREE.InstancedMesh(geometry, material, Math.max(1, items.length));
-    m.count = items.length;
-    const matrix = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const upAxis = new THREE.Vector3(0, 1, 0);
-    const color = new THREE.Color();
-    items.forEach((item, i) => {
-      q.setFromAxisAngle(upAxis, item.rot ?? 0);
-      const s = item.s ?? 1;
-      matrix.compose(new THREE.Vector3(item.x, item.y ?? 0, item.z), q, new THREE.Vector3(s, s, s));
-      m.setMatrixAt(i, matrix);
-      if (colored && item.color) m.setColorAt(i, color.set(item.color));
+  const camera = useThree((state) => state.camera);
+  // One mesh per square cell, so cells off screen or past `far` are skipped.
+  const cells = useMemo(() => {
+    const build = (shape: THREE.BufferGeometry, group: Placement[], castShadow: boolean) => {
+      const m = new THREE.InstancedMesh(shape, material, Math.max(1, group.length));
+      m.count = group.length;
+      const matrix = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const upAxis = new THREE.Vector3(0, 1, 0);
+      const color = new THREE.Color();
+      group.forEach((item, i) => {
+        q.setFromAxisAngle(upAxis, item.rot ?? 0);
+        const s = item.s ?? 1;
+        matrix.compose(new THREE.Vector3(item.x, item.y ?? 0, item.z), q, new THREE.Vector3(s, s, s));
+        m.setMatrixAt(i, matrix);
+        if (colored && item.color) m.setColorAt(i, color.set(item.color));
+      });
+      m.castShadow = castShadow;
+      m.receiveShadow = true;
+      m.raycast = () => null;
+      m.computeBoundingSphere();
+      return m;
+    };
+    return chunkPlacements(items).map((group) => {
+      const near = build(geometry, group, shadows);
+      const simple = lod ? build(lod, group, false) : null;
+      if (simple) simple.visible = false;
+      return { near, simple, sphere: near.boundingSphere ?? new THREE.Sphere() };
     });
-    m.castShadow = shadows;
-    m.receiveShadow = true;
-    m.raycast = () => null;
-    return m;
-  }, [geometry, material, items, shadows, colored]);
-  useEffect(() => () => mesh.dispose(), [mesh]);
-  return <primitive object={mesh} />;
+  }, [geometry, material, items, shadows, colored, lod]);
+  useEffect(
+    () => () => {
+      for (const cell of cells) {
+        cell.near.dispose();
+        cell.simple?.dispose();
+      }
+    },
+    [cells],
+  );
+  const seen = useRef<{ cells: typeof cells | null; at: THREE.Vector3 }>({ cells: null, at: new THREE.Vector3() });
+  useFrame(() => {
+    const memo = seen.current;
+    if (memo.cells === cells && memo.at.distanceToSquared(camera.position) < 1) return;
+    memo.cells = cells;
+    memo.at.copy(camera.position);
+    for (const cell of cells) {
+      const gap = Math.max(0, camera.position.distanceTo(cell.sphere.center) - cell.sphere.radius);
+      const view = cellView(gap, far, cell.simple ? LOD_NEAR : Infinity);
+      cell.near.visible = view === "near";
+      if (cell.simple) cell.simple.visible = view === "far";
+    }
+  });
+  return (
+    <>
+      {cells.map((cell) => (
+        <group key={cell.near.uuid}>
+          <primitive object={cell.near} />
+          {cell.simple ? <primitive object={cell.simple} /> : null}
+        </group>
+      ))}
+    </>
+  );
 }
 
 type Furniture = ReturnType<typeof useFurniture>;
+
+/** Parked cars, tree trunks, and lamps stop drawing this far from the camera (~1 km). */
+const FAR_CARS = 150;
+/** People, wheels, hydrants, and benches: specks past this (~700 m). */
+const FAR_SMALL = 100;
 
 /** A glowing ring under each proposed prop; `size` scales the unit ring. */
 function ProposedRings({ furniture, items, size }: { furniture: Furniture; items: Placement[]; size: number }) {
@@ -2370,6 +2526,70 @@ function ProposedStreetImprovements({ furniture, spots }: { furniture: Furniture
   );
 }
 
+/** A rebuild works at most this long per frame. */
+const BUILD_SLICE_MS = 6;
+
+type Shown = { base: object; model: CityModel; built: Built };
+
+/**
+ * The built city for a model. The first city of a place builds at once,
+ * under its loading cover. When the same place grows, the city on screen
+ * stays while the new one builds a slice per frame, pausing while the
+ * camera moves, and swaps in when done: no frame stalls for the whole
+ * city.
+ */
+function useBuiltCity(model: CityModel): Built {
+  const [x, z] = model.unproject(0, 0);
+  const place = `${x},${z}`;
+  // Rebuilt per place, not per model: a grown model builds in slices below.
+  const first = useMemo<Shown>(() => ({ base: {}, model, built: timed("buildCity", () => buildCity(model)) }), [place]);
+  const [grown, setGrown] = useState<Shown | null>(null);
+  const shown = grown && grown.base === first.base ? grown : first;
+
+  useEffect(() => {
+    if (shown.model === model) return;
+    const steps = buildCitySteps(model);
+    cityBuild.slicing = true;
+    let frame = 0;
+    let work = 0;
+    let longest = 0;
+    const startedAt = performance.now();
+    const run = () => {
+      frame = requestAnimationFrame(run);
+      if (cameraMotion.busy(Date.now())) return;
+      const start = performance.now();
+      for (;;) {
+        const next = steps.next();
+        if (next.done) {
+          cancelAnimationFrame(frame);
+          cityBuild.slicing = false;
+          const took = performance.now() - start;
+          work += took;
+          longest = Math.max(longest, took);
+          if (LOG_TIMINGS) {
+            const wall = performance.now() - startedAt;
+            console.info(`[city] buildCity sliced ${work.toFixed(1)} ms over ${wall.toFixed(0)} ms, longest slice ${longest.toFixed(1)} ms`);
+          }
+          setGrown({ base: first.base, model, built: next.value });
+          return;
+        }
+        if (performance.now() - start > BUILD_SLICE_MS) break;
+      }
+      const took = performance.now() - start;
+      work += took;
+      longest = Math.max(longest, took);
+    };
+    frame = requestAnimationFrame(run);
+    return () => {
+      cancelAnimationFrame(frame);
+      cityBuild.slicing = false;
+      steps.return(undefined as never);
+    };
+  }, [model, shown.model, first.base]);
+
+  return shown.built;
+}
+
 /**
  * The glass city. With no map it shows the Wellesley town; given a loaded
  * neighborhood (same FeatureCollection shape) it rebuilds from that.
@@ -2392,17 +2612,23 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   // Overture footprints gathered so far for this place. When the city grows
   // by a tile only the new ground is downloaded; the buildings already on
   // screen keep theirs.
-  const gathered = useRef<{ place: string; covered: NeighborhoodBox[]; byId: Map<string, OvertureFootprint> }>({
+  const gathered = useRef<{
+    place: string;
+    covered: NeighborhoodBox[];
+    byId: Map<string, OvertureFootprint>;
+    waiting: boolean;
+  }>({
     place: "",
     covered: [],
     byId: new Map(),
+    waiting: false,
   });
   const [overture, setOverture] = useState<OvertureFootprint[]>([]);
   useEffect(() => {
     if (!boxKey) return;
     const [west = 0, south = 0, east = 0, north = 0] = boxKey.split(",").map(Number);
     if (gathered.current.place !== placeKey) {
-      gathered.current = { place: placeKey, covered: [], byId: new Map() };
+      gathered.current = { place: placeKey, covered: [], byId: new Map(), waiting: false };
     }
     const store = gathered.current;
     for (const part of uncoveredParts({ west, south, east, north }, store.covered, OVERTURE_MIN_PART)) {
@@ -2416,7 +2642,14 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
             return;
           }
           for (const footprint of footprints) store.byId.set(footprint.id, footprint);
-          setOverture([...store.byId.values()]);
+          // The new footprints rebuild the city: wait until the camera rests,
+          // and fold parts that arrive meanwhile into one rebuild.
+          if (store.waiting) return;
+          store.waiting = true;
+          whenCameraRests(() => {
+            store.waiting = false;
+            if (gathered.current === store) setOverture([...store.byId.values()]);
+          }, REBUILD_QUIET_MS);
         })
         .catch(() => {
           store.covered = store.covered.filter((item) => item !== part);
@@ -2438,7 +2671,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     () => timed("buildModel", () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center)),
     [enriched, geoJson],
   );
-  const built = useMemo(() => timed("buildCity", () => buildCity(cityModel)), [cityModel]);
+  // A grown city (new tiles, Overture footprints) rebuilds a slice per frame.
+  const built = useBuiltCity(cityModel);
   const masonryLooks = useMemo(
     () =>
       built.masonry.map(
@@ -2619,22 +2853,23 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           raycast={() => null}
         />
       ))}
-      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
-      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
-      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />
-      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
-      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
-      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
-      <Instanced geometry={shapes.head} material={looks.skin} items={built.peopleSkin} shadows={false} colored />
-      <Instanced geometry={shapes.legs} material={looks.pants} items={built.peoplePants} colored />
+      {/* Small things fade out with distance; trees stay to the fog, simpler when far. */}
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored far={FAR_CARS} />
+      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} far={FAR_CARS} />
+      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} far={FAR_SMALL} />
+      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} far={FAR_SMALL} />
+      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} far={FAR_SMALL} />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored far={FAR_SMALL} />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.peopleSkin} shadows={false} colored far={FAR_SMALL} />
+      <Instanced geometry={shapes.legs} material={looks.pants} items={built.peoplePants} colored far={FAR_SMALL} />
       <Traffic lanes={built.traffic} shapes={shapes} looks={looks} reducedMotion={reducedMotion} />
-      <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
-      <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
-      <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />
-      <Instanced geometry={shapes.bulb} material={looks.glow} items={built.lamps} shadows={false} />
-      <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} />
-      <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
-      <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
+      <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} far={FAR_CARS} />
+      <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored lod={shapes.canopyFar} />
+      <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} far={FAR_CARS} />
+      <Instanced geometry={shapes.bulb} material={looks.glow} items={built.lamps} shadows={false} far={FAR_CARS} />
+      <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} far={FAR_SMALL} />
+      <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} far={FAR_SMALL} />
+      <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} far={FAR_SMALL} />
       <ProposedStreetImprovements furniture={furniture} spots={built.proposed} />
 
       <IssueLayer reducedMotion={reducedMotion} />

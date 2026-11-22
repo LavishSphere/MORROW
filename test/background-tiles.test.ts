@@ -23,6 +23,7 @@ import {
   nextTile,
   ringOrder,
   shouldCommit,
+  URGENT_STILL_MS,
   viewTiles,
 } from "../src/data/tileQueue.ts";
 import { uncoveredParts } from "../src/data/overtureBuildings.ts";
@@ -97,8 +98,11 @@ test("background tiles join the city in batches, only while the camera is still"
   assert.equal(shouldCommit({ ...base, sinceCommitMs: 9000 }), true);
   // Moving: wait, however many are ready.
   assert.equal(shouldCommit({ ...base, pending: 5, stillMs: 200 }), false);
-  // The tile you are walking toward goes in at once.
-  assert.equal(shouldCommit({ ...base, urgent: true, stillMs: 0 }), true);
+  // The tile you are walking toward goes in at the first short pause, never mid-move.
+  assert.equal(shouldCommit({ ...base, urgent: true, stillMs: 0 }), false);
+  assert.equal(shouldCommit({ ...base, urgent: true, stillMs: URGENT_STILL_MS }), true);
+  // A pause between two scrolls is not a rest.
+  assert.equal(shouldCommit({ ...base, pending: 5, stillMs: 2000 }), false);
 });
 
 // A flat map like the city's: 0.14 scene units per meter, centered on 0, 0.

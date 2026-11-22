@@ -23,7 +23,7 @@ import {
   suggestUsCities,
   type CitySuggestion,
 } from '../data/places'
-import { flyTo, setPin, useCityState, viewOver } from '../showcase/cityStore'
+import { flyTo, setPin, useCitySelector, viewOver } from '../showcase/cityStore'
 import './place-search.css'
 
 /** "Clapp Library, 106 Central St, Wellesley, MA…" → "Clapp Library" */
@@ -38,7 +38,8 @@ type PendingPin = { lng: number; lat: number; label: string }
  * somewhere else.
  */
 export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborhood) => void }) {
-  const { map, town } = useCityState()
+  const map = useCitySelector((state) => state.map)
+  const town = useCitySelector((state) => state.town)
   const ids = useId()
   const inputId = `${ids}-input`
   const listId = `${ids}-list`

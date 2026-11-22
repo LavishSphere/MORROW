@@ -2,7 +2,7 @@ import { Html } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { flyTo, useCityState } from "../cityStore";
+import { flyTo, useCitySelector } from "../cityStore";
 import { selectIssue, useIssueState, type SceneIssue } from "../issueStore";
 import {
   buildProgress,
@@ -458,7 +458,7 @@ function IssuePins({
  * crowd. Click a pin to open it in Improve.
  */
 export function IssueLayer({ reducedMotion = false }: { reducedMotion?: boolean }) {
-  const { map } = useCityState();
+  const map = useCitySelector((state) => state.map);
   const { issues, fixed: improved, selectedId, showBefore, peek } = useIssueState();
   // Compare's "Today" view hides every fix so the change is easy to see.
   const fixed = showBefore ? new Set<string>() : improved;

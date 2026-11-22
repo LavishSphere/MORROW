@@ -153,11 +153,29 @@ export function detectIssues(collection: unknown): MapIssue[] {
   const all = features(collection);
   const namedRoads = all
     .filter((f) => f.properties?.layer === "road" && typeof f.properties?.name === "string")
-    .map((f) => ({ name: String(f.properties!.name), line: lineOf(f) }));
+    .map((f) => {
+      const line = lineOf(f);
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      for (const [lon, lat] of line) {
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+      return { name: String(f.properties!.name), line, minLon, maxLon, minLat, maxLat };
+    });
   const nearestStreet = (point: LonLat) => {
     let best: string | null = null;
     let bestD = 60;
+    const k = Math.cos((point[1] * Math.PI) / 180) * 111_320;
     for (const road of namedRoads) {
+      // A road whose box is already farther than the best match cannot win.
+      const awayX = Math.max(road.minLon - point[0], point[0] - road.maxLon) * k;
+      const awayZ = Math.max(road.minLat - point[1], point[1] - road.maxLat) * 111_320;
+      if (awayX >= bestD || awayZ >= bestD) continue;
       const d = distanceToLine(point, road.line);
       if (d < bestD) {
         bestD = d;

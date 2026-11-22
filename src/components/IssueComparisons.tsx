@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { ISSUE_KIND_LABEL, type IssueKind, type IssueMeasure } from '../../shared/issues.ts'
-import { useCityState } from '../showcase/cityStore'
+import { useCitySelector } from '../showcase/cityStore'
 import { measureFor, selectIssue, setShowBefore, useIssueState } from '../showcase/issueStore'
 import { buildingsNear, NEAR_METERS, PEOPLE_METHOD, peopleIn, placesNear } from '../showcase/people'
 import { IssueGlyph } from './IssueGlyph'
@@ -37,7 +37,7 @@ function detourSaved(measure: IssueMeasure) {
  */
 export function IssueComparisons() {
   const { issues, fixed, showBefore } = useIssueState()
-  const { map } = useCityState()
+  const map = useCitySelector((state) => state.map)
   const improved = issues.filter((issue) => fixed.has(issue.id))
 
   // Leaving Compare always puts the fixes back on the map.
