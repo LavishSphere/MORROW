@@ -279,7 +279,7 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
  */
 export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]> {
   const box = `${lat - COAST_HALF},${lng - COAST_HALF},${lat + COAST_HALF},${lng + COAST_HALF}`
-  const query = `[out:json][timeout:25];way["natural"="coastline"](${box});out tags geom 300;relation["natural"="coastline"](${box});out tags geom 30;`
+  const query = `[out:json][timeout:40];way["natural"="coastline"](${box});out tags geom 1500;relation["natural"="coastline"](${box});out tags geom 30;`
   try {
     return (await interpret(query)).filter((way) => way.kind === 'coastline')
   } catch {
