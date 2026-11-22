@@ -38,6 +38,8 @@ export function PlaceSearch({ onLoad }: Props) {
   const [status, setStatus] = useState('')
   // Skip the lookup that would otherwise fire when a pick fills the field.
   const picked = useRef<string | null>(null)
+  // Once a load starts, late suggestions must not reopen the list.
+  const submitted = useRef(false)
 
   useEffect(() => {
     const text = query.trim()
@@ -49,6 +51,7 @@ export function PlaceSearch({ onLoad }: Props) {
     const timer = window.setTimeout(() => {
       suggestUsCities(text, controller.signal)
         .then((next) => {
+          if (submitted.current) return
           setSuggestions(next)
           setActive(-1)
           setOpen(true)
@@ -65,6 +68,7 @@ export function PlaceSearch({ onLoad }: Props) {
 
   const load = async (text: string, magicKey?: string) => {
     if (busy || text.trim().length < 2) return
+    submitted.current = true
     setOpen(false)
     setBusy(true)
     setStatus('Looking up that place and asking OpenStreetMap for the neighborhood.')
@@ -134,6 +138,7 @@ export function PlaceSearch({ onLoad }: Props) {
             }
             onChange={(event) => {
               picked.current = null
+              submitted.current = false
               setQuery(event.target.value)
               setStatus('')
             }}

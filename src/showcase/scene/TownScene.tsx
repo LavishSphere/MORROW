@@ -38,7 +38,8 @@ export function TownScene({
     <group name={`footprints-${source}`}>
       {/* Background and fog match the sky's horizon haze. */}
       <color attach="background" args={[HORIZON_HAZE]} />
-      <fog attach="fog" args={[HORIZON_HAZE, 120, 240]} />
+      {/* Far enough back that a zoomed-out view of the whole town stays clear. */}
+      <fog attach="fog" args={[HORIZON_HAZE, 170, 340]} />
       <hemisphereLight args={["#f2ffff", "#0a3842", 1.15]} />
       <directionalLight
         position={[40, 52, 18]}
@@ -68,7 +69,8 @@ export function TownScene({
         lookAt={LOOK_AT}
         settled={SETTLED}
       />
-      <City />
+      {/* The bundled campus basemap means "nothing loaded": show the whole town. */}
+      <City geoJson={geoJson === basemap ? undefined : geoJson} />
       <group visible={false}>
         <Street
           selectedBarrierId={selectedBarrierId}
