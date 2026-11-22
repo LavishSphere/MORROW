@@ -8,7 +8,7 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   const canvas = await readFile("src/showcase/ShowcaseCanvas.tsx", "utf8");
   const sky = await readFile("src/showcase/scene/Space.tsx", "utf8");
   // No loaded city means the whole town; a loaded city rebuilds from its map.
-  assert.match(town, /<City geoJson=\{geoJson === basemap \? undefined : geoJson\} \/>/);
+  assert.match(town, /<City geoJson=\{geoJson === basemap \? undefined : geoJson\} reducedMotion=\{reducedMotion\} \/>/);
   assert.match(city, /const model = useMemo\(\(\) => \(geoJson \? buildModel\(geoJson\) : TOWN\)/);
   // Real town data: every building and street comes from the OSM extract.
   assert.match(city, /data\/wellesley\/town\.geojson/);

@@ -4,7 +4,7 @@
  */
 
 import { compareScenario } from "@morrow/routing";
-import { detectIssues, issueFact, type MapIssue } from "../../../shared/issues.ts";
+import { detectIssues, issueFact, issuesOnlyFacts, type MapIssue } from "../../../shared/issues.ts";
 import type {
   Barrier,
   Intervention,
@@ -35,9 +35,10 @@ export class ProposalInputError extends Error {
 }
 
 export type ResolvedGenerateInput = {
-  scenarioId: string;
-  barrier: Barrier;
-  intervention: Intervention;
+  /** Null for an issues-only proposal. */
+  scenarioId: string | null;
+  barrier: Barrier | null;
+  intervention: Intervention | null;
   facts: ProposalFacts;
 };
 
@@ -59,11 +60,24 @@ export function resolveIssues(ids: readonly string[] | undefined): IssueFact[] {
 }
 
 export function resolveGenerateInput(body: {
-  scenarioId: string;
-  barrierId: string;
-  interventionId: string;
+  scenarioId?: string;
+  barrierId?: string;
+  interventionId?: string;
   issueIds?: string[];
 }): ResolvedGenerateInput {
+  if (!body.scenarioId || !body.barrierId || !body.interventionId) {
+    // Issues only: the resident's picked map issues are the whole proposal.
+    const issues = resolveIssues(body.issueIds);
+    if (issues.length === 0) {
+      throw new ProposalInputError("Pick at least one issue, or send the showcase scenario ids.", 400);
+    }
+    return {
+      scenarioId: null,
+      barrier: null,
+      intervention: null,
+      facts: issuesOnlyFacts(issues, "Wellesley, MA"),
+    };
+  }
   const scenario = getScenario(body.scenarioId);
   if (!scenario) {
     throw new ProposalInputError(

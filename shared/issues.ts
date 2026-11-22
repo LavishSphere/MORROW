@@ -15,7 +15,7 @@ import {
   shortestPath,
   snapNearestNode,
 } from "@morrow/routing";
-import type { IssueFact, LonLat } from "./types.ts";
+import type { DraftProposal, IssueFact, LonLat, ProposalFacts } from "./types.ts";
 
 export type IssueKind = "stairs" | "unmarked_crossing" | "no_sidewalk" | "unpaved_path";
 
@@ -357,5 +357,56 @@ export function issueFact(issue: MapIssue, collection: unknown): IssueFact {
     after: measure.after,
     metrics: measure.metrics,
     modeled: measure.modeled,
+  };
+}
+
+const ISSUE_ASSUMPTIONS = [
+  "Issues come from OpenStreetMap tags recorded by community mappers, not a field survey.",
+  "Stair detours are modeled with the MORROW routing graph; other lengths are measured from the map.",
+];
+
+/** Proposal facts when the proposal is only the resident's picked issues. */
+export function issuesOnlyFacts(issues: IssueFact[], city: string): ProposalFacts {
+  const first = issues[0];
+  const more = issues.length - 1;
+  return {
+    city,
+    locationLabel: first ? `${first.where}${more > 0 ? ` and ${more} more place${more === 1 ? "" : "s"}` : ""}` : city,
+    evidenceStatus: "community_reported",
+    evidenceSources: issues.map((issue) => ({ title: issue.source, url: issue.sourceUrl })),
+    barrierType: [...new Set(issues.map((issue) => issue.kind))].join(", "),
+    intervention: issues.map((issue) => issue.fix).join(" "),
+    beforeMeters: null,
+    afterMeters: null,
+    newlyReachableDestinations: null,
+    modelAssumptions: ISSUE_ASSUMPTIONS,
+    originLabel: "",
+    destinationLabel: "",
+    nextSteps:
+      "Share this draft with neighbors or local advocates. Do not invent a specific department submission link without verification.",
+    issues,
+    scope: "issues",
+  };
+}
+
+/** Deterministic draft for an issues-only proposal (Gemini unavailable). */
+export function buildIssuesDraft(facts: ProposalFacts): DraftProposal {
+  const issues = facts.issues ?? [];
+  const count = issues.length;
+  const plural = count === 1 ? "" : "s";
+  return {
+    headline: `Fix ${count} walking barrier${plural} in ${facts.city}`,
+    plainLanguageSummary: `This draft asks ${facts.city} to review ${count} accessibility problem${plural} recorded in OpenStreetMap by community mappers (not a field survey): ${issues
+      .map((issue) => `${issue.title.toLowerCase()} at ${issue.where} — ${issue.after.replace(/\.$/, "")}`)
+      .join("; ")}.`,
+    requestForReview:
+      "Please review these locations on site and evaluate whether the suggested fixes are feasible. This document is a community conversation aid, not an engineering or construction recommendation.",
+    meetingTalkingPoints: issues
+      .slice(0, 8)
+      .map((issue) => `${issue.where}: ${issue.before} Fix: ${issue.fix}`),
+    limitations: [
+      ...facts.modelAssumptions,
+      "No site inspection; do not treat this draft as verified municipal findings or cost estimates.",
+    ].join(" "),
   };
 }

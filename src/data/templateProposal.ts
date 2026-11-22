@@ -1,8 +1,10 @@
 import { formatMeters } from '../satellite/stats/format'
+import { buildIssuesDraft } from '../../shared/issues.ts'
 import type { DraftProposal, ProposalFacts } from '../types'
 
 /** Deterministic template when Gemini is unavailable (always, in this UI PR). */
 export function buildTemplateDraft(facts: ProposalFacts): DraftProposal {
+  if (facts.scope === 'issues') return buildIssuesDraft(facts)
   const before =
     facts.beforeMeters == null ? 'an inaccessible detour' : formatMeters(facts.beforeMeters)
   const after =

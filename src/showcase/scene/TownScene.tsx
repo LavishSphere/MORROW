@@ -70,7 +70,7 @@ export function TownScene({
         settled={SETTLED}
       />
       {/* The bundled campus basemap means "nothing loaded": show the whole town. */}
-      <City geoJson={geoJson === basemap ? undefined : geoJson} />
+      <City geoJson={geoJson === basemap ? undefined : geoJson} reducedMotion={reducedMotion} />
       <group visible={false}>
         <Street
           selectedBarrierId={selectedBarrierId}

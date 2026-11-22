@@ -584,6 +584,7 @@ function mapFor(model: CityModel): CityMap {
     geoBounds: model.geoBounds,
     project: model.project,
     buildingPoints: model.parsed.buildings.map((b) => centroid(b.ring)),
+    buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
     roads: roads.join(""),
     walks: walks.join(""),
     buildings,
@@ -760,7 +761,7 @@ function Instanced({
  * The glass city. With no map it shows the Wellesley town; given a loaded
  * neighborhood (same FeatureCollection shape) it rebuilds from that.
  */
-export function City({ geoJson }: { geoJson?: unknown }) {
+export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
   const { glass, surfaces } = useMaterials();
   const { shapes, looks } = useFurniture();
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
@@ -837,7 +838,7 @@ export function City({ geoJson }: { geoJson?: unknown }) {
       <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
 
-      <IssueLayer />
+      <IssueLayer reducedMotion={reducedMotion} />
       <AddressPin />
       <StreetSigns signs={built.signs} />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />

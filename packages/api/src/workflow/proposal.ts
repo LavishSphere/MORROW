@@ -25,6 +25,8 @@ import {
   draftProposalSchema,
   generateRequestSchema,
   parseDraftProposal,
+  hasScenario,
+  type GenerateRequest,
 } from "../draft/schema.ts";
 import { buildTemplateDraft } from "../draft/template.ts";
 import { resolveGenerateInput } from "../facts.ts";
@@ -79,6 +81,16 @@ const loadEvidence = createStep({
   inputSchema: idsSchema,
   outputSchema: evidenceSchema,
   execute: async ({ inputData }) => {
+    // Issues-only proposal: nothing to load here; issues resolve in the next step.
+    if (!hasScenario(inputData)) {
+      if (!inputData.issueIds?.length) throw new Error("No issues or scenario to propose");
+      return {
+        ...inputData,
+        barrierType: "map_issues",
+        evidenceStatus: "community_reported" as const,
+        interventionDescription: "",
+      };
+    }
     const scenario = getScenario(inputData.scenarioId);
     if (!scenario) {
       throw new Error(`Unknown scenarioId: ${inputData.scenarioId}`);
@@ -239,11 +251,7 @@ export function mastraConfigured(): boolean {
 }
 
 /** Run the Mastra proposal workflow and return the saved proposal + step trace. */
-export async function runProposalWorkflow(input: {
-  scenarioId: string;
-  barrierId: string;
-  interventionId: string;
-}): Promise<ProposalWorkflowResult> {
+export async function runProposalWorkflow(input: GenerateRequest): Promise<ProposalWorkflowResult> {
   const run = await proposalWorkflow.createRun();
   const result = await run.start({ inputData: input });
 

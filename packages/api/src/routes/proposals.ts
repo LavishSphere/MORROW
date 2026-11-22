@@ -5,7 +5,7 @@ import {
   saveProposalToTiger,
   tigerLive,
 } from "../data/tiger.ts";
-import { generateRequestSchema } from "../draft/schema.ts";
+import { generateRequestSchema, hasSubject } from "../draft/schema.ts";
 import { readJsonBody, sendJson } from "../http.ts";
 import { runProposalWorkflow } from "../workflow/proposal.ts";
 
@@ -28,10 +28,11 @@ export async function handleGenerateProposal(
   }
 
   const parsed = generateRequestSchema.safeParse(body);
-  if (!parsed.success) {
+  if (!parsed.success || !hasSubject(parsed.data)) {
     sendJson(res, 400, {
-      error: "Body must include scenarioId, barrierId, and interventionId (ids only).",
-      details: parsed.error.flatten(),
+      error:
+        "Body must include issueIds, or scenarioId, barrierId, and interventionId (ids only).",
+      ...(parsed.success ? {} : { details: parsed.error.flatten() }),
     });
     return;
   }
