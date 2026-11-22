@@ -21,8 +21,8 @@ test("the Pterodactyl egg runs the public API image and stores no secrets", asyn
   assert.match(dockerfile, /COPY --chmod=755 start-api\.sh \/app\/start-api\.sh/);
   assert.match(dockerfile, /CMD \["\/app\/start-api\.sh"\]/);
   assert.match(start, /\/app\/packages\/api\/src\/index\.ts/);
-  assert.equal(dockerfile.includes("ENV MORROW_HOSTED_ON"), false);
-  assert.match(dockerfile, /Do not set MORROW_HOSTED_ON/);
+  assert.equal(/vultr/i.test(dockerfile), false);
+  assert.equal(/vultr/i.test(start), false);
 
   const names = egg.variables.map((variable) => variable.env_variable);
   assert.deepEqual(names, [
