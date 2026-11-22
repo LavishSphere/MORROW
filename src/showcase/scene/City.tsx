@@ -27,6 +27,7 @@ import { RAIL_CLEARANCE } from "./railGeometry";
 import { cellView, chunkPlacements, LOD_NEAR, VIEW_FAR } from "./chunks.ts";
 import { EMPTY_RAIL } from "../../data/rail.ts";
 import { useStreetImprovements } from "../../city/streetImprovements";
+import { LOOK_LAWN, LookDetails, lookCanopy, lookTrees, useLook } from "./look";
 
 /**
  * Wellesley, reimagined. Every building, road, and footpath comes from
@@ -62,8 +63,7 @@ const ROOF_GARDEN = "#5f8f55";
 const LAWN = "#7d9a68";
 const SMART_LINE = "#8ff3ff";
 const LOGO_BLUE = "#1488ff";
-const GREEN = ["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"] as const;
-const AUTUMN = ["#b98c3a", "#c99a4c", "#b8692c"] as const;
+const { green: GREEN, autumn: AUTUMN } = lookTrees(["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"], ["#b98c3a", "#c99a4c", "#b8692c"]);
 
 type Ring = readonly (readonly [number, number])[];
 
@@ -2250,7 +2250,7 @@ function useFurniture() {
     return {
       shapes: {
         trunk: at(new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6), 0.45),
-        canopy: at(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 1.15, 1), 1.15),
+        canopy: lookCanopy() ?? at(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 1.15, 1), 1.15),
         // Far trees: a quarter of the triangles, same size and colour.
         canopyFar: at(new THREE.IcosahedronGeometry(0.62, 0).scale(1, 1.15, 1), 1.15),
         pole: at(new THREE.CylinderGeometry(0.025, 0.035, 1.16, 6), 0.58),
@@ -2706,6 +2706,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     },
     [bridgeLooks],
   );
+  useLook({ glass, surfaces, houses, looks, masonry: masonryLooks, bridges: bridgeLooks });
 
   useEffect(() => publishMap({ ...mapFor(cityModel), skyline: built.skyline }), [cityModel, built]);
   // A newly loaded place opens on its center. Where real towers stand there
@@ -2762,7 +2763,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow raycast={() => null}>
         {/* Wide enough that the fog hides its edge from any camera angle. */}
         <planeGeometry args={[4000, 4000]} />
-        <meshStandardMaterial color={LAWN} roughness={0.95} />
+        <meshStandardMaterial color={LAWN} roughness={0.95} {...LOOK_LAWN} />
       </mesh>
 
       <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
@@ -2880,6 +2881,12 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         geoBounds={cityModel.geoBounds}
         project={cityModel.project}
         origin={cityModel.unproject(0, 0)}
+        reducedMotion={reducedMotion}
+      />
+      <LookDetails
+        parsed={cityModel.parsed}
+        built={built}
+        tree={{ trunk: shapes.trunk, canopy: shapes.canopy, bark: looks.bark, leaves: looks.leaves }}
         reducedMotion={reducedMotion}
       />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />

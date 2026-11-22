@@ -5,6 +5,7 @@ import { footprintSource } from "../layout";
 import { CameraRig } from "./CameraRig";
 import { City, CITY_SPAN } from "./City";
 import { HORIZON_HAZE, Sky } from "./Space";
+import { LOOK } from "./look";
 import { Street } from "./Street";
 import { ViewBudget } from "./ViewBudget";
 
@@ -38,10 +39,10 @@ export function TownScene({
   return (
     <group name={`footprints-${source}`}>
       {/* Background and fog match the sky's horizon haze. */}
-      <color attach="background" args={[HORIZON_HAZE]} />
+      <color attach="background" args={[HORIZON_HAZE]} {...LOOK.background} />
       {/* Far enough back that a zoomed-out view of the whole town stays clear. */}
-      <fog attach="fog" args={[HORIZON_HAZE, 170, 340]} />
-      <hemisphereLight args={["#f2ffff", "#0a3842", 1.15]} />
+      <fog attach="fog" args={[HORIZON_HAZE, 170, 340]} {...LOOK.fog} />
+      <hemisphereLight args={["#f2ffff", "#0a3842", 1.15]} {...LOOK.hemi} />
       <directionalLight
         position={[40, 52, 18]}
         intensity={1.15}
@@ -55,8 +56,9 @@ export function TownScene({
         shadow-camera-top={70}
         shadow-camera-bottom={-70}
         shadow-bias={-0.0004}
+        {...LOOK.sun}
       />
-      <directionalLight position={[-24, 18, 30]} intensity={0.58} color="#7ee0ea" />
+      <directionalLight position={[-24, 18, 30]} intensity={0.58} color="#7ee0ea" {...LOOK.fill} />
       <Sky reducedMotion={reducedMotion} follow />
       {/* Reflections: the glass towers mirror this same sky. Rendered once
           into an environment map, so it costs nothing per frame. */}
