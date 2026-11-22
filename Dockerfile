@@ -1,4 +1,5 @@
-# MORROW proposal API image (GHCR → optional Vultr host; see docs/deploy-api-vultr.md).
+# MORROW proposal API image. Published to ghcr.io/lavishsphere/morrow.
+# Pterodactyl egg: pterodactyl/morrow-api.json
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -15,6 +16,8 @@ ENV HOST=0.0.0.0
 ENV PORT=8787
 EXPOSE 8787
 
-# Inject GEMINI_API_KEY, DATABASE_URL, and MORROW_HOSTED_ON=vultr at runtime.
-# Never bake secrets into the image.
-CMD ["npm", "run", "start", "-w", "@morrow/api"]
+COPY --chmod=755 start-api.sh /app/start-api.sh
+
+# Inject GEMINI_API_KEY and DATABASE_URL at runtime. Never bake secrets into the image.
+# Do not set MORROW_HOSTED_ON. Pterodactyl sets SERVER_PORT to the allocation.
+CMD ["/app/start-api.sh"]

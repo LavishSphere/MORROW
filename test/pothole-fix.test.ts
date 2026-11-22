@@ -49,6 +49,8 @@ test("the city popup and the three mode pages share the pothole", async () => {
   assert.match(city, /selectPothole\(/);
   assert.match(popup, /patchPothole\(/);
   assert.match(popup, /Illustrative street issue/);
+  assert.match(popup, /Not a surveyed defect/);
+  assert.equal(popup.includes("Improve, Compare"), false);
   assert.match(improve, /patchPothole\(/);
   assert.match(compare, /usePotholeFix\(/);
   assert.match(compare, /Not a Gemini estimate/);
