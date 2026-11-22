@@ -33,7 +33,14 @@ type State = {
   openImprove: number;
   /** Compare's switch: show the city as it is today, without the fixes. */
   showBefore: boolean;
+  /**
+   * Improve's switch for the selected issue: the street today, or with the
+   * fix drawn in. An unimproved issue's "after" is a preview.
+   */
+  peek: Peek;
 };
+
+export type Peek = "before" | "after";
 
 let state: State = {
   issues: [],
@@ -44,6 +51,7 @@ let state: State = {
   chosen: new Set(),
   openImprove: 0,
   showBefore: false,
+  peek: "before",
 };
 const listeners = new Set<() => void>();
 const measures = new Map<string, IssueMeasure>();
@@ -89,6 +97,8 @@ export function selectIssue(id: string | null, options: { openImprove?: boolean 
   if (issue) flyTo(issue.x, issue.z, { distance: ISSUE_ZOOM, overhead: true });
   emit({
     selectedId: id,
+    // Open on the street as it is today, or on the fix once it is improved.
+    peek: id && state.fixed.has(id) ? "after" : "before",
     ...(options.openImprove ? { openImprove: state.openImprove + 1 } : {}),
   });
 }
@@ -103,7 +113,13 @@ export function toggleFixed(id: string) {
     fixed.add(id);
     chosen.add(id);
   }
-  emit({ fixed, chosen });
+  // Improving shows the fix being built; undoing goes back to today.
+  emit({ fixed, chosen, ...(id === state.selectedId ? { peek: fixed.has(id) ? "after" : "before" } : {}) });
+}
+
+/** Show the selected issue as it is today or with its fix. */
+export function setPeek(peek: Peek) {
+  if (state.peek !== peek) emit({ peek });
 }
 
 export function toggleChosen(id: string) {

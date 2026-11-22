@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { flyTo, useCityState, whereAmI, type CameraPose } from '../showcase/cityStore'
 import { useIssueState, type SceneIssue } from '../showcase/issueStore'
-import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
+import { ISSUE_COLOR } from '../showcase/issueVisuals'
 
 /** Small minimap size in CSS pixels. */
 const SIZE = 168

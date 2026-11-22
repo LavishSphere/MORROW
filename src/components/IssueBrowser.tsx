@@ -4,12 +4,15 @@ import { useCityState } from '../showcase/cityStore'
 import {
   measureFor,
   selectIssue,
+  setPeek,
   toggleChosen,
   toggleFixed,
   useIssueState,
+  type Peek,
   type SceneIssue,
 } from '../showcase/issueStore'
-import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
+import { ISSUE_COLOR, PATCH_LABEL, PROPOSED_COLOR } from '../showcase/issueVisuals'
+import { IssueGlyph } from './IssueGlyph'
 
 const KINDS = Object.keys(ISSUE_KIND_LABEL) as IssueKind[]
 /** How many nearby issues to list. */
@@ -20,7 +23,7 @@ const LIST_SIZE = 12
  * then improve one and watch the fix appear in the city.
  */
 export function IssueBrowser() {
-  const { issues, fixed, chosen, selectedId } = useIssueState()
+  const { issues, fixed, chosen, selectedId, peek } = useIssueState()
   const { pose } = useCityState()
   const [kind, setKind] = useState<IssueKind | 'all'>('all')
 
@@ -69,14 +72,19 @@ export function IssueBrowser() {
             aria-pressed={kind === k}
             onClick={() => setKind(k)}
           >
-            <span className="issue-dot" style={{ background: ISSUE_COLOR[k] }} />
+            <IssueGlyph kind={k} />
             {ISSUE_KIND_LABEL[k]} {counts[k]}
           </button>
         ))}
       </div>
 
       {selected && (
-        <IssueDetail issue={selected} fixed={fixed.has(selected.id)} chosen={chosen.has(selected.id)} />
+        <IssueDetail
+          issue={selected}
+          fixed={fixed.has(selected.id)}
+          chosen={chosen.has(selected.id)}
+          peek={peek}
+        />
       )}
 
       <p className="issue-list__head">Nearest to your view</p>
@@ -88,10 +96,7 @@ export function IssueBrowser() {
               className={`issue-row${issue.id === selectedId ? ' is-active' : ''}`}
               onClick={() => open(issue)}
             >
-              <span
-                className="issue-dot"
-                style={{ background: fixed.has(issue.id) ? '#2ecc71' : ISSUE_COLOR[issue.kind] }}
-              />
+              <IssueGlyph kind={issue.kind} fixed={fixed.has(issue.id)} />
               <span className="issue-row__text">
                 <span className="issue-row__title">{issue.title}</span>
                 <span className="issue-row__where">{issue.where}</span>
@@ -105,18 +110,62 @@ export function IssueBrowser() {
   )
 }
 
-function IssueDetail({ issue, fixed, chosen }: { issue: SceneIssue; fixed: boolean; chosen: boolean }) {
+function IssueDetail({
+  issue,
+  fixed,
+  chosen,
+  peek,
+}: {
+  issue: SceneIssue
+  fixed: boolean
+  chosen: boolean
+  peek: Peek
+}) {
   const measure = measureFor(issue)
+  const after = peek === 'after'
   return (
     <article className={`issue-card${fixed ? ' is-fixed' : ''}`} aria-live="polite">
       <p className="issue-card__kind">
-        <span className="issue-dot" style={{ background: fixed ? '#2ecc71' : ISSUE_COLOR[issue.kind] }} />
+        <IssueGlyph kind={issue.kind} fixed={fixed} />
         {ISSUE_KIND_LABEL[issue.kind]} · {issue.where}
       </p>
       <h3 className="issue-card__title">{issue.title}</h3>
-      <p className="issue-card__text">{fixed ? measure.after : measure.before}</p>
-      {!fixed && <p className="issue-card__fix">Fix: {issue.fix}</p>}
-      {fixed && measure.metrics.length > 0 && (
+
+      {/* Before / after, drawn in place on the map. */}
+      <div className="compare-toggle issue-card__peek" role="group" aria-label="Show this street">
+        <button
+          type="button"
+          className={!after ? 'is-active' : undefined}
+          aria-pressed={!after}
+          onClick={() => setPeek('before')}
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          className={after ? 'is-active' : undefined}
+          aria-pressed={after}
+          onClick={() => setPeek('after')}
+        >
+          With the fix
+        </button>
+      </div>
+      <p className={`issue-card__map-hint${after ? ' is-after' : ''}`}>
+        <span
+          className="issue-card__swatch"
+          style={{ color: after ? PROPOSED_COLOR : ISSUE_COLOR[issue.kind] }}
+          aria-hidden="true"
+        />
+        {after
+          ? fixed
+            ? `On the map: ${PATCH_LABEL[issue.kind].toLowerCase()}, outlined in blue as a proposal.`
+            : `On the map: a blue preview of the ${PATCH_LABEL[issue.kind].toLowerCase()}. Press Improve to add it.`
+          : 'On the map: the affected stretch pulses; dashed lines mark other open issues.'}
+      </p>
+
+      <p className="issue-card__text">{after ? measure.after : measure.before}</p>
+      {!after && <p className="issue-card__fix">Fix: {issue.fix}</p>}
+      {after && measure.metrics.length > 0 && (
         <dl className="issue-card__metrics">
           {measure.metrics.map((metric) => (
             <div key={metric.label}>
