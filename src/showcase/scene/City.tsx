@@ -2,6 +2,7 @@ import { Sparkles } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
+import waterMap from "../../../data/wellesley/water.geojson";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -17,9 +18,10 @@ import { StreetSigns, type SignSpot } from "./StreetSigns";
  * Wellesley, reimagined. Every building, road, and footpath comes from
  * OpenStreetMap at its true position and outline: by default the wider
  * town extract in data/wellesley/town.geojson (College, Wellesley Square,
- * and the streets around them), or a loaded US city. Buildings are rebuilt
- * as glass with green roofs; heights are a design choice (OSM has none
- * here), not a survey.
+ * and the streets around them), or a loaded US city. Lakes, ponds, and
+ * brooks come from the same map. That water is the shoreline, not a defect.
+ * Buildings are rebuilt as glass with green roofs; heights are a design
+ * choice (OSM has none here), not a survey.
  *
  * Thousands of buildings stay fast because each kind of surface is merged
  * into one mesh, and trees and street furniture are instanced.
@@ -124,7 +126,12 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   const box = bboxOf(geoJson) ?? SHOWCASE_BBOX;
   const bbox: ShowcaseBBox = center ? { ...box, center: [center[0], center[1]] } : box;
   const projector = createProjector(bbox, CITY_SCALE);
-  const parsed = parseBasemap(geoJson, projector) ?? { buildings: [], ways: [] };
+  const parsed = parseBasemap(geoJson, projector) ?? {
+    buildings: [],
+    ways: [],
+    water: [],
+    waterways: [],
+  };
   const kinds = new Map<string, string>();
   if (isFeatureCollection(geoJson)) {
     for (const feature of geoJson.features) {
@@ -133,8 +140,11 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   const bounds: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-  const rings =
-    parsed.buildings.length > 0 ? parsed.buildings.map((b) => b.ring) : parsed.ways.map((w) => w.points);
+  const rings = [
+    ...parsed.buildings.map((b) => b.ring),
+    ...parsed.water.map((body) => body.ring),
+    ...(parsed.buildings.length === 0 ? parsed.ways.map((w) => w.points) : []),
+  ];
   for (const ring of rings) {
     for (const [x, z] of ring) {
       bounds.minX = Math.min(bounds.minX, x);
@@ -153,8 +163,17 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   };
 }
 
-/** The Wellesley town extract, centered on the College showcase. */
-const TOWN = buildModel(town, SHOWCASE_BBOX.center);
+/** The Wellesley town extract plus its mapped water, centered on the College. */
+const TOWN = buildModel(
+  {
+    type: "FeatureCollection",
+    features: [
+      ...(town as { features: unknown[] }).features,
+      ...(waterMap as { features: unknown[] }).features,
+    ],
+  },
+  SHOWCASE_BBOX.center,
+);
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
@@ -438,6 +457,8 @@ type Built = {
   benches: Placement[];
   signs: SignSpot[];
   brick: THREE.BufferGeometry;
+  water: THREE.BufferGeometry;
+  streams: THREE.BufferGeometry;
 };
 
 function buildCity(model: CityModel): Built {
@@ -473,6 +494,20 @@ function buildCity(model: CityModel): Built {
       cap(garden, ring, top);
     }
     occupancy.markRing(ring, 0.9);
+  }
+
+  // Shorelines stay clear of trees. The water is the map, not a barrier.
+  const water = new Bucket();
+  for (const body of model.parsed.water) {
+    if (body.ring.length < 3) continue;
+    cap(water, body.ring, 0.04);
+    occupancy.markRing(body.ring, 0.3);
+  }
+  const streams = new Bucket();
+  for (const brook of model.parsed.waterways) {
+    const half = brook.wide ? 0.22 : 0.07;
+    strip(streams, brook.points, half, 0.045);
+    occupancy.markLine(brook.points, half + 0.12);
   }
 
   const roads = new Bucket();
@@ -546,6 +581,8 @@ function buildCity(model: CityModel): Built {
       path: walks.path.geometry(),
     },
     trees,
+    water: water.geometry(),
+    streams: streams.geometry(),
     lamps,
     hydrants,
     benches,
@@ -574,6 +611,10 @@ function mapFor(model: CityModel): CityMap {
     }
   }
   const buildings = model.parsed.buildings.map((b) => `${line(b.ring)}Z`).join("");
+  const water = [
+    ...model.parsed.water.map((body) => `${line(body.ring)}Z`),
+    ...model.parsed.waterways.map((brook) => line(brook.points)),
+  ].join("");
   const places = model.parsed.buildings.flatMap((b) => {
     if (!b.name) return [];
     const [x, z] = centroid(b.ring);
@@ -587,6 +628,7 @@ function mapFor(model: CityModel): CityMap {
     buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
     roads: roads.join(""),
     walks: walks.join(""),
+    water,
     buildings,
     streets,
     places,
@@ -665,6 +707,23 @@ function useMaterials() {
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
+        water: new THREE.MeshPhysicalMaterial({
+          color: "#1c6f96",
+          roughness: 0.08,
+          metalness: 0.55,
+          transmission: 0.35,
+          thickness: 0.4,
+          transparent: true,
+          opacity: 0.92,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+        stream: new THREE.MeshStandardMaterial({
+          color: "#2f8eb4",
+          roughness: 0.2,
+          metalness: 0.35,
+        }),
       },
     };
   }, []);
@@ -811,6 +870,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
+      <mesh geometry={built.water} material={surfaces.water} receiveShadow raycast={() => null} />
+      <mesh geometry={built.streams} material={surfaces.stream} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />
       <mesh geometry={built.lines} material={surfaces.line} raycast={() => null} />
       <mesh geometry={built.lit} material={surfaces.lit} raycast={() => null} />

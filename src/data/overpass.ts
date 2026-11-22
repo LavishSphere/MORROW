@@ -3,11 +3,15 @@ import { geocodeUsPlace, type UsPlace } from './places.ts'
 export type OsmWay = {
   id: number
   name: string | null
-  kind: 'road' | 'building'
+  kind: 'road' | 'building' | 'water' | 'waterway'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
   building?: string | null
+  /** OSM water tag (lake, pond, …) when the way is a shoreline. */
+  water?: string | null
+  /** OSM waterway tag (river, stream, canal) when the way is a centerline. */
+  waterway?: string | null
   /** [longitude, latitude] */
   points: [number, number][]
 }
@@ -33,7 +37,14 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     if (!element || typeof element !== 'object') continue
     const row = element as {
       id?: unknown
-      tags?: { name?: unknown; highway?: unknown; building?: unknown }
+      tags?: {
+        name?: unknown
+        highway?: unknown
+        building?: unknown
+        natural?: unknown
+        water?: unknown
+        waterway?: unknown
+      }
       geometry?: { lat?: unknown; lon?: unknown }[]
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -44,13 +55,29 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     }
     if (points.length < 2) continue
     const building = typeof row.tags?.building === 'string'
+    const highway = typeof row.tags?.highway === 'string'
+    const natural = row.tags?.natural === 'water'
+    const water = typeof row.tags?.water === 'string' ? row.tags.water : null
+    const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+    const kind = building
+      ? 'building'
+      : highway
+        ? 'road'
+        : natural || water
+          ? 'water'
+          : waterway === 'river' || waterway === 'stream' || waterway === 'canal'
+            ? 'waterway'
+            : null
+    if (!kind) continue
     ways.push({
       id: row.id,
       name,
-      kind: building ? 'building' : 'road',
-      highway: typeof row.tags?.highway === 'string' ? row.tags.highway : null,
+      kind,
+      highway: highway ? String(row.tags?.highway) : null,
       building: building ? String(row.tags?.building) : null,
+      water,
+      waterway,
       points,
     })
   }
@@ -65,7 +92,7 @@ function neighborhoodQuery(place: UsPlace): string {
   const box = `${south},${west},${north},${east}`
   // Streets and buildings get separate quotas, so a dense downtown's
   // buildings cannot crowd out its streets.
-  return `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 3000;`
+  return `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 3000;way["natural"="water"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal)$"](${box});out tags geom 800;`
 }
 
 async function fetchWays(place: UsPlace): Promise<OsmWay[]> {
@@ -97,11 +124,12 @@ export async function loadUsNeighborhood(
   try {
     const ways = await fetchWays(place)
     const roads = ways.filter((way) => way.kind === 'road').length
-    const buildings = ways.length - roads
+    const buildings = ways.filter((way) => way.kind === 'building').length
+    const water = ways.length - roads - buildings
     return {
       place,
       ways,
-      note: `${place.label}. OpenStreetMap returned ${roads} roads and ${buildings} buildings for this neighborhood. Not a barrier inventory.`,
+      note: `${place.label}. OpenStreetMap returned ${roads} roads, ${buildings} buildings, and ${water} water shapes. Water is the mapped shoreline, not a defect. Not a barrier inventory.`,
     }
   } catch {
     return {
@@ -122,6 +150,27 @@ const PATH = new Set(['path', 'track', 'cycleway', 'bridleway'])
 export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
   const features = []
   for (const way of neighborhood.ways) {
+    if (way.kind === 'water') {
+      if (way.points.length < 3) continue
+      const ring = [...way.points]
+      const [first] = ring
+      const last = ring[ring.length - 1]
+      if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push(first)
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: { osmId: way.id, layer: 'water', name: way.name, water: way.water ?? 'water' },
+      })
+      continue
+    }
+    if (way.kind === 'waterway') {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: way.points },
+        properties: { osmId: way.id, layer: 'waterway', name: way.name, waterway: way.waterway },
+      })
+      continue
+    }
     if (way.kind === 'building') {
       if (way.points.length < 3) continue
       const ring = [...way.points]

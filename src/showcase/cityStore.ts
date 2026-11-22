@@ -26,6 +26,8 @@ export type CityMap = {
   /** Path2D strings in scene units (x right, z down). */
   roads: string;
   walks: string;
+  /** Lakes, ponds, and brooks. The shoreline, not a defect. */
+  water: string;
   buildings: string;
   streets: NamedSegment[];
   places: NamedPlace[];

@@ -12,7 +12,15 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   assert.match(city, /const model = useMemo\(\(\) => \(geoJson \? buildModel\(geoJson\) : TOWN\)/);
   // Real town data: every building and street comes from the OSM extract.
   assert.match(city, /data\/wellesley\/town\.geojson/);
-  assert.match(city, /const TOWN = buildModel\(town, SHOWCASE_BBOX\.center\)/);
+  const water = JSON.parse(await readFile("data/wellesley/water.geojson", "utf8")) as {
+    properties: { honesty: string };
+    features: { properties: { name?: string; layer: string } }[];
+  };
+  assert.match(water.properties.honesty, /not a barrier inventory/i);
+  assert.ok(water.features.some((f) => f.properties.name === "Lake Waban" && f.properties.layer === "water"));
+  assert.match(city, /data\/wellesley\/water\.geojson/);
+  assert.match(city, /SHOWCASE_BBOX\.center/);
+  assert.match(city, /cap\(water, body\.ring/);
   assert.match(city, /parseBasemap\(geoJson, projector\)/);
   assert.match(city, /for \(const building of model\.parsed\.buildings\)/);
   assert.equal(city.includes("function Pothole"), false);
