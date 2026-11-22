@@ -656,6 +656,8 @@ function buildCity(model: CityModel): Built {
       if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
       cars.push({
         ...spot,
+        // Local +X is the nose. `along` stores a heading whose long axis sits across the lane.
+        rot: spot.rot - Math.PI / 2 + (side < 0 ? Math.PI : 0),
         color: CAR_COLORS[Math.floor(hash(spot.z, spot.x) * CAR_COLORS.length)] ?? CAR_COLORS[0],
       });
     }
@@ -825,6 +827,54 @@ function useMaterials() {
   return materials;
 }
 
+function mergeGeos(parts: THREE.BufferGeometry[]) {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  let offset = 0;
+  for (const part of parts) {
+    const pos = part.getAttribute("position");
+    const nor = part.getAttribute("normal");
+    const index = part.getIndex();
+    for (let i = 0; i < pos.count; i += 1) {
+      positions.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      normals.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+    }
+    if (index) {
+      for (let i = 0; i < index.count; i += 1) indices.push(index.getX(i) + offset);
+    }
+    offset += pos.count;
+    part.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function axle(x: number, z: number, radius: number, width: number) {
+  const geo = new THREE.CylinderGeometry(radius, radius, width, 12);
+  geo.rotateX(Math.PI / 2);
+  geo.translate(x, 0.075, z);
+  return geo;
+}
+
+function carWindows() {
+  const pane = (w: number, h: number, d: number, x: number, y: number, z: number, tilt = 0) => {
+    const glass = new THREE.BoxGeometry(w, h, d);
+    if (tilt) glass.rotateZ(tilt);
+    glass.translate(x, y, z);
+    return glass;
+  };
+  return [
+    pane(0.02, 0.11, 0.26, 0.1, 0.27, 0, -0.42),
+    pane(0.02, 0.1, 0.24, -0.26, 0.27, 0, 0.35),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, 0.145),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, -0.145),
+  ];
+}
+
 function useFurniture() {
   const parts = useMemo(() => {
     const at = (g: THREE.BufferGeometry, y: number, z = 0) => g.translate(0, y, z);
@@ -837,8 +887,43 @@ function useFurniture() {
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
         seat: at(new THREE.BoxGeometry(0.6, 0.035, 0.17), 0.17),
         back: at(new THREE.BoxGeometry(0.6, 0.17, 0.025), 0.27, -0.07),
-        car: at(new THREE.BoxGeometry(1.35, 0.36, 0.68), 0.28),
-        cabin: at(new THREE.BoxGeometry(0.62, 0.28, 0.58), 0.56, -0.06),
+        car: mergeGeos([
+          (() => {
+            const body = new THREE.BoxGeometry(0.78, 0.15, 0.34);
+            body.translate(0.02, 0.16, 0);
+            return body;
+          })(),
+          (() => {
+            const roof = new THREE.BoxGeometry(0.28, 0.03, 0.26);
+            roof.translate(-0.08, 0.34, 0);
+            return roof;
+          })(),
+        ]),
+        windows: mergeGeos(carWindows()),
+        wheels: mergeGeos([
+          axle(0.22, 0.18, 0.075, 0.05),
+          axle(0.22, -0.18, 0.075, 0.05),
+          axle(-0.22, 0.18, 0.075, 0.05),
+          axle(-0.22, -0.18, 0.075, 0.05),
+        ]),
+        hubs: mergeGeos([
+          axle(0.22, 0.18, 0.032, 0.058),
+          axle(0.22, -0.18, 0.032, 0.058),
+          axle(-0.22, 0.18, 0.032, 0.058),
+          axle(-0.22, -0.18, 0.032, 0.058),
+        ]),
+        headlights: mergeGeos([
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, 0.1);
+            return lamp;
+          })(),
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, -0.1);
+            return lamp;
+          })(),
+        ]),
         body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
         head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
       },
@@ -854,7 +939,22 @@ function useFurniture() {
         }),
         red: new THREE.MeshStandardMaterial({ color: "#e08978", roughness: 0.45 }),
         wood: new THREE.MeshStandardMaterial({ color: "#c9a77c", roughness: 0.7 }),
-        paint: new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.45 }),
+        paint: new THREE.MeshStandardMaterial({ roughness: 0.28, metalness: 0.55 }),
+        glass: new THREE.MeshStandardMaterial({
+          color: "#b7e4f5",
+          roughness: 0.05,
+          metalness: 0.15,
+          transparent: true,
+          opacity: 0.72,
+        }),
+        tire: new THREE.MeshStandardMaterial({ color: "#141414", roughness: 0.9 }),
+        hub: new THREE.MeshStandardMaterial({ color: "#d5d8dc", metalness: 0.7, roughness: 0.25 }),
+        lamp: new THREE.MeshStandardMaterial({
+          color: "#fff4d2",
+          emissive: "#ffe08a",
+          emissiveIntensity: 1.4,
+          toneMapped: false,
+        }),
         shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
         skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
       },
@@ -1007,7 +1107,10 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       ))}
 
       <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
-      <Instanced geometry={shapes.cabin} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
+      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />
+      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
+      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
       <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
       <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
