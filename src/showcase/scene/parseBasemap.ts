@@ -35,6 +35,14 @@ export type WayRibbon = {
   metersPerLane: number | null;
   highway: string | null;
   lanes: number | null;
+  /** OSM bridge tag is set (not "no"): the way is an elevated deck. */
+  bridge?: boolean;
+  /** OSM layer tag (kept as "layer:osm"), 0 when absent: how decks stack. */
+  deckLayer?: number;
+  /** bridge:structure, ref, and colour, for the big bridges. */
+  structure?: string | null;
+  ref?: string | null;
+  colour?: string | null;
 };
 
 /** A mapped lake or pond. The shoreline is the map, not a defect. */
@@ -236,7 +244,11 @@ export function parseBasemap(
     ) {
       const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
       if (points.length < 2) continue;
+      const props = f.properties ?? {};
+      // Tunnels run under the buildings; they are not drawn on the ground.
+      if (typeof props.tunnel === "string" && props.tunnel !== "no") continue;
       const width = resolveRoadWidth(f.properties ?? null);
+      const text = (value: unknown) => (typeof value === "string" && value ? value : null);
       ways.push({
         id,
         edgeId,
@@ -249,6 +261,11 @@ export function parseBasemap(
         metersPerLane: width.metersPerLane,
         highway: width.highway,
         lanes: width.lanes,
+        bridge: typeof props.bridge === "string" && props.bridge !== "no",
+        deckLayer: Number(props["layer:osm"] ?? 0) || 0,
+        structure: text(props["bridge:structure"]),
+        ref: text(props.ref),
+        colour: text(props.colour),
       });
     }
   }

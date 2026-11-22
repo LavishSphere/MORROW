@@ -134,3 +134,79 @@ test("Overpass keeps highway, lanes, and width on the road", () => {
   assert.equal(ways[2]?.widthKind, null);
   assert.equal(ways[2]?.highway, null);
 });
+
+test("lanes are urban width, and a tagged width that includes sidewalks is not trusted", () => {
+  const primary = resolveRoadWidth({ highway: "primary", lanes: "4" });
+  assert.ok(primary.widthMeters <= 13.2);
+  const wide = resolveRoadWidth({ highway: "residential", width: "18", lanes: "2" });
+  assert.equal(wide.widthKind, "lanes");
+  assert.ok(wide.widthMeters < 12);
+  assert.equal(wide.taggedWidthMeters, 18);
+  const noLanes = resolveRoadWidth({ highway: "residential", width: "25" });
+  assert.equal(noLanes.widthKind, "prior");
+});
+
+test("one carriageway of a divided road is narrower than the two-way prior", () => {
+  const twoWay = resolveRoadWidth({ highway: "primary" });
+  const oneWay = resolveRoadWidth({ highway: "primary", oneway: "yes" });
+  assert.ok(oneWay.widthMeters < twoWay.widthMeters);
+});
+
+test("tunnels, underground layers, and indoor corridors are not drawn on the ground", () => {
+  const geometry = [
+    { lat: 42.36, lon: -71.06 },
+    { lat: 42.361, lon: -71.06 },
+  ];
+  const ways = waysFromOverpass({
+    elements: [
+      { type: "way", id: 1, tags: { highway: "motorway", tunnel: "yes", layer: "-2" }, geometry },
+      { type: "way", id: 2, tags: { highway: "service", layer: "-1" }, geometry },
+      { type: "way", id: 3, tags: { highway: "corridor" }, geometry },
+      { type: "way", id: 4, tags: { highway: "footway", covered: "yes" }, geometry },
+      { type: "way", id: 5, tags: { highway: "platform" }, geometry },
+      { type: "way", id: 6, tags: { highway: "primary", tunnel: "no" }, geometry },
+      { type: "way", id: 7, tags: { highway: "trunk", bridge: "yes", layer: "1", "bridge:structure": "arch" }, geometry },
+    ],
+  });
+  assert.deepEqual(
+    ways.map((way) => way.id),
+    [6, 7],
+  );
+  assert.equal(ways[1]?.tags?.bridge, "yes");
+  assert.equal(ways[1]?.tags?.["bridge:structure"], "arch");
+});
+
+test("the OSM layer tag is kept as layer:osm and never replaces the scene layer", () => {
+  const ring = [
+    { lat: 42.36, lon: -71.06 },
+    { lat: 42.36, lon: -71.059 },
+    { lat: 42.361, lon: -71.059 },
+    { lat: 42.36, lon: -71.06 },
+  ];
+  const ways = waysFromOverpass({
+    elements: [
+      { type: "way", id: 10, tags: { building: "yes", layer: "1" }, geometry: ring },
+      { type: "way", id: 11, tags: { highway: "primary", bridge: "yes", layer: "2" }, geometry: ring.slice(0, 2) },
+      {
+        type: "relation",
+        id: 12,
+        tags: { man_made: "bridge", type: "multipolygon", colour: "#f04a00", "bridge:structure": "suspension" },
+        members: [
+          { type: "way", role: "outer", geometry: ring.slice(0, 3) },
+          { type: "way", role: "outer", geometry: ring.slice(2) },
+        ],
+      },
+    ],
+  });
+  const geo = neighborhoodGeoJson({ place: { label: "Boston", lng: -71.06, lat: 42.36 }, note: "", ways }) as {
+    features: { properties: Record<string, unknown>; geometry: { type: string } }[];
+  };
+  const [building, deck, outline] = geo.features;
+  assert.equal(building?.properties.layer, "building");
+  assert.equal(building?.properties["layer:osm"], "1");
+  assert.equal(deck?.properties.layer, "road");
+  assert.equal(deck?.properties["layer:osm"], "2");
+  assert.equal(outline?.properties.layer, "bridge");
+  assert.equal(outline?.properties.colour, "#f04a00");
+  assert.equal(outline?.geometry.type, "Polygon");
+});
