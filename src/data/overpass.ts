@@ -15,7 +15,7 @@ export type OsmWay = {
    * 'part' is an OSM building:part: one 3D piece of a detailed building.
    * 'bridge' is a man_made=bridge outline: the structure under its roads.
    */
-  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge' | 'rail' | 'platform' | 'station' | 'sand'
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge' | 'rail' | 'platform' | 'station' | 'sand' | 'tree'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -359,6 +359,11 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       continue
     }
     if (row.type === 'node') {
+      const tree = treeNode(row)
+      if (tree) {
+        ways.push(tree)
+        continue
+      }
       const station = stationNode(row)
       if (station && !seenRail.has(`station:${station.id}`)) {
         seenRail.add(`station:${station.id}`)
@@ -388,6 +393,11 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     const building = !part && typeof row.tags?.building === 'string'
     const highway = typeof row.tags?.highway === 'string'
     const coastline = row.tags?.natural === 'coastline'
+    if (row.tags?.natural === 'tree_row') {
+      const trees = treeRowPoints(points)
+      if (trees.length) ways.push({ id: row.id as number, name: null, kind: 'tree', tags: {}, points: trees })
+      continue
+    }
     const natural = row.tags?.natural === 'water' || row.tags?.natural === 'bay'
     // Beaches and sand: drawn as sand, kept free of trees.
     const sandy = (row.tags?.natural === 'beach' || row.tags?.natural === 'sand') && isClosedRing(points)
@@ -544,6 +554,38 @@ function railWay(
     lineColour: kind === 'rail' ? lineColour(tags, ref, name) : null,
     lineRef: refs,
   }
+}
+
+/** A tree mapped as an OSM node (natural=tree), with its leaf type when known. */
+function treeNode(row: OverpassElement & { lat?: unknown; lon?: unknown }): OsmWay | null {
+  if (row.tags?.natural !== 'tree') return null
+  if (typeof row.id !== 'number' || typeof row.lat !== 'number' || typeof row.lon !== 'number') return null
+  const leaf = row.tags?.leaf_type
+  return {
+    id: row.id,
+    name: null,
+    kind: 'tree',
+    tags: typeof leaf === 'string' ? { leaf_type: leaf } : {},
+    points: [[row.lon, row.lat]],
+  }
+}
+
+/** Trees every ~9 m along a mapped tree row, as [longitude, latitude]. */
+export function treeRowPoints(line: [number, number][], spacingMetres = 9): [number, number][] {
+  const out: [number, number][] = []
+  const lat0 = line[0]?.[1] ?? 0
+  const mx = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  const my = 110_540
+  let carry = spacingMetres / 2
+  for (let i = 0; i + 1 < line.length; i += 1) {
+    const [ax, ay] = line[i]!
+    const [bx, by] = line[i + 1]!
+    const len = Math.hypot((bx - ax) * mx, (by - ay) * my)
+    for (let d = carry; d < len; d += spacingMetres) out.push([ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len])
+    carry = (carry - len) % spacingMetres
+    if (carry < 0) carry += spacingMetres
+  }
+  return out
 }
 
 /** Stations, stops, and subway entrances are OSM nodes. */
@@ -729,6 +771,14 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { osmId: way.id, layer: 'water', name: way.name, water: way.water ?? 'water' },
+      })
+      continue
+    }
+    if (way.kind === 'tree') {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'MultiPoint', coordinates: way.points },
+        properties: { osmId: way.id, layer: 'tree', leaf: way.tags?.leaf_type ?? null },
       })
       continue
     }
