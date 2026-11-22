@@ -281,7 +281,7 @@ export function colourForRef(ref: string | null | undefined, network?: string | 
   const system = systemOf(network) ?? systemOf(raw);
   if (system === "amtrak") return NEUTRAL_TRACK;
   if (!raw) return null;
-  if (/^cr-|commuter rail/.test(raw)) return SYSTEM_COLOURS.mbta!.cr!;
+  if (raw.startsWith("cr-") || raw.includes("commuter rail")) return SYSTEM_COLOURS.mbta!.cr!;
   if (/^green-[bcde]$/.test(raw)) return SYSTEM_COLOURS.mbta!.green!;
   if (system) {
     const table = SYSTEM_COLOURS[system]!;
