@@ -25,7 +25,7 @@ const STAC = `https://stac.overturemaps.org/${OVERTURE_RELEASE}/collections.parq
 
 type Row = Record<string, unknown>;
 
-function intersects(
+export function intersects(
   box: NeighborhoodBox,
   xmin: number,
   ymin: number,
@@ -66,7 +66,7 @@ function stat(column: { meta_data?: { path_in_schema?: string[]; statistics?: { 
   return typeof value === "number" ? value : null;
 }
 
-function groupOverlaps(
+export function groupOverlaps(
   group: { columns: { meta_data?: { path_in_schema?: string[]; statistics?: { min?: unknown; max?: unknown; min_value?: unknown; max_value?: unknown } } }[] },
   box: NeighborhoodBox,
 ): boolean {
@@ -236,7 +236,7 @@ type ParquetMeta = Awaited<ReturnType<typeof parquetMetadataAsync>>;
  */
 const opened = new Map<string, Promise<{ file: ParquetFile; metadata: ParquetMeta }>>();
 
-function openParquet(url: string) {
+export function openParquet(url: string) {
   let entry = opened.get(url);
   if (!entry) {
     entry = (async () => {
@@ -332,11 +332,18 @@ async function rowsInBox(url: string, box: NeighborhoodBox): Promise<OvertureFoo
  * An empty list means the extract could not be read; callers keep OSM heights.
  */
 export async function fetchOvertureBuildings(box: NeighborhoodBox): Promise<OvertureFootprint[]> {
+  const urls = await filesFor("building", box);
+  const batches = await Promise.all(urls.map((url) => rowsInBox(url, box).catch(() => [] as OvertureFootprint[])));
+  return batches.flat();
+}
+
+/** HTTPS addresses of one collection's parquet files that touch the box. */
+export async function filesFor(collection: string, box: NeighborhoodBox): Promise<string[]> {
   const files = await readIndex();
   const urls: string[] = [];
   for (const file of files) {
     const row = file as Row;
-    if (row.collection !== "building") continue;
+    if (row.collection !== collection) continue;
     const limits = row.bbox as { xmin?: unknown; ymin?: unknown; xmax?: unknown; ymax?: unknown } | undefined;
     const xmin = asNumber(limits?.xmin);
     const ymin = asNumber(limits?.ymin);
@@ -347,6 +354,5 @@ export async function fetchOvertureBuildings(box: NeighborhoodBox): Promise<Over
     const url = httpsHref(row.assets);
     if (url) urls.push(url);
   }
-  const batches = await Promise.all(urls.map((url) => rowsInBox(url, box).catch(() => [] as OvertureFootprint[])));
-  return batches.flat();
+  return urls;
 }
