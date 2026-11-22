@@ -711,17 +711,36 @@ function insideRing(x: number, z: number, ring: Ring) {
   return inside;
 }
 
-function nearRing(x: number, z: number, ring: Ring, margin: number) {
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i]!;
-    const b = ring[(i + 1) % ring.length]!;
-    const dx = b[0] - a[0];
-    const dz = b[1] - a[1];
-    const len2 = dx * dx + dz * dz || 1;
-    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
-    if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) return true;
+/** from, from + step, … up to `to`, added up the way a `x += step` loop does. */
+function steps(from: number, to: number, step: number): number[] {
+  const out: number[] = [];
+  for (let v = from; v <= to; v += step) out.push(v);
+  return out;
+}
+
+/**
+ * Calls `visit(x, z)` for every sample point inside the ring, exactly the
+ * points insideRing accepts, one scanline per row instead of one ring
+ * walk per point.
+ */
+function eachInside(ring: Ring, xs: readonly number[], zs: readonly number[], visit: (x: number, z: number) => void) {
+  const cuts: number[] = [];
+  for (const z of zs) {
+    cuts.length = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [xi, zi] = ring[i]!;
+      const [xj, zj] = ring[j]!;
+      if (zi > z !== zj > z) cuts.push(((xj - xi) * (z - zi)) / (zj - zi) + xi);
+    }
+    if (cuts.length === 0) continue;
+    cuts.sort((p, q) => p - q);
+    // Inside when an odd number of cuts lie to the right of x (x < cut).
+    let k = 0;
+    for (const x of xs) {
+      while (k < cuts.length && cuts[k]! <= x) k += 1;
+      if ((cuts.length - k) % 2 === 1) visit(x, z);
+    }
   }
-  return false;
 }
 
 class Occupancy {
@@ -763,13 +782,12 @@ class Occupancy {
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
     }
-    for (let x = minX; x <= maxX; x += this.cell) {
-      for (let z = minZ; z <= maxZ; z += this.cell) {
-        if (!insideRing(x, z, ring)) continue;
-        const k = this.index(x, z);
-        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
-      }
-    }
+    const xs = steps(minX, maxX, this.cell);
+    const zs = steps(minZ, maxZ, this.cell);
+    eachInside(ring, xs, zs, (x, z) => {
+      const k = this.index(x, z);
+      if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+    });
   }
 
   nearbyHeight(x: number, z: number, radius: number) {
@@ -805,9 +823,29 @@ class Occupancy {
       minZ = Math.min(minZ, z);
       maxZ = Math.max(maxZ, z);
     }
-    for (let x = minX - margin; x <= maxX + margin; x += this.cell) {
-      for (let z = minZ - margin; z <= maxZ + margin; z += this.cell) {
-        if (insideRing(x, z, ring) || nearRing(x, z, ring, margin)) this.set(x, z);
+    // The same sample points as testing insideRing || nearRing at each one,
+    // but row by row and edge by edge: big footprints no longer cost
+    // (points × edges).
+    const xs = steps(minX - margin, maxX + margin, this.cell);
+    const zs = steps(minZ - margin, maxZ + margin, this.cell);
+    eachInside(ring, xs, zs, (x, z) => this.set(x, z));
+    for (let i = 0; i < ring.length; i += 1) {
+      const a = ring[i]!;
+      const b = ring[(i + 1) % ring.length]!;
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const len2 = dx * dx + dz * dz || 1;
+      const c0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - margin - xs[0]!) / this.cell) - 1);
+      const c1 = Math.min(xs.length - 1, Math.ceil((Math.max(a[0], b[0]) + margin - xs[0]!) / this.cell) + 1);
+      const r0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - margin - zs[0]!) / this.cell) - 1);
+      const r1 = Math.min(zs.length - 1, Math.ceil((Math.max(a[1], b[1]) + margin - zs[0]!) / this.cell) + 1);
+      for (let c = c0; c <= c1; c += 1) {
+        const x = xs[c]!;
+        for (let r = r0; r <= r1; r += 1) {
+          const z = zs[r]!;
+          const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
+          if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) this.set(x, z);
+        }
       }
     }
   }
