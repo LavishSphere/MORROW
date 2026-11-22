@@ -6,7 +6,7 @@
   "exported_at": "2026-11-21T23:50:00+00:00",
   "name": "MORROW API",
   "author": "me@khayrul.com",
-  "description": "MORROW proposal API. The image is ghcr.io/lavishsphere/morrow:latest. Nginx on the VPS proxies public HTTPS to this server's allocation. Leave DATABASE_URL empty to keep the bundled dataset. Do not set MORROW_HOSTED_ON.",
+  "description": "MORROW proposal API. The image is ghcr.io/lavishsphere/morrow:latest. Nginx on the VPS proxies public HTTPS to this server's allocation. Leave DATABASE_URL empty to keep the bundled dataset.",
   "features": null,
   "docker_images": {
     "MORROW API": "ghcr.io/lavishsphere/morrow:latest"

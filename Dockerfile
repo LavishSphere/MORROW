@@ -19,5 +19,5 @@ EXPOSE 8787
 COPY --chmod=755 start-api.sh /app/start-api.sh
 
 # Inject GEMINI_API_KEY and DATABASE_URL at runtime. Never bake secrets into the image.
-# Do not set MORROW_HOSTED_ON. Pterodactyl sets SERVER_PORT to the allocation.
+# Pterodactyl sets SERVER_PORT to the allocation.
 CMD ["/app/start-api.sh"]

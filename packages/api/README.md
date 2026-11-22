@@ -70,8 +70,8 @@ curl -s -X POST "http://127.0.0.1:8787/api/proposals/generate" \
 
 ## Frontend
 
-Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin (see [`docs/deploy-api-vultr.md`](../../docs/deploy-api-vultr.md)). When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin, such as `https://api.morrow.khayrul.com`. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
 
 ## Pterodactyl
 
-Import [`pterodactyl/morrow-api.json`](../../pterodactyl/morrow-api.json) as an egg. The image is `ghcr.io/lavishsphere/morrow:latest`. The panel allocation is `SERVER_PORT`. Put `DATABASE_URL` and `GEMINI_API_KEY` in the egg variables, not in git. Nginx on the VPS proxies public HTTPS to that allocation. Leave `MORROW_HOSTED_ON` unset. Do not claim Vultr.
+Import [`pterodactyl/morrow-api.json`](../../pterodactyl/morrow-api.json) as an egg. The image is `ghcr.io/lavishsphere/morrow:latest`. The panel allocation is `SERVER_PORT`. Put `DATABASE_URL` and `GEMINI_API_KEY` in the egg variables, not in git. Nginx on the VPS proxies public HTTPS to that allocation.
