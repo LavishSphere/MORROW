@@ -5,6 +5,7 @@ import basemap from "../../data/wellesley/basemap.geojson";
 import { CityLoader } from "../brand/CityLoader";
 import { PERF_PROBE, PerfProbe } from "./scene/PerfProbe";
 import { TownScene } from "./scene/TownScene";
+import { DPR_MAX } from "./scene/ViewBudget";
 import type { ShowcaseCanvasProps } from "./types";
 
 /** Frames to paint before the cover can lift. The first frame compiles the city. */
@@ -87,7 +88,8 @@ export function ShowcaseCanvas({
           far: 2500,
           position: [46, 34, 50],
         }}
-        dpr={[1, 1.75]}
+        // At most 1.5× on Retina screens; ViewBudget drops to 1× when the GPU falls behind.
+        dpr={[1, DPR_MAX]}
         gl={{
           antialias: true,
           alpha: false,

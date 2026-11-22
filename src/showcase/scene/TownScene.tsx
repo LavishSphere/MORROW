@@ -6,6 +6,7 @@ import { CameraRig } from "./CameraRig";
 import { City, CITY_SPAN } from "./City";
 import { HORIZON_HAZE, Sky } from "./Space";
 import { Street } from "./Street";
+import { ViewBudget } from "./ViewBudget";
 
 type TownSceneProps = {
   geoJson?: unknown;
@@ -69,6 +70,7 @@ export function TownScene({
         lookAt={LOOK_AT}
         settled={SETTLED}
       />
+      <ViewBudget />
       {/* The bundled campus basemap means "nothing loaded": show the whole town. */}
       <City geoJson={geoJson === basemap ? undefined : geoJson} reducedMotion={reducedMotion} />
       <group visible={false}>

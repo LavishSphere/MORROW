@@ -30,7 +30,10 @@ type Snapshot = {
   programs: number;
   heapMB: number | null;
   longTasks: number[];
-  hooks: { name: string; ms: number; count: number }[];
+  slowFrames: string[];
+  hooks: { name: string; ms: number; count: number; max: number }[];
+  cpuMax: number;
+  renderMax: number;
 };
 
 function quantile(values: number[], q: number) {
@@ -51,7 +54,7 @@ export function PerfProbe() {
   useEffect(() => {
     const samples: Sample[] = [];
     const longTasks: number[] = [];
-    const hooks = new Map<string, { ms: number; count: number }>();
+    const hooks = new Map<string, { ms: number; count: number; max: number }>();
     let start = 0;
     let lastStart = 0;
     let renderMs = 0;
@@ -68,8 +71,10 @@ export function PerfProbe() {
         const wrapped: Callback = (...args: unknown[]) => {
           const t0 = performance.now();
           fn(...args);
-          const entry = hooks.get(name) ?? { ms: 0, count: 0 };
-          entry.ms += performance.now() - t0;
+          const entry = hooks.get(name) ?? { ms: 0, count: 0, max: 0 };
+          const took = performance.now() - t0;
+          entry.ms += took;
+          entry.max = Math.max(entry.max, took);
           entry.count += 1;
           hooks.set(name, entry);
         };
@@ -116,6 +121,32 @@ export function PerfProbe() {
     } catch {
       observer = null;
     }
+    // Long animation frames, with the scripts that made them long (Chromium).
+    const slowFrames: string[] = [];
+    let frameObserver: PerformanceObserver | null = null;
+    try {
+      frameObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as unknown as {
+          duration: number;
+          renderStart: number;
+          startTime: number;
+          styleAndLayoutStart: number;
+          scripts: { invoker: string; sourceFunctionName: string; sourceURL: string; duration: number }[];
+        }[]) {
+          if (entry.duration < 100) continue;
+          const scripts = entry.scripts
+            .filter((script) => script.duration > 20)
+            .map((script) => `${Math.round(script.duration)}ms ${script.invoker} ${script.sourceFunctionName}@${script.sourceURL.split("/").pop()}`)
+            .join("; ");
+          const layout = entry.styleAndLayoutStart ? Math.round(entry.startTime + entry.duration - entry.styleAndLayoutStart) : 0;
+          slowFrames.push(`${Math.round(entry.duration)}ms layout+paint ${layout}ms :: ${scripts}`);
+          if (slowFrames.length > 40) slowFrames.shift();
+        }
+      });
+      frameObserver.observe({ type: "long-animation-frame", buffered: false });
+    } catch {
+      frameObserver = null;
+    }
 
     const snapshot = (): Snapshot => {
       const pick = (key: keyof Sample) => samples.map((s) => s[key]);
@@ -130,6 +161,8 @@ export function PerfProbe() {
         renderP50: round(quantile(pick("render"), 0.5)),
         renderP95: round(quantile(pick("render"), 0.95)),
         frameHooksP50: round(quantile(pick("frame"), 0.5)),
+        cpuMax: round(Math.max(0, ...pick("cpu"))),
+        renderMax: round(Math.max(0, ...pick("render"))),
         calls: info.calls,
         triangles: info.triangles,
         geometries: gl.info.memory.geometries,
@@ -137,8 +170,9 @@ export function PerfProbe() {
         programs: gl.info.programs?.length ?? 0,
         heapMB: memory ? round(memory.usedJSHeapSize / 1048576) : null,
         longTasks: [...longTasks],
+        slowFrames: [...slowFrames],
         hooks: [...hooks.entries()]
-          .map(([name, v]) => ({ name, ms: round(v.ms), count: v.count }))
+          .map(([name, v]) => ({ name, ms: round(v.ms), count: v.count, max: round(v.max) }))
           .sort((a, b) => b.ms - a.ms)
           .slice(0, 10),
       };
@@ -146,6 +180,7 @@ export function PerfProbe() {
     const reset = () => {
       samples.length = 0;
       longTasks.length = 0;
+      slowFrames.length = 0;
       hooks.clear();
       lastStart = 0;
     };
@@ -189,6 +224,7 @@ export function PerfProbe() {
       offBefore();
       offAfter();
       observer?.disconnect();
+      frameObserver?.disconnect();
       window.clearInterval(tick);
       overlay.remove();
       gl.render = render;
