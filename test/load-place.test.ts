@@ -124,13 +124,58 @@ test("OpenStreetMap ways are streets and buildings, not barriers", () => {
   assert.equal(wet[0]?.kind, "water");
   assert.equal(wet[1]?.kind, "waterway");
   assert.equal(wet[2]?.kind, "road");
+  const shore = waysFromOverpass({
+    elements: [
+      {
+        type: "way",
+        id: 45,
+        tags: { natural: "coastline", name: "Massachusetts Bay" },
+        geometry: [
+          { lat: 42.28, lon: -71.32 },
+          { lat: 42.28, lon: -71.3 },
+        ],
+      },
+      {
+        type: "way",
+        id: 46,
+        tags: { waterway: "riverbank", name: "Charles River" },
+        geometry: [
+          { lat: 42.28, lon: -71.31 },
+          { lat: 42.281, lon: -71.309 },
+          { lat: 42.28, lon: -71.308 },
+          { lat: 42.28, lon: -71.31 },
+        ],
+      },
+      {
+        type: "relation",
+        id: 47,
+        tags: { natural: "water", name: "Harbor", water: "bay" },
+        members: [
+          {
+            type: "way",
+            role: "outer",
+            geometry: [
+              { lat: 42.27, lon: -71.31 },
+              { lat: 42.271, lon: -71.309 },
+              { lat: 42.27, lon: -71.308 },
+              { lat: 42.27, lon: -71.31 },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(shore[0]?.kind, "coastline");
+  assert.equal(shore[1]?.kind, "water");
+  assert.equal(shore[2]?.kind, "water");
+  assert.equal(shore[2]?.water, "bay");
   const geo = neighborhoodGeoJson({
     place: { label: "Wellesley, Massachusetts", lng: -71.3, lat: 42.29 },
     note: "",
-    ways: wet,
+    ways: [...wet, ...shore],
   });
   const layers = (geo.features as { properties: { layer: string } }[]).map((f) => f.properties.layer);
-  assert.deepEqual(layers, ["water", "waterway", "road"]);
+  assert.deepEqual(layers, ["water", "waterway", "road", "coastline", "water", "water"]);
 });
 
 test("the canvas loads a typed place on the satellite scene", async () => {
@@ -140,6 +185,8 @@ test("the canvas loads a typed place on the satellite scene", async () => {
   assert.match(slot, /ShowcaseCanvas/);
   assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(query, /Not a barrier inventory/);
+  assert.match(query, /natural"="coastline"/);
+  assert.match(query, /relation\["natural"="water"\]/);
   assert.match(town, /No modeled route for this place/);
 });
 
