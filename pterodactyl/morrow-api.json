@@ -79,12 +79,12 @@
     },
     {
       "name": "Pages origin",
-      "description": "Exact GitHub Pages origin allowed to call the API, for example https://lavishsphere.github.io. Empty allows any origin.",
+      "description": "Browser origins allowed to call the API, separated by commas, e.g. https://plsfixthisshit.work,https://morrow.khayrul.com. Empty allows any origin.",
       "env_variable": "MORROW_CORS_ORIGIN",
       "default_value": "",
       "user_viewable": true,
       "user_editable": true,
-      "rules": "nullable|string|max:200",
+      "rules": "nullable|string|max:500",
       "field_type": "text"
     }
   ]

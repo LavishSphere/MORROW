@@ -50,7 +50,7 @@ A keyed feed without its env var answers 501, and the web app stops polling it. 
 | `WMATA_API_KEY`, `CTA_TRAIN_TRACKER_KEY`, `METRA_API_TOKEN`, `TRIMET_APP_ID`, `SF511_API_KEY` | No | — | Free developer keys for the keyed live transit feeds above. Sent only from the server. |
 | `PORT` | No | `8787` | Listen port. `SERVER_PORT` wins when Pterodactyl sets it. |
 | `HOST` | No | `127.0.0.1` | Bind address. `0.0.0.0` when `SERVER_PORT` is set and `HOST` is empty. |
-| `MORROW_CORS_ORIGIN` | No | `*` | Exact browser origin to allow, or omit for `*` |
+| `MORROW_CORS_ORIGIN` | No | `*` | Browser origin to allow, or several separated by commas; omit for `*` |
 
 Do **not** put `GEMINI_API_KEY` or `DATABASE_URL` in Vite `VITE_*` env vars or ship them to the browser. See the repo root [`.env.example`](../../.env.example) for the template shape (no real secrets).
 

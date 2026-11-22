@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://morrow.khayrul.com">
-    <img src="https://img.shields.io/badge/Live%20demo-morrow.khayrul.com-1688ff?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live demo" />
+  <a href="https://plsfixthisshit.work">
+    <img src="https://img.shields.io/badge/Live%20demo-plsfixthisshit.work-1688ff?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live demo" />
   </a>
   <img src="https://img.shields.io/badge/WHACK%202026-Better%20Worlds-0b1424?style=for-the-badge" alt="WHACK 2026, Better Worlds" />
 </p>
@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/Google-Gemini%20API-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Google Gemini API" />
   <img src="https://img.shields.io/badge/Tiger%20Data-PostGIS-F5A623?style=for-the-badge&logo=postgresql&logoColor=white" alt="Tiger Data PostGIS" />
   <img src="https://img.shields.io/badge/SpaceXSI-Cursor%20%2B%20Grok%20Bot-000000?style=for-the-badge" alt="SpaceXSI: Cursor and Grok Bot" />
-  <img src="https://img.shields.io/badge/GoDaddy%20Registry-plsfixthisshit.now-1BDBDB?style=for-the-badge" alt="GoDaddy Registry domain" />
+  <img src="https://img.shields.io/badge/GoDaddy%20Registry-plsfixthisshit.work-1BDBDB?style=for-the-badge" alt="GoDaddy Registry domain" />
 </p>
 
 <p align="center">
@@ -145,11 +145,11 @@ We built MORROW only with Cursor and Grok Bot.
 
 ### GoDaddy Registry
 
-Our domain, registered through GoDaddy Registry: **plsfixthisshit.now**.
+Our domain, registered through GoDaddy Registry: **[plsfixthisshit.work](https://plsfixthisshit.work)**.
 
 ## Open the demo
 
-**Public URL:** [https://morrow.khayrul.com](https://morrow.khayrul.com). No login and no judge account. The web app is a static build on GitHub Pages behind that custom domain; the proposal API runs as a Docker image (`ghcr.io/lavishsphere/morrow:latest`) behind `https://api.morrow.khayrul.com`.
+**Public URL:** [https://plsfixthisshit.work](https://plsfixthisshit.work). No login and no judge account. The web app is a static build on GitHub Pages behind that custom domain; the proposal API runs as a Docker image (`ghcr.io/lavishsphere/morrow:latest`) behind `https://api.morrow.khayrul.com`.
 
 A 90-second path: type a city in the address bar, pick a pin, switch **Today / With the fix**, press **Improve**, open **Compare**, then **Propose** and export the PDF. The Wellesley showcase scenario is `wellesley-demo-01` with the intervention `wellesley-intervention-ramp-01`.
 
@@ -240,5 +240,5 @@ Built at WHACK 2026, Wellesley College, November 2026.
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). Building heights from [Overture Maps](https://overturemaps.org) release 2026-11-18.0. Showcase data credits and honesty rules: [`data/wellesley/ATTRIBUTION.md`](data/wellesley/ATTRIBUTION.md). Code is MIT ([`LICENSE`](LICENSE)).
 
 <p align="center">
-  <a href="https://morrow.khayrul.com"><strong>morrow.khayrul.com</strong></a>
+  <a href="https://plsfixthisshit.work"><strong>plsfixthisshit.work</strong></a>
 </p>
