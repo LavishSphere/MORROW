@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getCityState, setLoadingMore, useCityState, type CityMap } from '../showcase/cityStore'
+import { getCityState, setLoadingMore, subscribeCity, useCitySelector, type CityMap } from '../showcase/cityStore'
 import {
   fetchTile,
   mergeAreas,
@@ -81,7 +81,9 @@ export function useCityStreaming(
   neighborhood: LoadedNeighborhood | null,
   onChange: (next: LoadedNeighborhood) => void,
 ) {
-  const { map, pose } = useCityState()
+  // Only the map re-renders the host; the camera pose is read outside React,
+  // so moving the camera never re-renders the canvas around it.
+  const map = useCitySelector((state) => state.map)
   const failed = useRef(new Set<string>())
   const latest = useRef(neighborhood)
   const change = useRef(onChange)
@@ -106,9 +108,6 @@ export function useCityStreaming(
   useEffect(() => {
     change.current = onChange
   }, [onChange])
-  useEffect(() => {
-    lastMove.current = Date.now()
-  }, [pose])
 
   const place = neighborhood?.place
   const procedural = Boolean(neighborhood?.procedural)
@@ -290,26 +289,38 @@ export function useCityStreaming(
 
   // Near the loaded edge: the area just beyond it goes to the front of the queue.
   useEffect(() => {
-    if (!neighborhood || neighborhood.procedural || !map || !mapIsFor(map, neighborhood.place)) return
-    const b = map.bounds
-    const gaps = [
-      { d: pose.x - b.minX, dx: -1, dz: 0 },
-      { d: b.maxX - pose.x, dx: 1, dz: 0 },
-      { d: pose.z - b.minZ, dx: 0, dz: -1 },
-      { d: b.maxZ - pose.z, dx: 0, dz: 1 },
-    ].sort((a, c) => a.d - c.d)
-    const nearest = gaps[0]
-    if (!nearest || nearest.d > NEAR_EDGE) return
+    const checkEdge = () => {
+      const { pose } = getCityState()
+      if (!neighborhood || neighborhood.procedural || !map || !mapIsFor(map, neighborhood.place)) return
+      const b = map.bounds
+      const gaps = [
+        { d: pose.x - b.minX, dx: -1, dz: 0 },
+        { d: b.maxX - pose.x, dx: 1, dz: 0 },
+        { d: pose.z - b.minZ, dx: 0, dz: -1 },
+        { d: b.maxZ - pose.z, dx: 0, dz: 1 },
+      ].sort((a, c) => a.d - c.d)
+      const nearest = gaps[0]
+      if (!nearest || nearest.d > NEAR_EDGE) return
 
-    const [lng, lat] = map.unproject(pose.x + nearest.dx * AHEAD, pose.z + nearest.dz * AHEAD)
-    const key = tileKey(lng, lat)
-    if ((neighborhood.tiles ?? []).includes(key) || failed.current.has(key)) return
-    if (pending.current.keys.includes(key)) {
-      // Already downloaded in the background: show it now.
-      pending.current.urgent = true
-    } else if (inflight.current !== key && !fetched.current.has(key) && urgent.current[0] !== key) {
-      urgent.current = [key, ...urgent.current.filter((item) => item !== key)].slice(0, URGENT_LIMIT)
+      const [lng, lat] = map.unproject(pose.x + nearest.dx * AHEAD, pose.z + nearest.dz * AHEAD)
+      const key = tileKey(lng, lat)
+      if ((neighborhood.tiles ?? []).includes(key) || failed.current.has(key)) return
+      if (pending.current.keys.includes(key)) {
+        // Already downloaded in the background: show it now.
+        pending.current.urgent = true
+      } else if (inflight.current !== key && !fetched.current.has(key) && urgent.current[0] !== key) {
+        urgent.current = [key, ...urgent.current.filter((item) => item !== key)].slice(0, URGENT_LIMIT)
+      }
+      kick.current()
     }
-    kick.current()
-  }, [map, pose, neighborhood])
+    checkEdge()
+    let last = getCityState().pose
+    return subscribeCity(() => {
+      const { pose } = getCityState()
+      if (pose === last) return
+      last = pose
+      lastMove.current = Date.now()
+      checkEdge()
+    })
+  }, [map, neighborhood])
 }
