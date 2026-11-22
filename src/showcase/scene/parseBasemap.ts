@@ -1,3 +1,4 @@
+import { resolveRoadWidth, type WidthKind } from "../../data/roadWidth.ts";
 import { isFeatureCollection, type SceneProjector } from "../geo";
 
 export type BasemapLayer =
@@ -24,7 +25,15 @@ export type WayRibbon = {
   layer: Exclude<BasemapLayer, "building" | "water" | "waterway">;
   name?: string;
   points: readonly (readonly [number, number])[];
+  /** Scene units. Half of the resolved carriageway width, scaled into the miniature. */
   halfWidth: number;
+  widthMeters: number;
+  /** tagged, lanes, or prior. A class fallback is always prior. */
+  widthKind: WidthKind;
+  /** Meters-per-lane assumption. Set only when widthKind is lanes. */
+  metersPerLane: number | null;
+  highway: string | null;
+  lanes: number | null;
 };
 
 /** A mapped lake or pond. The shoreline is the map, not a defect. */
@@ -113,19 +122,6 @@ function layerOf(properties: Record<string, unknown> | null): BasemapLayer | nul
   return null;
 }
 
-function wayHalfWidth(layer: WayRibbon["layer"]): number {
-  switch (layer) {
-    case "road":
-      return 0.28;
-    case "sidewalk":
-      return 0.12;
-    case "footway":
-      return 0.1;
-    case "path":
-      return 0.09;
-  }
-}
-
 function buildingHeight(properties: Record<string, unknown> | null): number {
   const kind = String(properties?.building ?? "yes");
   return BUILDING_HEIGHTS[kind] ?? 1.9;
@@ -211,13 +207,19 @@ export function parseBasemap(
     ) {
       const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
       if (points.length < 2) continue;
+      const width = resolveRoadWidth(f.properties ?? null);
       ways.push({
         id,
         edgeId,
         layer,
         name,
         points,
-        halfWidth: wayHalfWidth(layer),
+        halfWidth: (width.widthMeters * projector.scale) / 2,
+        widthMeters: width.widthMeters,
+        widthKind: width.widthKind,
+        metersPerLane: width.metersPerLane,
+        highway: width.highway,
+        lanes: width.lanes,
       });
     }
   }

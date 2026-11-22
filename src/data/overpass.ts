@@ -1,5 +1,6 @@
 import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
+import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
 
 export type OsmWay = {
   id: number
@@ -18,6 +19,16 @@ export type OsmWay = {
   tags?: Record<string, string>
   /** [longitude, latitude] */
   points: [number, number][]
+  /** Lane count when the way has one. Kept even when a tagged width wins. */
+  lanes?: number | null
+  /** Tagged carriageway width in meters, when the tag is a real number. */
+  taggedWidthMeters?: number | null
+  /** Resolved ribbon width in meters. */
+  widthMeters?: number | null
+  /** tagged, lanes, or prior. A class fallback is prior. */
+  widthKind?: WidthKind | null
+  /** Meters-per-lane assumption. Set only when widthKind is lanes. */
+  metersPerLane?: number | null
 }
 
 export type LoadedNeighborhood = {
@@ -43,6 +54,10 @@ const KEEP_TAGS = [
   'sidewalk:both',
   'sidewalk:left',
   'sidewalk:right',
+  'lanes',
+  'lanes:forward',
+  'lanes:backward',
+  'width',
   // Real 3D shape, where mappers recorded it (Simple 3D Buildings).
   'height',
   'min_height',
@@ -104,6 +119,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       const value = row.tags?.[key]
       if (typeof value === 'string') tags[key] = value
     }
+    const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
     ways.push({
       id: row.id,
       name,
@@ -114,6 +130,11 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       waterway,
       ...(Object.keys(tags).length > 0 ? { tags } : {}),
       points,
+      lanes: width?.lanes ?? null,
+      taggedWidthMeters: width?.taggedWidthMeters ?? null,
+      widthMeters: width?.widthMeters ?? null,
+      widthKind: width?.widthKind ?? null,
+      metersPerLane: width?.metersPerLane ?? null,
     })
   }
   return ways
@@ -245,10 +266,24 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
     }
     const highway = way.highway ?? ''
     const layer = FOOT.has(highway) ? 'footway' : PATH.has(highway) ? 'path' : 'road'
+    const width = way.widthKind
+      ? way
+      : resolveRoadWidth({ highway, lanes: way.lanes, width: way.taggedWidthMeters, ...way.tags })
     features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: way.points },
-      properties: { osmId: way.id, layer, name: way.name, highway, ...way.tags },
+      properties: {
+        ...way.tags,
+        osmId: way.id,
+        layer,
+        name: way.name,
+        highway,
+        lanes: width.lanes,
+        width: width.taggedWidthMeters ?? way.tags?.width,
+        widthMeters: width.widthMeters,
+        widthKind: width.widthKind,
+        metersPerLane: width.metersPerLane,
+      },
     })
   }
   // The center keeps scene coordinates stable as more areas load in.
