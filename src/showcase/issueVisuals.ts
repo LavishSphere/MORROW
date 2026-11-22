@@ -11,9 +11,10 @@ export type Path = readonly (readonly [number, number])[];
 
 /** Marker color per kind of issue; improved issues turn green. */
 export const ISSUE_COLOR: Record<IssueKind, string> = {
-  stairs: "#ff8a3d",
+  // Red-orange, well clear of the autumn trees' amber and rust.
+  stairs: "#ff5a1f",
   unmarked_crossing: "#ffd23f",
-  no_sidewalk: "#ff5d73",
+  no_sidewalk: "#ff3d7f",
   // Violet, not tan: a tan ball on a pole reads as an autumn tree.
   unpaved_path: "#a070ff",
 };
@@ -69,7 +70,7 @@ const MARKER_REF_DISTANCE = 24;
  * zoom, a little smaller at street level, capped when far out.
  */
 export function markerScale(distance: number) {
-  return Math.min(4, Math.max(0.6, distance / MARKER_REF_DISTANCE));
+  return Math.min(4, Math.max(0.8, distance / MARKER_REF_DISTANCE));
 }
 
 /** Beyond this camera distance, nearby markers merge into one with a count. */
@@ -244,23 +245,54 @@ function flatten(quads: Quad[]): FlatMesh {
 /** Quads of a flat band along a path, `offset` to one side, `half` wide each way. */
 function bandQuads(path: Path, half: number, y: number, color: Rgb, offset = 0): Quad[] {
   const total = pathLength(path) || 1;
+  // Drop repeated points so every segment has a direction.
+  const pts = path.filter((p, i) => i === 0 || Math.hypot(p[0] - path[i - 1]![0], p[1] - path[i - 1]![1]) >= 1e-4);
+  if (pts.length < 2) return [];
+  const normals = pts.slice(0, -1).map((p, i) => {
+    const q = pts[i + 1]!;
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    return [-(q[1] - p[1]) / len, (q[0] - p[0]) / len] as const;
+  });
+  // Mitered corners: each joint shares one left and one right point between
+  // its two segments, so bends have no wedge gaps and no doubled overlaps.
+  const corner = pts.map((_, i) => {
+    const a = normals[Math.max(0, i - 1)]!;
+    const b = normals[Math.min(normals.length - 1, i)]!;
+    let mx = a[0] + b[0];
+    let mz = a[1] + b[1];
+    const m = Math.hypot(mx, mz);
+    if (m < 1e-6) return b; // A full U-turn: no sensible miter.
+    mx /= m;
+    mz /= m;
+    // Keep the band's width through the bend, within a limit on sharp turns.
+    const stretch = 1 / Math.max(0.5, mx * b[0] + mz * b[1]);
+    return [mx * stretch, mz * stretch] as const;
+  });
+  const l = offset - half;
+  const r = offset + half;
   const quads: Quad[] = [];
   let walked = 0;
-  for (let i = 0; i < path.length - 1; i += 1) {
-    const [ax, az] = path[i]!;
-    const [bx, bz] = path[i + 1]!;
-    const dx = bx - ax;
-    const dz = bz - az;
-    const len = Math.hypot(dx, dz);
-    if (len < 1e-4) continue;
-    const nx = -dz / len;
-    const nz = dx / len;
-    const l = offset - half;
-    const r = offset + half;
-    const aL = [ax + nx * l, y, az + nz * l];
-    const aR = [ax + nx * r, y, az + nz * r];
-    const bL = [bx + nx * l, y, bz + nz * l];
-    const bR = [bx + nx * r, y, bz + nz * r];
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const [ax, az] = pts[i]!;
+    const [bx, bz] = pts[i + 1]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    let [anx, anz] = corner[i]!;
+    let [bnx, bnz] = corner[i + 1]!;
+    // A short piece far off-centre on the inside of a bend can fold over its
+    // miter; that piece falls back to its own square ends.
+    const along = (nx: number, nz: number, k: number) => (bx - ax) * (nx * k) + (bz - az) * (nz * k);
+    const room = len * len;
+    for (const k of [l, r]) {
+      if (along(bnx, bnz, k) - along(anx, anz, k) <= -room) {
+        [anx, anz] = normals[i]!;
+        [bnx, bnz] = normals[i]!;
+        break;
+      }
+    }
+    const aL = [ax + anx * l, y, az + anz * l];
+    const aR = [ax + anx * r, y, az + anz * r];
+    const bL = [bx + bnx * l, y, bz + bnz * l];
+    const bR = [bx + bnx * r, y, bz + bnz * r];
     // Counter-clockwise seen from above, so the face points up.
     quads.push({ along: (walked + len / 2) / total, positions: [...aL, ...aR, ...bL, ...aR, ...bR, ...bL], color });
     walked += len;
@@ -326,6 +358,30 @@ function endQuads(path: Path, depth: number, width: number, inset: number, y: nu
   });
 }
 
+/** A crosswalk is about 3 m wide (along the road). */
+const CROSSWALK_WIDTH = 0.46;
+/** How far a curb ramp runs in from each end of a crossing. */
+const CURB_DEPTH = 0.16;
+
+/** The path's first and last points only. */
+function straightLine(path: Path): Path {
+  return path.length < 2 ? path : [path[0]!, path[path.length - 1]!];
+}
+
+/** A straight line shortened by `cut` at both ends (kept whole when too short). */
+function trimEnds(line: Path, cut: number): Path {
+  if (line.length < 2) return line;
+  const [a, b] = [line[0]!, line[line.length - 1]!];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (len <= cut * 3) return line;
+  const ux = (b[0] - a[0]) / len;
+  const uz = (b[1] - a[1]) / len;
+  return [
+    [a[0] + ux * cut, a[1] + uz * cut],
+    [b[0] - ux * cut, b[1] - uz * cut],
+  ];
+}
+
 /** Half the drawn road, the same constant the fixes have always used. */
 export const ROAD_HALF = 0.62;
 /** Where a new sidewalk's centre line sits from the road's centre line. */
@@ -352,7 +408,7 @@ const WARN_Y = 0.085;
  * The problem stretch as a dashed line in the kind's colour. For a missing
  * sidewalk the dashes run exactly where the new sidewalk would go.
  */
-export function problemMesh(issue: PatchIssue, half = 0.09, color = ISSUE_COLOR[issue.kind]): FlatMesh {
+export function problemMesh(issue: PatchIssue, half = 0.14, color = ISSUE_COLOR[issue.kind]): FlatMesh {
   const rgb = hexToRgb(color);
   const offsets = issue.kind === "no_sidewalk" ? sidewalkOffsets(issue.sides) : [0];
   const quads: Quad[] = [];
@@ -405,11 +461,20 @@ export function patchMesh(issue: PatchIssue): { surface: FlatMesh; edges: FlatMe
       break;
     }
     case "unmarked_crossing": {
-      surface.push(...barQuads(issue.path, 0.34, 0.17, 1.2, 0.09, STRIPE));
-      surface.push(...endQuads(issue.path, 0.32, 1.25, 0.2, 0.095, CURB));
-      surface.push(...endQuads(issue.path, 0.18, 1.0, 0.2, 0.1, TACTILE));
-      edges.push(...bandQuads(issue.path, 0.025, 0.095, blue, 0.66));
-      edges.push(...bandQuads(issue.path, 0.025, 0.095, blue, -0.66));
+      // Straight across, first point to last, so a bent OpenStreetMap way
+      // still gives one clean zebra instead of rotated, overlapping bars.
+      const line = straightLine(issue.path);
+      const inner = trimEnds(line, CURB_DEPTH);
+      // About 3 m wide, like a real crosswalk; bars run with the traffic.
+      surface.push(...barQuads(inner, 0.2, 0.1, CROSSWALK_WIDTH, 0.09, STRIPE));
+      // A stop line on each approach, a little back from the stripes.
+      surface.push(...bandQuads(inner, 0.025, 0.09, STRIPE, CROSSWALK_WIDTH / 2 + 0.22));
+      surface.push(...bandQuads(inner, 0.025, 0.09, STRIPE, -(CROSSWALK_WIDTH / 2 + 0.22)));
+      // Curb ramps at the two ends, tactile paving at their outer edge; none of it overlaps the stripes.
+      surface.push(...endQuads(line, CURB_DEPTH, CROSSWALK_WIDTH + 0.1, CURB_DEPTH / 2, 0.092, CURB));
+      surface.push(...endQuads(line, 0.07, CROSSWALK_WIDTH, 0.04, 0.096, TACTILE));
+      edges.push(...bandQuads(line, 0.022, 0.095, blue, CROSSWALK_WIDTH / 2 + 0.06));
+      edges.push(...bandQuads(line, 0.022, 0.095, blue, -(CROSSWALK_WIDTH / 2 + 0.06)));
       break;
     }
     case "no_sidewalk": {
