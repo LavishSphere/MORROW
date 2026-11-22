@@ -1725,12 +1725,16 @@ code {
     transform: none;
   }
 
+  /* Two lines at most, so the hint stays readable on a phone and the
+     card still fits the room the minimap and controls step up for. */
   .flow-nudge__text {
-    display: block;
+    display: -webkit-box;
     flex: 1;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.25;
   }
 
   .app-shell--city.has-nudge .minimap,
