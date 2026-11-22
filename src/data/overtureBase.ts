@@ -191,6 +191,41 @@ async function readCollection(
   return ways;
 }
 
+/** Clip a ring to a box (Sutherland-Hodgman; the box is convex). */
+export function clipRing(ring: Line, box: NeighborhoodBox): Line {
+  type P = [number, number];
+  const edges: [(p: P) => boolean, (a: P, b: P) => P][] = [
+    [(p) => p[0] >= box.west, (a, b) => [box.west, a[1] + ((b[1] - a[1]) * (box.west - a[0])) / (b[0] - a[0])]],
+    [(p) => p[0] <= box.east, (a, b) => [box.east, a[1] + ((b[1] - a[1]) * (box.east - a[0])) / (b[0] - a[0])]],
+    [(p) => p[1] >= box.south, (a, b) => [a[0] + ((b[0] - a[0]) * (box.south - a[1])) / (b[1] - a[1]), box.south]],
+    [(p) => p[1] <= box.north, (a, b) => [a[0] + ((b[0] - a[0]) * (box.north - a[1])) / (b[1] - a[1]), box.north]],
+  ];
+  let out: P[] = ring.slice(0, ring.length > 1 && ring[0]![0] === ring[ring.length - 1]![0] && ring[0]![1] === ring[ring.length - 1]![1] ? -1 : undefined);
+  for (const [inside, cross] of edges) {
+    const input = out;
+    out = [];
+    for (let i = 0; i < input.length; i += 1) {
+      const cur = input[i]!;
+      const prev = input[(i + input.length - 1) % input.length]!;
+      if (inside(cur)) {
+        if (!inside(prev)) out.push(cross(prev, cur));
+        out.push(cur);
+      } else if (inside(prev)) out.push(cross(prev, cur));
+    }
+    if (!out.length) return [];
+  }
+  return out.length >= 3 ? [...out, out[0]!] : [];
+}
+
+/** Open water around a place (ocean, bays, big rivers and lakes), clipped to the box. */
+export async function fetchOvertureWater(box: NeighborhoodBox): Promise<OsmWay[]> {
+  const ways = await readCollection("water", ["id", "names", "subtype", "class", "geometry", "bbox"], box, waterFromRow);
+  return ways.flatMap((way) => {
+    const points = clipRing(way.points, box);
+    return points.length >= 4 ? [{ ...way, points }] : [];
+  });
+}
+
 /** Read Overture's file index ahead of time, so the first fallback tile starts at once. */
 export function warmOverture(): void {
   void filesFor("segment", { west: 0, south: 0, east: 0, north: 0 }).catch(() => undefined);

@@ -38,3 +38,15 @@ test("a tile Overpass cannot serve falls back to Overture, and the place note sa
   assert.match(loader, /const \{ fetchOvertureBase \} = await import\('\.\/overtureBase\.ts'\)/);
   assert.match(loader, /streets and water come from Overture Maps/);
 });
+
+test("an uncached coastline falls back to Overture water, clipped to the coast box", async () => {
+  const { clipRing } = await import("../src/data/overtureBase.ts");
+  const box = { west: 0, south: 0, east: 1, north: 1 };
+  const big: [number, number][] = [[-5, -5], [5, -5], [5, 5], [-5, 5], [-5, -5]];
+  const clipped = clipRing(big, box);
+  assert.ok(clipped.length >= 5);
+  for (const [x, y] of clipped) assert.ok(x >= 0 && x <= 1 && y >= 0 && y <= 1);
+  assert.deepEqual(clipRing([[3, 3], [4, 3], [4, 4], [3, 3]], box), []);
+  const loader = await readFile("src/data/overpass.ts", "utf8");
+  assert.match(loader, /const \{ fetchOvertureWater \} = await import\('\.\/overtureBase\.ts'\)/);
+});
