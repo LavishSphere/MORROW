@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  buildingHeightOrFallback,
+  DEFAULT_HEIGHT_METRES,
   isMicrosoftDataset,
   resolveBuildingHeight,
   withOvertureBuildings,
@@ -116,4 +118,35 @@ test("the glass city extrudes Overture footprints and does not invent a type hei
   assert.match(city, /roof:shape/);
   assert.match(canvas, /ShowcaseCanvas/);
   assert.equal(canvas.includes("SatelliteTown"), false);
+});
+
+test("a footprint with no measured height or floors still draws", () => {
+  assert.deepEqual(
+    buildingHeightOrFallback({
+      overtureHeight: 7,
+      sources: [{ property: "", dataset: "Microsoft ML Buildings" }],
+    }),
+    { meters: 7, kind: "estimated" },
+  );
+  assert.deepEqual(buildingHeightOrFallback({}), { meters: DEFAULT_HEIGHT_METRES, kind: "default" });
+
+  const geo = withOvertureBuildings(
+    {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [ring] },
+          properties: { layer: "building", osmId: 41, building: "house" },
+        },
+      ],
+    },
+    [footprint({ id: "ms1", osmId: null, sources: [{ property: "", dataset: "Microsoft ML Buildings", record_id: null }] })],
+  ) as { features: { properties: Record<string, unknown> }[] };
+  const buildings = geo.features.filter((feature) => feature.properties.layer === "building");
+  assert.equal(buildings.length, 2, "the untagged OSM house and the Microsoft footprint are both kept");
+  for (const building of buildings) {
+    assert.equal(building.properties.height, DEFAULT_HEIGHT_METRES);
+    assert.equal(building.properties.height_kind, "default");
+  }
 });

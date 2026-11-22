@@ -4,13 +4,21 @@
  * Overture release 2026-11-18.0 height, unless that height was supplied by
  * Microsoft ML Buildings (those downtown values top out near 35 m). Then the
  * OpenStreetMap `height` tag. Then `building:levels` or Overture `num_floors`
- * times 3 m. Nothing is invented from the building type.
+ * times 3 m. Nothing is invented from the building type. A footprint with
+ * none of those still draws: at its Microsoft imagery height if it has one,
+ * otherwise at a plain two-story default, so buildings never vanish.
  */
 
 export const OVERTURE_RELEASE = "2026-11-18.0";
 export const METRES_PER_LEVEL = 3;
 
-export type HeightKind = "measured" | "levels×3";
+/**
+ * Footprints with no measured height and no floor count are still drawn,
+ * at this plain two-story height, so a neighborhood never loses its houses.
+ */
+export const DEFAULT_HEIGHT_METRES = 2 * METRES_PER_LEVEL;
+
+export type HeightKind = "measured" | "levels×3" | "estimated" | "default";
 
 export type HeightSource = {
   property?: string | null;
@@ -93,6 +101,19 @@ export function resolveBuildingHeight(input: {
   return null;
 }
 
+/**
+ * Metres to extrude for any footprint. The measured cascade first; then a
+ * Microsoft imagery height (low downtown, but right for houses); then the
+ * plain default. Never null, so no footprint disappears.
+ */
+export function buildingHeightOrFallback(input: Parameters<typeof resolveBuildingHeight>[0]): ResolvedHeight {
+  const resolved = resolveBuildingHeight(input);
+  if (resolved) return resolved;
+  const imagery = positive(input.overtureHeight);
+  if (imagery != null) return { meters: imagery, kind: "estimated" };
+  return { meters: DEFAULT_HEIGHT_METRES, kind: "default" };
+}
+
 /** A roof is drawn only when a source recorded a non-flat shape. */
 export function recordedRoofShape(...candidates: unknown[]): string | null {
   for (const candidate of candidates) {
@@ -139,8 +160,8 @@ function buildingFeature(
 
 /**
  * Replace building footprints with the Overture extract. Streets, water, and
- * other layers are left as they were. A footprint is extruded only when the
- * height cascade produced a number.
+ * other layers are left as they were. Every footprint is kept: one with no
+ * measured height or floor count gets an imagery estimate or the default.
  */
 export function withOvertureBuildings(geoJson: unknown, footprints: readonly OvertureFootprint[]): unknown {
   if (!isCollection(geoJson)) return geoJson;
@@ -159,14 +180,13 @@ export function withOvertureBuildings(geoJson: unknown, footprints: readonly Ove
     const osm = footprint.osmId != null ? osmById.get(footprint.osmId) : undefined;
     if (footprint.osmId != null) used.add(footprint.osmId);
     const props = osm?.properties ?? {};
-    const resolved = resolveBuildingHeight({
+    const resolved = buildingHeightOrFallback({
       overtureHeight: footprint.height,
       sources: footprint.sources,
       osmHeight: props.height,
       osmLevels: props["building:levels"],
       numFloors: footprint.numFloors,
     });
-    if (!resolved) continue;
     const roof = recordedRoofShape(footprint.roofShape, props["roof:shape"]);
     const minHeight = positive(footprint.minHeight) ?? positive(props.min_height);
     buildings.push(
@@ -186,50 +206,26 @@ export function withOvertureBuildings(geoJson: unknown, footprints: readonly Ove
     );
   }
 
-  // An OSM building the extract did not return still uses its own height or levels.
-  for (const [id, feature] of osmById) {
-    if (used.has(id) || !feature.geometry || !Array.isArray(feature.geometry.coordinates)) continue;
-    const ring = feature.geometry.coordinates[0];
-    if (!Array.isArray(ring)) continue;
+  // An OSM building the extract did not return keeps its own height, levels, or the default.
+  for (const feature of osmBuildings) {
+    const id = positive(feature.properties?.osmId);
+    if (id != null && used.has(id)) continue;
+    if (!feature.geometry || !Array.isArray(feature.geometry.coordinates)) continue;
     const props = feature.properties ?? {};
-    const resolved = resolveBuildingHeight({
+    const resolved = buildingHeightOrFallback({
       osmHeight: props.height,
       osmLevels: props["building:levels"],
     });
-    if (!resolved) continue;
     const roof = recordedRoofShape(props["roof:shape"]);
-    buildings.push(
-      buildingFeature(ring as [number, number][], {
+    buildings.push({
+      ...feature,
+      properties: {
         ...props,
         height: resolved.meters,
         height_kind: resolved.kind,
-        ...(roof ? { "roof:shape": roof } : {}),
-      }),
-    );
-  }
-
-  if (buildings.length === 0 && footprints.length === 0) {
-    const stamped = osmBuildings.flatMap((feature) => {
-      const props = feature.properties ?? {};
-      const resolved = resolveBuildingHeight({
-        osmHeight: props.height,
-        osmLevels: props["building:levels"],
-      });
-      if (!resolved || !feature.geometry) return [];
-      const roof = recordedRoofShape(props["roof:shape"]);
-      return [
-        {
-          ...feature,
-          properties: {
-            ...props,
-            height: resolved.meters,
-            height_kind: resolved.kind,
-            ...(roof ? { "roof:shape": roof } : { "roof:shape": undefined }),
-          },
-        },
-      ];
+        "roof:shape": roof ?? undefined,
+      },
     });
-    return { ...geoJson, features: [...kept, ...stamped] };
   }
 
   return { ...geoJson, features: [...kept, ...buildings] };
