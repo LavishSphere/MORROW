@@ -1814,7 +1814,13 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <IssueLayer reducedMotion={reducedMotion} />
       <AddressPin />
       <StreetSigns signs={built.signs} />
-      <RailLayer network={cityModel.parsed.rail} geoBounds={cityModel.geoBounds} reducedMotion={reducedMotion} />
+      <RailLayer
+        network={cityModel.parsed.rail}
+        geoBounds={cityModel.geoBounds}
+        project={cityModel.project}
+        origin={cityModel.unproject(0, 0)}
+        reducedMotion={reducedMotion}
+      />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
   );

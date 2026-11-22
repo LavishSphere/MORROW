@@ -190,6 +190,6 @@ test("the loader asks Overpass for track, platforms, stations, and route colours
   assert.match(loader, /node\["railway"~"\^\(station\|halt\|tram_stop\|subway_entrance\)\$"\]/);
   assert.match(loader, /make railref way=w\.u\(id\(\)\),colour=rr\.set\(t\["colour"\]\)/);
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  assert.match(city, /<RailLayer network=\{cityModel\.parsed\.rail\}/);
+  assert.match(city, /<RailLayer\s+network=\{cityModel\.parsed\.rail\}/);
   assert.match(city, /if \(!track\.underground\) occupancy\.markLine\(track\.points, RAIL_CLEARANCE\)/);
 });

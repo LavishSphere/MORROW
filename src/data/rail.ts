@@ -550,8 +550,23 @@ export function pointAlong(points: readonly Pt[], along: number): { x: number; z
 }
 
 /**
- * Snap (x, z) to the nearest line, preferring lines of `colour`. Returns
- * null when nothing is within `reach`.
+ * True when two colours are the same line colour, allowing for small
+ * differences between a feed's colour and the one mapped in OSM.
+ */
+export function similarColour(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = normalizeColour(a);
+  const y = normalizeColour(b);
+  if (!x || !y) return false;
+  const rgb = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const [r1, g1, b1] = rgb(x);
+  const [r2, g2, b2] = rgb(y);
+  return Math.hypot(r1! - r2!, g1! - g2!, b1! - b2!) < 70;
+}
+
+/**
+ * Snap (x, z) to the nearest line within `reach`. With a colour, only
+ * lines of that colour count; without one, any line does. Null when
+ * nothing is close enough.
  */
 export function snapToLines<T extends { points: readonly Pt[]; colour: string | null }>(
   x: number,
@@ -560,16 +575,14 @@ export function snapToLines<T extends { points: readonly Pt[]; colour: string | 
   colour: string | null,
   reach: number,
 ): { index: number; snap: Snap } | null {
-  const want = normalizeColour(colour);
   let best: { index: number; snap: Snap } | null = null;
-  let bestAny: { index: number; snap: Snap } | null = null;
-  lines.forEach((line, index) => {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    if (colour && !similarColour(line.colour, colour)) continue;
     const snap = nearestOnPolyline(x, z, line.points);
-    if (snap.distance > reach) return;
-    if (want && line.colour === want && (!best || snap.distance < best.snap.distance)) best = { index, snap };
-    if (!bestAny || snap.distance < bestAny.snap.distance) bestAny = { index, snap };
-  });
-  return want ? best : bestAny;
+    if (snap.distance <= reach && (!best || snap.distance < best.snap.distance)) best = { index, snap };
+  }
+  return best;
 }
 
 /** A polyline shifted sideways by `d` (left of travel is positive), mitered at bends. */

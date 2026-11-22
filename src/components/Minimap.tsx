@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { flyTo, useCityState, whereAmI, type CameraPose, type RailPath } from '../showcase/cityStore'
 import { useIssueState, type SceneIssue } from '../showcase/issueStore'
 import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
+import { LiveTransitBadge } from './LiveTransitBadge'
 
 /** Small minimap size in CSS pixels. */
 const SIZE = 168
@@ -210,6 +211,7 @@ export function Minimap({ placeLabel }: Props) {
   return (
     <>
       <section className="minimap" aria-label="Map of the city">
+        <LiveTransitBadge />
         <p className="minimap__where" role="status">
           {where}
         </p>

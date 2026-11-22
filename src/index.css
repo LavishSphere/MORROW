@@ -2541,3 +2541,24 @@ code {
   font-size: 10px;
   opacity: 0.85;
 }
+
+/* —— Live transit: a small line above the minimap while a feed is on —— */
+.minimap__live {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 168px;
+  margin: 0 0.15rem 0.35rem;
+  color: rgba(247, 250, 248, 0.82);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.minimap__live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #2ecc71;
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.25);
+}

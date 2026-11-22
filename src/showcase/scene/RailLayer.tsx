@@ -3,7 +3,10 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { RailNetwork, Station } from "../../data/rail.ts";
+import type { TrackLine } from "../../data/trains.ts";
+import { useLiveTransit } from "../../data/useLiveTransit.ts";
 import { buildRailGeometry, disposeRail } from "./railGeometry";
+import { Trains } from "./Trains";
 
 type GeoBounds = { west: number; south: number; east: number; north: number };
 
@@ -217,9 +220,16 @@ function isBoston(bounds: GeoBounds) {
 export function RailLayer({
   network,
   geoBounds,
+  project,
+  origin,
+  reducedMotion = false,
 }: {
   network: RailNetwork;
   geoBounds: GeoBounds;
+  /** Longitude/latitude → scene [x, z]. */
+  project: (lon: number, lat: number) => readonly [number, number];
+  /** The loaded place's fixed center, [longitude, latitude]. */
+  origin: readonly [number, number];
   reducedMotion?: boolean;
 }) {
   const built = useMemo(() => buildRailGeometry(network), [network]);
@@ -272,6 +282,9 @@ export function RailLayer({
     [stripeLooks, tunnelLooks],
   );
   const mark = isBoston(geoBounds) ? "T" : "";
+  // Passenger lines the trains run on: not yards or sidings.
+  const tracks = useMemo<TrackLine[]>(() => network.lines.filter((line) => !line.minor), [network]);
+  const live = useLiveTransit(geoBounds, origin, tracks.length > 0);
 
   if (network.lines.length === 0 && network.stations.length === 0) return null;
   return (
@@ -290,6 +303,14 @@ export function RailLayer({
       <Ties ties={built.ties} />
       <StationMarkers stations={network.stations} />
       <StationLabels stations={network.stations} mark={mark} />
+      <Trains
+        lines={tracks}
+        project={project}
+        live={live.vehicles}
+        liveAt={live.at}
+        pollMs={live.feed?.pollMs ?? 15_000}
+        reducedMotion={reducedMotion}
+      />
     </group>
   );
 }
