@@ -6,35 +6,31 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
-import { geocodeUsPlace, suggestAddresses, type CitySuggestion } from '../data/places'
+import { decideAddressQuery } from '../data/addressQuery'
 import { loadUsNeighborhood, type LoadedNeighborhood } from '../data/overpass'
-import { flyTo, setPin, useCityState, type CityMap } from '../showcase/cityStore'
+import {
+  geocodeUsPlace,
+  mergePlaceSuggestions,
+  suggestAddresses,
+  suggestUsCities,
+  type CitySuggestion,
+} from '../data/places'
+import { flyTo, setPin, useCityState } from '../showcase/cityStore'
+import './place-search.css'
 
 /** "Clapp Library, 106 Central St, Wellesley, MA…" → "Clapp Library" */
 const shortName = (label: string) => label.split(',')[0]?.trim() || label
 
-/** Degrees of slack around the map edge before an address counts as outside. */
-const EDGE = 0.003
-
 type PendingPin = { lng: number; lat: number; label: string }
 
-function insideMap(map: CityMap, lng: number, lat: number) {
-  const box = map.geoBounds
-  return (
-    lng >= box.west - EDGE &&
-    lng <= box.east + EDGE &&
-    lat >= box.south - EDGE &&
-    lat <= box.north + EDGE
-  )
-}
-
 /**
- * Type an address. If it is already on the map, the camera flies there.
- * Otherwise the real streets around it load from OpenStreetMap and the pin drops
- * once that map is up. Wellesley stays until the address is somewhere else.
+ * One address bar. A city or town keeps the city view. A street address
+ * already in that city flies the camera there. An address somewhere else
+ * loads those streets, then flies. Wellesley stays until the query is
+ * somewhere else.
  */
-export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborhood) => void }) {
-  const { map } = useCityState()
+export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborhood) => void }) {
+  const { map, town } = useCityState()
   const ids = useId()
   const inputId = `${ids}-input`
   const listId = `${ids}-list`
@@ -50,26 +46,35 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
 
   useEffect(() => {
     const want = pending.current
-    if (!map || !want || !insideMap(map, want.lng, want.lat)) return
+    if (!map || !want) return
+    const decision = decideAddressQuery(
+      { label: want.label, lng: want.lng, lat: want.lat, addrType: 'StreetAddress' },
+      map.geoBounds,
+      town,
+    )
+    if (decision !== 'focus') return
     pending.current = null
     const [x, z] = map.project(want.lng, want.lat)
     setPin({ label: want.label, x, z })
     flyTo(x, z, { distance: 16 })
     setStatus('')
-  }, [map])
+  }, [map, town])
 
   useEffect(() => {
     const text = query.trim()
-    if (text.length < 3 || picked.current === query) {
+    if (text.length < 2 || picked.current === query) {
       setSuggestions([])
       return
     }
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      suggestAddresses(text, controller.signal)
-        .then((next) => {
+      Promise.all([
+        suggestUsCities(text, controller.signal),
+        suggestAddresses(text, controller.signal),
+      ])
+        .then(([cities, addresses]) => {
           if (submitted.current) return
-          setSuggestions(next)
+          setSuggestions(mergePlaceSuggestions(text, cities, addresses))
           setActive(-1)
           setOpen(true)
         })
@@ -83,19 +88,35 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
     }
   }, [query])
 
-  const jump = async (text: string, magicKey?: string) => {
-    if (busy || text.trim().length < 3) return
+  const go = async (text: string, magicKey?: string) => {
+    if (busy || text.trim().length < 2) return
     submitted.current = true
     setOpen(false)
     setBusy(true)
     try {
       const place = await geocodeUsPlace(text, magicKey)
       if (!place) {
-        setStatus('No address matched that.')
+        setStatus('No place matched that.')
+        return
+      }
+      const decision = decideAddressQuery(place, map?.geoBounds ?? null, town)
+      if (decision === 'keep-city') {
+        pending.current = null
+        setStatus('')
+        return
+      }
+      if (decision === 'load-city') {
+        pending.current = null
+        setPin(null)
+        setStatus('Loading its real streets from OpenStreetMap.')
+        const loaded = await loadUsNeighborhood(text, magicKey)
+        onLoad(loaded)
+        setStatus(loaded.note)
         return
       }
       const label = shortName(place.label)
-      if (map && insideMap(map, place.lng, place.lat)) {
+      if (decision === 'focus' && map) {
+        pending.current = null
         const [x, z] = map.project(place.lng, place.lat)
         setPin({ label, x, z })
         flyTo(x, z, { distance: 16 })
@@ -115,18 +136,21 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
   }
 
   const pick = (choice: CitySuggestion) => {
-    picked.current = shortName(choice.label)
-    setQuery(shortName(choice.label))
+    const shown = shortName(choice.label)
+    picked.current = shown
+    setQuery(shown)
     setSuggestions([])
-    void jump(choice.label, choice.magicKey)
+    void go(choice.label, choice.magicKey)
   }
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
-    const choice = open ? suggestions[active] : undefined
+    // Enter uses a suggestion only after the arrow keys highlight one.
+    // Otherwise the typed text is what gets geocoded, so a house number
+    // is not replaced by a nearby street name.
+    const choice = open && active >= 0 ? suggestions[active] : undefined
     if (choice) pick(choice)
-    else if (suggestions[0]) pick(suggestions[0])
-    else void jump(query)
+    else void go(query)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -146,9 +170,9 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
   const showList = open && suggestions.length > 0
 
   return (
-    <form className="place-search place-search--address" role="search" onSubmit={onSubmit}>
+    <form className="place-search" role="search" onSubmit={onSubmit}>
       <label className="sr-only" htmlFor={inputId}>
-        Jump to an address
+        Address
       </label>
       <div className="place-search__row">
         <div className="place-search__field">
@@ -156,7 +180,7 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
             id={inputId}
             className="place-search__input"
             value={query}
-            placeholder={busy ? 'Finding…' : 'Type an address'}
+            placeholder={busy ? 'Finding…' : 'Address or city'}
             autoComplete="off"
             spellCheck={false}
             role="combobox"
@@ -179,7 +203,7 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
           <ul
             id={listId}
             role="listbox"
-            aria-label="Matching addresses"
+            aria-label="Matching places"
             className={`place-search__list${showList ? ' is-open' : ''}`}
           >
             {suggestions.map((choice, index) => (
@@ -198,6 +222,9 @@ export function AddressJump({ onLoad }: { onLoad: (neighborhood: LoadedNeighborh
             ))}
           </ul>
         </div>
+        <button type="submit" className="place-search__go" disabled={busy || query.trim().length < 2}>
+          {busy ? 'Finding' : 'Go'}
+        </button>
       </div>
       <p className={`place-search__status${status && !showList ? ' is-shown' : ''}`} role="status">
         {status}

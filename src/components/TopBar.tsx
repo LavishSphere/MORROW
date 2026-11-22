@@ -1,6 +1,5 @@
 import { LogoMark } from '../brand/LogoMark'
-import { AddressJump } from './AddressJump'
-import { PlaceSearch } from './PlaceSearch'
+import { AddressBar } from './AddressBar'
 import type { LoadedNeighborhood } from '../data/overpass'
 
 type Props = {
@@ -28,8 +27,7 @@ export function TopBar({ reducedMotion, onReducedMotionChange, onPlace, placeLab
       </div>
 
       <div className="top-bar__controls">
-        <AddressJump onLoad={onPlace} />
-        <PlaceSearch onLoad={onPlace} />
+        <AddressBar onLoad={onPlace} />
 
         <label className="motion-toggle">
           <input
