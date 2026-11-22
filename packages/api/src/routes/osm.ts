@@ -6,9 +6,9 @@
  * problem. Major cities are pre-loaded at startup (see warmMajorCities).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, rename } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,20 +54,31 @@ export function acceptableQuery(query: unknown): query is string {
 
 async function readCached(key: string): Promise<Buffer | null> {
   const file = join(cacheDir(), `${key}.json.gz`);
+  // One open handle for both the age check and the read, so they see the same file.
+  const handle = await open(file, "r").catch(() => null);
+  if (!handle) return null;
   try {
-    const info = await stat(file);
+    const info = await handle.stat();
     if (Date.now() - info.mtimeMs > FRESH_MS) return null;
-    return await readFile(file);
+    return await handle.readFile();
   } catch {
     return null;
+  } finally {
+    await handle.close();
   }
 }
 
 async function writeCached(key: string, gz: Buffer) {
   const dir = cacheDir();
-  await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `${key}.${process.pid}.tmp`);
-  await writeFile(tmp, gz);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  // An unguessable name, created fresh (never an existing file), readable only by us.
+  const tmp = join(dir, `${key}.${randomBytes(8).toString("hex")}.tmp`);
+  const handle = await open(tmp, "wx", 0o600);
+  try {
+    await handle.writeFile(gz);
+  } finally {
+    await handle.close();
+  }
   await rename(tmp, join(dir, `${key}.json.gz`));
 }
 
