@@ -1,8 +1,7 @@
 import { Sparkles } from "@react-three/drei";
-import { useEffect, useLayoutEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
-import { adoptPotholes, scatterPotholes, selectPothole, usePotholeFix } from "../../city/potholeFix";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -428,7 +427,6 @@ type Built = {
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
-  holes: ReturnType<typeof scatterPotholes>;
   signs: SignSpot[];
 };
 
@@ -509,9 +507,6 @@ function buildCity(model: CityModel): Built {
     .filter((way) => way.layer === "footway")
     .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
 
-  // Illustrative holes on this city's roads, not only a street named Central.
-  const holes = scatterPotholes(roadWays);
-
   // Street signs along named roads, spaced so one street never crowds a block.
   const signs: SignSpot[] = [];
   for (const way of roadWays) {
@@ -540,7 +535,6 @@ function buildCity(model: CityModel): Built {
     lamps,
     hydrants,
     benches,
-    holes,
     signs,
   };
 }
@@ -702,52 +696,6 @@ function Instanced({
   return <primitive object={mesh} />;
 }
 
-function Pothole({ id, x, z, size = 1 }: { id: string; x: number; z: number; size?: number }) {
-  const fix = usePotholeFix();
-  const patched = fix.patchedIds.includes(id);
-  const selected = fix.selectedId === id;
-  return (
-    <group position={[x, 0.08, z]} scale={size}>
-      <mesh rotation={[-Math.PI / 2, 0, 0.2]} raycast={() => null}>
-        <circleGeometry args={[0.95, 8]} />
-        <meshStandardMaterial
-          color={patched ? "#d7fff4" : "#7af4ff"}
-          emissive={patched ? "#9ee7d8" : "#7af4ff"}
-          emissiveIntensity={patched ? 0.15 : 0.35}
-        />
-      </mesh>
-      <mesh position={[0.05, 0.01, -0.04]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <circleGeometry args={[patched ? 0.7 : 0.55, 7]} />
-        <meshStandardMaterial color={patched ? "#9ad7c8" : "#062830"} roughness={1} />
-      </mesh>
-      {selected ? (
-        <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-          <ringGeometry args={[1.05, 1.25, 20]} />
-          <meshBasicMaterial color="#f7faf8" />
-        </mesh>
-      ) : null}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.06, 0]}
-        onClick={(event) => {
-          event.stopPropagation();
-          selectPothole(id);
-        }}
-        onPointerOver={(event) => {
-          event.stopPropagation();
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = "";
-        }}
-      >
-        <circleGeometry args={[1.4, 16]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
 /**
  * The glass city. With no map it shows the Wellesley town; given a loaded
  * neighborhood (same FeatureCollection shape) it rebuilds from that.
@@ -758,9 +706,6 @@ export function City({ geoJson }: { geoJson?: unknown }) {
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
 
-  useLayoutEffect(() => {
-    adoptPotholes(built.holes.map((hole) => hole.issue));
-  }, [built]);
   useEffect(() => publishMap(mapFor(model)), [model]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {
@@ -829,10 +774,6 @@ export function City({ geoJson }: { geoJson?: unknown }) {
       <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} />
       <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
-
-      {built.holes.map((spot) => (
-        <Pothole key={spot.issue.id} id={spot.issue.id} x={spot.x} z={spot.z} size={0.38} />
-      ))}
 
       <IssueLayer />
       <StreetSigns signs={built.signs} />

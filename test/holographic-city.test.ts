@@ -15,7 +15,9 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   assert.match(city, /const TOWN = buildModel\(town, SHOWCASE_BBOX\.center\)/);
   assert.match(city, /parseBasemap\(geoJson, projector\)/);
   assert.match(city, /for \(const building of model\.parsed\.buildings\)/);
-  assert.match(city, /scatterPotholes\(roadWays\)/);
+  assert.equal(city.includes("function Pothole"), false);
+  assert.equal(city.includes("scatterPotholes"), false);
+  assert.equal(city.includes("circleGeometry"), false);
   assert.equal(city.includes('way.name === "Central Street"'), false);
   // Every side is glazed: curtain-wall glass wraps each real footprint.
   const glass = await readFile("src/showcase/scene/glass.ts", "utf8");
@@ -27,7 +29,6 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   // Thousands of buildings stay fast: merged surfaces, instanced furniture.
   assert.match(city, /class Bucket/);
   assert.match(city, /new THREE\.InstancedMesh/);
-  assert.match(city, /function Pothole/);
   assert.match(city, /shapes\.hydrant/);
   assert.match(city, /shapes\.pole/);
   assert.match(city, /shapes\.seat/);

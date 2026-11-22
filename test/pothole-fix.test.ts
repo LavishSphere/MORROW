@@ -59,14 +59,15 @@ test("a generated draft names the clicked pothole and keeps the route text", () 
   assert.equal(draftForPothole(base, null, false).headline, "Wellesley route");
 });
 
-test("the city popup and the three mode pages share the pothole", async () => {
+test("the popup and mode pages keep the patch flow, and the city draws no disks", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const popup = await readFile("src/components/PotholePopup.tsx", "utf8");
   const improve = await readFile("src/components/ImprovePage.tsx", "utf8");
   const compare = await readFile("src/components/CompareSheet.tsx", "utf8");
   const propose = await readFile("src/components/ProposeSheet.tsx", "utf8");
   assert.match(propose, /draftForPothole\(/);
-  assert.match(city, /selectPothole\(/);
+  assert.equal(city.includes("function Pothole"), false);
+  assert.equal(city.includes("circleGeometry"), false);
   assert.match(popup, /patchPothole\(/);
   assert.match(popup, /Illustrative street issue/);
   assert.match(popup, /Not a surveyed defect/);
