@@ -1,4 +1,5 @@
 import { Sparkles } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
@@ -21,6 +22,7 @@ import { Traffic } from "./Traffic";
 import { buildTrafficLanes, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
 import { RailLayer } from "./RailLayer";
 import { RAIL_CLEARANCE } from "./railGeometry";
+import { cellView, chunkPlacements, LOD_NEAR, VIEW_FAR } from "./chunks.ts";
 import { EMPTY_RAIL } from "../../data/rail.ts";
 import { useStreetImprovements } from "../../city/streetImprovements";
 
@@ -2140,6 +2142,8 @@ function useFurniture() {
       shapes: {
         trunk: at(new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6), 0.45),
         canopy: at(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 1.15, 1), 1.15),
+        // Far trees: a quarter of the triangles, same size and colour.
+        canopyFar: at(new THREE.IcosahedronGeometry(0.62, 0).scale(1, 1.15, 1), 1.15),
         pole: at(new THREE.CylinderGeometry(0.025, 0.035, 1.16, 6), 0.58),
         bulb: at(new THREE.SphereGeometry(0.09, 8, 6), 1.18),
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
@@ -2271,6 +2275,8 @@ function Instanced({
   items,
   shadows = true,
   colored = false,
+  lod,
+  far = VIEW_FAR,
 }: {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
@@ -2278,31 +2284,81 @@ function Instanced({
   shadows?: boolean;
   /** Use each item's color (tree canopies); otherwise the material's. */
   colored?: boolean;
+  /** A simpler shape for cells past LOD_NEAR from the camera. */
+  lod?: THREE.BufferGeometry;
+  /** Cells farther than this from the camera are not drawn. */
+  far?: number;
 }) {
-  const mesh = useMemo(() => {
-    const m = new THREE.InstancedMesh(geometry, material, Math.max(1, items.length));
-    m.count = items.length;
-    const matrix = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const upAxis = new THREE.Vector3(0, 1, 0);
-    const color = new THREE.Color();
-    items.forEach((item, i) => {
-      q.setFromAxisAngle(upAxis, item.rot ?? 0);
-      const s = item.s ?? 1;
-      matrix.compose(new THREE.Vector3(item.x, item.y ?? 0, item.z), q, new THREE.Vector3(s, s, s));
-      m.setMatrixAt(i, matrix);
-      if (colored && item.color) m.setColorAt(i, color.set(item.color));
+  const camera = useThree((state) => state.camera);
+  // One mesh per square cell, so cells off screen or past `far` are skipped.
+  const cells = useMemo(() => {
+    const build = (shape: THREE.BufferGeometry, group: Placement[], castShadow: boolean) => {
+      const m = new THREE.InstancedMesh(shape, material, Math.max(1, group.length));
+      m.count = group.length;
+      const matrix = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const upAxis = new THREE.Vector3(0, 1, 0);
+      const color = new THREE.Color();
+      group.forEach((item, i) => {
+        q.setFromAxisAngle(upAxis, item.rot ?? 0);
+        const s = item.s ?? 1;
+        matrix.compose(new THREE.Vector3(item.x, item.y ?? 0, item.z), q, new THREE.Vector3(s, s, s));
+        m.setMatrixAt(i, matrix);
+        if (colored && item.color) m.setColorAt(i, color.set(item.color));
+      });
+      m.castShadow = castShadow;
+      m.receiveShadow = true;
+      m.raycast = () => null;
+      m.computeBoundingSphere();
+      return m;
+    };
+    return chunkPlacements(items).map((group) => {
+      const near = build(geometry, group, shadows);
+      const simple = lod ? build(lod, group, false) : null;
+      if (simple) simple.visible = false;
+      return { near, simple, sphere: near.boundingSphere ?? new THREE.Sphere() };
     });
-    m.castShadow = shadows;
-    m.receiveShadow = true;
-    m.raycast = () => null;
-    return m;
-  }, [geometry, material, items, shadows, colored]);
-  useEffect(() => () => mesh.dispose(), [mesh]);
-  return <primitive object={mesh} />;
+  }, [geometry, material, items, shadows, colored, lod]);
+  useEffect(
+    () => () => {
+      for (const cell of cells) {
+        cell.near.dispose();
+        cell.simple?.dispose();
+      }
+    },
+    [cells],
+  );
+  const seen = useRef<{ cells: typeof cells | null; at: THREE.Vector3 }>({ cells: null, at: new THREE.Vector3() });
+  useFrame(() => {
+    const memo = seen.current;
+    if (memo.cells === cells && memo.at.distanceToSquared(camera.position) < 1) return;
+    memo.cells = cells;
+    memo.at.copy(camera.position);
+    for (const cell of cells) {
+      const gap = Math.max(0, camera.position.distanceTo(cell.sphere.center) - cell.sphere.radius);
+      const view = cellView(gap, far, cell.simple ? LOD_NEAR : Infinity);
+      cell.near.visible = view === "near";
+      if (cell.simple) cell.simple.visible = view === "far";
+    }
+  });
+  return (
+    <>
+      {cells.map((cell) => (
+        <group key={cell.near.uuid}>
+          <primitive object={cell.near} />
+          {cell.simple ? <primitive object={cell.simple} /> : null}
+        </group>
+      ))}
+    </>
+  );
 }
 
 type Furniture = ReturnType<typeof useFurniture>;
+
+/** Parked cars, tree trunks, and lamps stop drawing this far from the camera (~1 km). */
+const FAR_CARS = 150;
+/** People, wheels, hydrants, and benches: specks past this (~700 m). */
+const FAR_SMALL = 100;
 
 /** A glowing ring under each proposed prop; `size` scales the unit ring. */
 function ProposedRings({ furniture, items, size }: { furniture: Furniture; items: Placement[]; size: number }) {
@@ -2599,22 +2655,23 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           raycast={() => null}
         />
       ))}
-      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
-      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
-      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />
-      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
-      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
-      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
-      <Instanced geometry={shapes.head} material={looks.skin} items={built.peopleSkin} shadows={false} colored />
-      <Instanced geometry={shapes.legs} material={looks.pants} items={built.peoplePants} colored />
+      {/* Small things fade out with distance; trees stay to the fog, simpler when far. */}
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored far={FAR_CARS} />
+      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} far={FAR_CARS} />
+      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} far={FAR_SMALL} />
+      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} far={FAR_SMALL} />
+      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} far={FAR_SMALL} />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored far={FAR_SMALL} />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.peopleSkin} shadows={false} colored far={FAR_SMALL} />
+      <Instanced geometry={shapes.legs} material={looks.pants} items={built.peoplePants} colored far={FAR_SMALL} />
       <Traffic lanes={built.traffic} shapes={shapes} looks={looks} reducedMotion={reducedMotion} />
-      <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
-      <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
-      <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />
-      <Instanced geometry={shapes.bulb} material={looks.glow} items={built.lamps} shadows={false} />
-      <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} />
-      <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
-      <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
+      <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} far={FAR_CARS} />
+      <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored lod={shapes.canopyFar} />
+      <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} far={FAR_CARS} />
+      <Instanced geometry={shapes.bulb} material={looks.glow} items={built.lamps} shadows={false} far={FAR_CARS} />
+      <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} far={FAR_SMALL} />
+      <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} far={FAR_SMALL} />
+      <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} far={FAR_SMALL} />
       <ProposedStreetImprovements furniture={furniture} spots={built.proposed} />
 
       <IssueLayer reducedMotion={reducedMotion} />
