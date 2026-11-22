@@ -38,6 +38,18 @@ function connectionString(): string | undefined {
   return raw || undefined;
 }
 
+/**
+ * node-pg treats sslmode=require as verify-full. Tiger Cloud's chain is not
+ * in Node's trust store, so that check fails with a self-signed certificate.
+ * uselibpqcompat keeps require as "encrypt, do not reject that chain."
+ */
+export function connectionStringForNode(url: string): string {
+  if (!/sslmode=require(?:&|$)/i.test(url)) return url;
+  if (/uselibpqcompat=/i.test(url)) return url;
+  const join = url.includes("?") ? "&" : "?";
+  return `${url}${join}uselibpqcompat=true`;
+}
+
 /** Open a pool when DATABASE_URL is set; probe with SELECT 1 + PostGIS. */
 export async function initTiger(): Promise<{
   ok: boolean;
@@ -53,7 +65,7 @@ export async function initTiger(): Promise<{
   await closeTiger();
 
   pool = new Pool({
-    connectionString: url,
+    connectionString: connectionStringForNode(url),
     // Tiger Cloud requires TLS; sslmode in the URL is respected by libpq.
     max: 4,
     connectionTimeoutMillis: 5_000,
