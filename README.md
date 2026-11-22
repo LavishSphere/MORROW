@@ -11,6 +11,10 @@
 </p>
 
 <p align="center">
+  🏆 <a href="https://www.mlh.com/events/whack-wellesley-hackathon/prizes"><strong>Winner, MLH Build Your Hackathon A-Team with SpaceXSI, WHACK 2026</strong></a>
+</p>
+
+<p align="center">
   <strong>Make tomorrow possible.</strong> Type any US city and MORROW rebuilds it in 3D from open map data, finds the stairs with no ramp, the missing sidewalks and the unmarked crossings, lets you try a fix in place, measures what it changes, and drafts a proposal a resident can take to town hall. The numbers come from our code; Gemini only writes the letter.
 </p>
 
@@ -143,7 +147,9 @@ Tiger Cloud PostgreSQL with PostGIS stores geolocated barrier records and every 
 
 ### SpaceXSI
 
-We built MORROW only with Cursor and Grok Bot.
+🏆 MORROW won the MLH **Build Your Hackathon A-Team with SpaceXSI** prize at WHACK 2026.
+
+We used Cursor and Grok Bot throughout the build, to write and refactor code, iterate on the 3D look, and debug the map pipeline.
 
 ### GoDaddy Registry
 
