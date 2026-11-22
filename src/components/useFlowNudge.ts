@@ -4,7 +4,6 @@ import { useStreetImprovements } from '../city/streetImprovements'
 import { useIssueState } from '../showcase/issueStore'
 import type { AppMode } from '../types'
 import {
-  NUDGE_STEPS,
   nudgeDelay,
   nudgeFor,
   readDismissed,
@@ -46,7 +45,7 @@ function dismissNudge(mode: AppMode) {
 /**
  * Which "next step" nudge to show, if any. It appears a little while into
  * a mode, or soon after the resident does something there, and stays
- * closed once dismissed or once they reach the next mode on their own.
+ * closed for the session only once they dismiss it.
  */
 export function useFlowNudge(mode: AppMode): { step: NudgeStep | null; dismiss: () => void } {
   const closed = useSyncExternalStore(subscribe, getDismissed, getDismissed)
@@ -56,11 +55,6 @@ export function useFlowNudge(mode: AppMode): { step: NudgeStep | null; dismiss: 
   const fixes = fixed.size + patchedIds.length + selectedIds.length
   const delay = nudgeDelay(mode, { selected: selectedId !== null, fixes })
   const [ready, setReady] = useState<AppMode | null>(null)
-
-  // Reaching a mode means the nudge pointing at it is no longer needed.
-  useEffect(() => {
-    for (const step of NUDGE_STEPS) if (step.to === mode) dismissNudge(step.from)
-  }, [mode])
 
   const wanted = nudgeFor(mode) !== null && !closed.has(mode)
   useEffect(() => {

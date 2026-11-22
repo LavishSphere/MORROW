@@ -34,8 +34,10 @@ test("the nudge waits a moment, or follows something the resident did", () => {
   const picked = nudgeDelay("explore", { selected: true, fixes: 0 });
   assert.ok(picked !== null && picked < explore);
   // Improve waits for a fix: Compare is empty without one.
-  assert.equal(nudgeDelay("improve", idle), null);
-  assert.ok(nudgeDelay("improve", { selected: false, fixes: 1 }) !== null);
+  // Improve always points on to Compare; a fix brings the card sooner.
+  const improveIdle = nudgeDelay("improve", idle);
+  const improveFixed = nudgeDelay("improve", { selected: false, fixes: 1 });
+  assert.ok(improveIdle !== null && improveFixed !== null && improveFixed < improveIdle);
   assert.ok(nudgeDelay("compare", idle) !== null);
   assert.equal(nudgeDelay("propose", { selected: true, fixes: 3 }), null);
 });

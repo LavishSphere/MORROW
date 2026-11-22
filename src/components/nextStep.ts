@@ -36,16 +36,19 @@ export type NudgeProgress = {
 /** Explore nudges after a look around; Compare after a moment to read. */
 export const EXPLORE_DELAY_MS = 8000
 export const COMPARE_DELAY_MS = 6000
+/** Improve points on to Compare even before a fix is applied. */
+export const IMPROVE_DELAY_MS = 10000
 /** After something meaningful, the nudge follows quickly. */
 export const AFTER_ACTION_MS = 1500
 
 /**
- * How long to wait before nudging in this mode, or null for not yet.
- * Improve waits for a fix: Compare has nothing to show without one.
+ * How long to wait before nudging in this mode, or null for never.
+ * Every mode but Propose points to the next one; doing something there
+ * (picking an issue, applying a fix) brings the card sooner.
  */
 export function nudgeDelay(mode: AppMode, progress: NudgeProgress): number | null {
   if (mode === 'explore') return progress.selected ? AFTER_ACTION_MS : EXPLORE_DELAY_MS
-  if (mode === 'improve') return progress.fixes > 0 ? AFTER_ACTION_MS : null
+  if (mode === 'improve') return progress.fixes > 0 ? AFTER_ACTION_MS : IMPROVE_DELAY_MS
   if (mode === 'compare') return COMPARE_DELAY_MS
   return null
 }
