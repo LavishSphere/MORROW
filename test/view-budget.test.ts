@@ -79,3 +79,13 @@ test("a rebuild waits until the camera has rested", async () => {
   assert.equal(ran, 2);
   assert.ok(REBUILD_QUIET_MS >= 2000);
 });
+
+test("Overture footprints decode in a worker, with the page as a fallback", async () => {
+  const client = await readFile("src/data/overtureClient.ts", "utf8");
+  const worker = await readFile("src/data/overtureWorker.ts", "utf8");
+  const city = await readFile("src/showcase/scene/City.tsx", "utf8");
+  assert.match(client, /new Worker\(new URL\("\.\/overtureWorker\.ts", import\.meta\.url\), \{ type: "module" \}\)/);
+  assert.match(client, /footprints \?\? readHere\(box\)/);
+  assert.match(worker, /fetchOvertureBuildings\(box\)/);
+  assert.match(city, /from "\.\.\/\.\.\/data\/overtureClient\.ts"/);
+});
