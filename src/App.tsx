@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
 import { ImprovePage } from './components/ImprovePage'
@@ -10,6 +10,9 @@ import { useChromeInsets } from './components/useChromeInsets'
 import { useIssueState } from './showcase/issueStore'
 import type { LoadedNeighborhood } from './data/overpass'
 import type { AppMode } from './types'
+
+/** Remembered "Reduced motion" choice. Motion is on unless the viewer turned it off. */
+const REDUCED_MOTION_KEY = 'morrow:reduced-motion'
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('explore')
@@ -31,16 +34,22 @@ export default function App() {
     setPanelMode('improve')
   }, [openImprove])
   const [neighborhood, setNeighborhood] = useState<LoadedNeighborhood | null>(null)
-  const [reducedMotion, setReducedMotion] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Motion is on by default. The "Reduced motion" toggle turns it off, and
+  // that choice is remembered on this browser.
+  const [reducedMotion, setReducedMotionState] = useState(() => {
+    try {
+      return window.localStorage.getItem(REDUCED_MOTION_KEY) === '1'
+    } catch {
+      return false
+    }
   })
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReducedMotion(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+  const setReducedMotion = useCallback((on: boolean) => {
+    setReducedMotionState(on)
+    try {
+      window.localStorage.setItem(REDUCED_MOTION_KEY, on ? '1' : '0')
+    } catch {
+      // Storage blocked: the choice lasts for this visit only.
+    }
   }, [])
 
 
