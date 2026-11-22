@@ -54,7 +54,9 @@ test("walking near the edge of a loaded city loads the real area ahead", async (
   assert.match(hook, /map\.unproject\(/);
   assert.match(hook, /failed\.current\.add\(key\)/);
   // New areas join without duplicating ways already loaded.
-  assert.match(loader, /fresh\.filter\(\(way\) => !seen\.has\(`\$\{way\.kind\}:\$\{way\.id\}`\)\)/);
+  // Relations carry an `r`, so one never hides a way of the same number.
+  assert.match(loader, /fresh\.filter\(\(way\) => !seen\.has\(wayKey\(way\)\)\)/);
+  assert.match(loader, /return `\$\{way\.kind\}:\$\{osmRef\(way\)\}`/);
   // The city keeps the loaded place's center.
   assert.match(city, /A loaded city keeps one fixed center/);
   // Fixes and picks carry over when more of the same city loads.
