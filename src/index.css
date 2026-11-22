@@ -1605,6 +1605,156 @@ code {
     visibility 0s linear 380ms;
 }
 
+/* —— Next-step nudge: bottom centre, just above the mode bar ——
+   Clear of the minimap (right), the controls (left) and, when a mode
+   page is open, beside the panel instead of over it. */
+.app-shell--city {
+  --nudge-space: 3.6rem;
+  --minimap-space: 12rem;
+}
+
+.flow-nudge {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: calc(var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem));
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: max-content;
+  max-width: min(24rem, calc(100% - 2 * var(--overlay-left, 1.15rem)));
+  margin: 0;
+  padding: 0.5rem 0.45rem 0.5rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(12, 20, 17, 0.72);
+  color: #f7faf8;
+  font-size: 0.8rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+  transform: translateX(-50%);
+  animation: flow-nudge-in 360ms var(--overlay-ease, ease) both;
+}
+
+@keyframes flow-nudge-in {
+  from {
+    opacity: 0;
+    translate: 0 0.5rem;
+  }
+}
+
+.flow-nudge__text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.flow-nudge__title {
+  font-weight: 700;
+}
+
+.flow-nudge__hint {
+  color: rgba(247, 250, 248, 0.72);
+}
+
+.flow-nudge__go {
+  flex: none;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 10px;
+  background: #f7faf8;
+  color: #14211c;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.flow-nudge__go:hover {
+  background: #ffffff;
+}
+
+.flow-nudge__close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -0.3rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(247, 250, 248, 0.7);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.flow-nudge__close:hover {
+  color: #f7faf8;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* A mode page is open: sit to its right, left of the minimap. */
+.app-shell--city.has-panel .flow-nudge {
+  left: calc(
+    var(--overlay-left, 1.15rem) + 27rem + var(--overlay-gap, 0.85rem)
+  );
+  max-width: min(
+    22rem,
+    calc(
+      100% - 27rem - var(--minimap-space) - 2 * var(--overlay-left, 1.15rem) -
+        2 * var(--overlay-gap, 0.85rem)
+    )
+  );
+  transform: none;
+}
+
+/* Too narrow to sit beside things: one full-width row above the mode bar,
+   and the minimap, controls and panel step up to make room. */
+@media (max-width: 1100px) {
+  .app-shell--city .flow-nudge,
+  .app-shell--city.has-panel .flow-nudge {
+    left: var(--overlay-left, 1.15rem);
+    right: var(--overlay-left, 1.15rem);
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .flow-nudge__text {
+    display: block;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .app-shell--city.has-nudge .minimap,
+  .app-shell--city.has-nudge .move-hints {
+    bottom: calc(
+      var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem) +
+        var(--nudge-space)
+    );
+  }
+
+  .app-shell--city.has-nudge .overlay-panel {
+    max-height: calc(
+      100% - var(--chrome-top, 4.6rem) - var(--chrome-bottom, 5.2rem) -
+        2 * var(--overlay-gap) - var(--nudge-space)
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-nudge {
+    animation: none;
+  }
+}
+
 /* —— Minimap: bottom-right, just above the mode bar —— */
 .minimap {
   position: absolute;
