@@ -86,7 +86,7 @@ test("a minimap, a where-am-I label, and street signs help you find your way", a
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const rig = await readFile("src/showcase/scene/CameraRig.tsx", "utf8");
   assert.match(slot, /<Minimap placeLabel=/);
-  assert.match(city, /publishMap\(mapFor\(cityModel\)\)/);
+  assert.match(city, /publishMap\(\{ \.\.\.mapFor\(cityModel\), skyline: built\.skyline \}\)/);
   assert.match(rig, /publishPose\(/);
   // Click the minimap to fly there.
   assert.match(minimap, /flyTo\(/);

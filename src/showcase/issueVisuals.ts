@@ -14,7 +14,8 @@ export const ISSUE_COLOR: Record<IssueKind, string> = {
   stairs: "#ff8a3d",
   unmarked_crossing: "#ffd23f",
   no_sidewalk: "#ff5d73",
-  unpaved_path: "#c98b4a",
+  // Violet, not tan: a tan ball on a pole reads as an autumn tree.
+  unpaved_path: "#a070ff",
 };
 /** An improved issue. */
 export const FIXED_COLOR = "#2ecc71";

@@ -46,6 +46,32 @@
   <a href="#team">Team</a>
 </p>
 
+<p align="center">
+  <img src="docs/readme/boston-overview.png" width="900" alt="Downtown Boston rebuilt in 3D from OpenStreetMap and Overture building heights, with accessibility issue pins on the streets" />
+</p>
+<p align="center">
+  <sub>Downtown Boston, rebuilt from open map data. Every pin is a barrier MORROW found in the map's own accessibility tags.</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/issue-fix-preview.png" alt="Improve panel showing a staircase issue and a preview of the ramp that would fix it" /></td>
+    <td width="50%"><img src="docs/readme/proposal.png" alt="The proposal editor with a Gemini draft ready for town hall" /></td>
+  </tr>
+  <tr>
+    <td><sub><strong>Improve.</strong> A staircase with no step-free route, and the ramp that would fix it, previewed in place.</sub></td>
+    <td><sub><strong>Propose.</strong> An editable letter for town hall, drafted by Gemini from facts the server checked.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/readme/traffic-close.png" alt="Street level in Central Square, Cambridge, with moving cars, walking people and issue pins" /></td>
+    <td width="50%"><img src="docs/readme/chicago-loop.png" alt="The Chicago Loop towers from above" /></td>
+  </tr>
+  <tr>
+    <td><sub><strong>Street level.</strong> Central Square, Cambridge: traffic, pedestrians and the barriers along the way.</sub></td>
+    <td><sub><strong>Any US city.</strong> The Chicago Loop, streamed in as you look around.</sub></td>
+  </tr>
+</table>
+
 ---
 
 ## The problem

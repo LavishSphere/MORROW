@@ -165,7 +165,9 @@
   background: rgba(255, 255, 255, 0.14);
 }
 
-/* —— Status note: floats under the field so the bar stays one row —— */
+/* —— Status note: floats under the field so the bar stays one row ——
+   As wide as the field, not the field plus Go, so it ends before the map
+   key on the right. */
 .place-search__status {
   position: absolute;
   top: calc(100% + 0.4rem);
@@ -173,7 +175,7 @@
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
-  width: max(100%, 20rem);
+  width: clamp(16rem, 30vw, 26rem);
   margin: 0;
   padding: 0.45rem 0.35rem 0.45rem 0.7rem;
   border: 1px solid rgba(255, 255, 255, 0.16);

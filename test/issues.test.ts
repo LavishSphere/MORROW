@@ -121,3 +121,19 @@ test("a proposal can be the picked issues alone, with no showcase route", () => 
   assert.match(draft.headline, /^Fix 2 walking barriers in Wellesley, MA$/);
   assert.equal(draft.meetingTalkingPoints.length, 2);
 });
+
+test("freeways, ramps, and bus lanes tagged sidewalk=no are not missing sidewalks", () => {
+  const road = (osmId: number, highway: string) => ({
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: [[-71.3, 42.29], [-71.3, 42.2905]] },
+    properties: { layer: "road", highway, sidewalk: "no", osmId },
+  });
+  const issues = detectIssues({
+    type: "FeatureCollection",
+    features: [road(1, "motorway"), road(2, "motorway_link"), road(3, "busway"), road(4, "residential")],
+  });
+  assert.deepEqual(
+    issues.filter((issue) => issue.kind === "no_sidewalk").map((issue) => issue.id),
+    ["no_sidewalk-4"],
+  );
+});
