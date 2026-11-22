@@ -5,7 +5,8 @@ import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
 import waterMap from "../../../data/wellesley/water.geojson";
 import { DEFAULT_HEIGHT_METRES, withOvertureBuildings, type OvertureFootprint } from "../../data/buildingHeight.ts";
-import { fetchOvertureBuildings } from "../../data/overtureClient.ts";
+import { fetchOvertureBuildings, fetchOverturePiers } from "../../data/overtureClient.ts";
+import { withPiers, type PierDeck } from "../../data/overturePiers.ts";
 import { uncoveredParts, type NeighborhoodBox } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { flyTo, getCityState, publishMap, viewOver, type Bounds, type CityMap } from "../cityStore";
@@ -64,6 +65,10 @@ const LAWN = "#7d9a68";
 const LANE_PAINT = "#efe6c4";
 /** Beaches and sand from OpenStreetMap (natural=beach, natural=sand). */
 const SAND = "#ead7a6";
+/** Pier and wharf decks from Overture Maps: weathered wood. */
+const PIER_WOOD = "#b08d65";
+/** Pier decks stand above the water (0.025) and the sea (0.02). */
+const PIER_DECK_Y = 0.12;
 /** Needleleaved trees mapped in OpenStreetMap. */
 const CONIFER = "#2f5a3a";
 const LOGO_BLUE = "#1488ff";
@@ -1092,6 +1097,8 @@ type Built = {
   skyline: number;
   water: THREE.BufferGeometry;
   sand: THREE.BufferGeometry;
+  /** Pier and wharf decks over the water. */
+  piers: THREE.BufferGeometry;
   streams: THREE.BufferGeometry;
   /** Road surface of the big bridges, drawn clear of the fog. */
   farDecks: THREE.BufferGeometry;
@@ -1693,6 +1700,15 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
     cap(sandy, ring, 0.018);
     occupancy.markPolygon([ring]);
   }
+  // Piers and wharves: a weathered deck standing just above the water, with
+  // a thin edge down to the surface so it reads as a deck. No trees or parks.
+  const decks = new Bucket();
+  for (const ring of model.parsed.piers ?? []) {
+    if (ring.length < 3) continue;
+    cap(decks, ring, PIER_DECK_Y);
+    walls(decks, ring, 0, PIER_DECK_Y);
+    occupancy.markPolygon([ring]);
+  }
   // The sea runs past the city edge on the water side only, so looking
   // outward shows ocean instead of stopping at the streets. Not a wall.
   const coastLines = model.parsed.coastlines.map((line) => line.points);
@@ -2068,6 +2084,7 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
     traffic,
     water: water.geometry(),
     sand: sandy.geometry(),
+    piers: decks.geometry(),
     streams: streams.geometry(),
     farDecks: farDecks.geometry(),
     bridges: [...trim.values()].map(({ color, far, bucket }) => ({ color, far, geometry: bucket.geometry() })),
@@ -2190,6 +2207,7 @@ function useMaterials() {
         path: plain("#cfc7b2"),
         park: plain("#3e7c4c", { roughness: 0.95 }),
         sand: plain(SAND, { roughness: 1 }),
+        pier: plain(PIER_WOOD, { roughness: 0.9, side: THREE.DoubleSide }),
         water: new THREE.MeshStandardMaterial({
           color: "#1a6e96",
           roughness: 0.35,
@@ -2688,23 +2706,46 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     place: string;
     covered: NeighborhoodBox[];
     byId: Map<string, OvertureFootprint>;
+    piers: Map<string, PierDeck>;
     waiting: boolean;
   }>({
     place: "",
     covered: [],
     byId: new Map(),
+    piers: new Map(),
     waiting: false,
   });
   const [overture, setOverture] = useState<OvertureFootprint[]>([]);
+  const [piers, setPiers] = useState<PierDeck[]>([]);
   useEffect(() => {
     if (!boxKey) return;
     const [west = 0, south = 0, east = 0, north = 0] = boxKey.split(",").map(Number);
     if (gathered.current.place !== placeKey) {
-      gathered.current = { place: placeKey, covered: [], byId: new Map(), waiting: false };
+      gathered.current = { place: placeKey, covered: [], byId: new Map(), piers: new Map(), waiting: false };
     }
     const store = gathered.current;
+    // New footprints or piers rebuild the city: wait until the camera rests,
+    // and fold parts that arrive meanwhile into one rebuild.
+    const rebuild = () => {
+      if (store.waiting) return;
+      store.waiting = true;
+      whenCameraRests(() => {
+        store.waiting = false;
+        if (gathered.current !== store) return;
+        setOverture([...store.byId.values()]);
+        setPiers([...store.piers.values()]);
+      }, REBUILD_QUIET_MS);
+    };
     for (const part of uncoveredParts({ west, south, east, north }, store.covered, OVERTURE_MIN_PART)) {
       store.covered.push(part);
+      // Piers are optional: a part that cannot be read just has none.
+      fetchOverturePiers(part)
+        .then((decks) => {
+          if (gathered.current !== store || decks.length === 0) return;
+          for (const deck of decks) store.piers.set(deck.id, deck);
+          rebuild();
+        })
+        .catch(() => undefined);
       fetchOvertureBuildings(part)
         .then((footprints) => {
           if (gathered.current !== store) return;
@@ -2714,14 +2755,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
             return;
           }
           for (const footprint of footprints) store.byId.set(footprint.id, footprint);
-          // The new footprints rebuild the city: wait until the camera rests,
-          // and fold parts that arrive meanwhile into one rebuild.
-          if (store.waiting) return;
-          store.waiting = true;
-          whenCameraRests(() => {
-            store.waiting = false;
-            if (gathered.current === store) setOverture([...store.byId.values()]);
-          }, REBUILD_QUIET_MS);
+          rebuild();
         })
         .catch(() => {
           store.covered = store.covered.filter((item) => item !== part);
@@ -2737,8 +2771,15 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           return lon >= here.west && lon <= here.east && lat >= here.south && lat <= here.north;
         })
       : [];
-    return withOvertureBuildings(source, footprints);
-  }, [source, box, overture]);
+    // Piers from another place are dropped the same way.
+    const decks = here
+      ? piers.filter((p) => {
+          const [lon, lat] = p.ring[0] ?? [NaN, NaN];
+          return lon >= here.west && lon <= here.east && lat >= here.south && lat <= here.north;
+        })
+      : [];
+    return withPiers(withOvertureBuildings(source, footprints), decks);
+  }, [source, box, overture, piers]);
   const cityModel = useMemo(
     () => timed("buildModel", () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center)),
     [enriched, geoJson],
@@ -2817,6 +2858,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         built.stone,
         built.water,
         built.sand,
+        built.piers,
         built.streams,
         built.roads,
         built.lines,
@@ -2843,6 +2885,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
       <mesh geometry={built.sand} material={surfaces.sand} receiveShadow raycast={() => null} />
+      <mesh geometry={built.piers} material={surfaces.pier} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.water} material={surfaces.water} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.streams} material={surfaces.stream} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />

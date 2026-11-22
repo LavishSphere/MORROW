@@ -11,9 +11,12 @@ import { parquetReadObjects } from "hyparquet";
 import { compressors } from "hyparquet-compressors";
 import { filesFor, groupOverlaps, intersects, openParquet, type NeighborhoodBox } from "./overtureBuildings.ts";
 import type { OsmWay } from "./overpass.ts";
+import { linesOf, outerRingsOf, type Line } from "./overtureGeometry.ts";
+import { piersFromRow, type PierDeck } from "./overturePiers.ts";
+
+export { linesOf, outerRingsOf };
 
 type Row = Record<string, unknown>;
-type Line = [number, number][];
 
 /** Overture road classes are OSM highway values, so they map one to one. */
 const ROAD_CLASSES = new Set([
@@ -50,32 +53,6 @@ export function overtureNumber(id: string): number {
     h = Math.imul(h, 16777619);
   }
   return -((h >>> 0) + 1);
-}
-
-function point(value: unknown): [number, number] | null {
-  if (!Array.isArray(value) || typeof value[0] !== "number" || typeof value[1] !== "number") return null;
-  return [value[0], value[1]];
-}
-
-/** Lines of a GeoJSON LineString or MultiLineString (hyparquet decodes GeoParquet to GeoJSON). */
-export function linesOf(geometry: unknown): Line[] {
-  const g = geometry as { type?: unknown; coordinates?: unknown } | null;
-  if (!g || typeof g !== "object") return [];
-  const toLine = (coords: unknown): Line => (Array.isArray(coords) ? coords.map(point).filter((p): p is [number, number] => !!p) : []);
-  if (g.type === "LineString") return [toLine(g.coordinates)].filter((l) => l.length >= 2);
-  if (g.type === "MultiLineString" && Array.isArray(g.coordinates)) return g.coordinates.map(toLine).filter((l) => l.length >= 2);
-  return [];
-}
-
-/** Outer rings of a GeoJSON Polygon or MultiPolygon. */
-export function outerRingsOf(geometry: unknown): Line[] {
-  const g = geometry as { type?: unknown; coordinates?: unknown } | null;
-  if (!g || typeof g !== "object" || !Array.isArray(g.coordinates)) return [];
-  const ring = (polygon: unknown): Line =>
-    Array.isArray(polygon) && Array.isArray(polygon[0]) ? (polygon[0] as unknown[]).map(point).filter((p): p is [number, number] => !!p) : [];
-  if (g.type === "Polygon") return [ring(g.coordinates)].filter((r) => r.length >= 4);
-  if (g.type === "MultiPolygon") return g.coordinates.map(ring).filter((r) => r.length >= 4);
-  return [];
 }
 
 function first<T>(list: unknown, read: (item: Record<string, unknown>) => T | undefined): T | undefined {
@@ -165,13 +142,14 @@ export function waterFromRow(row: Row): OsmWay[] {
   }));
 }
 
-async function readCollection(
-  collection: "segment" | "water",
+/** Rows of one Overture collection inside the box, each turned into items. */
+export async function readCollection<T>(
+  collection: "segment" | "water" | "infrastructure",
   columns: string[],
   box: NeighborhoodBox,
-  toWays: (row: Row) => OsmWay[],
-): Promise<OsmWay[]> {
-  const ways: OsmWay[] = [];
+  toWays: (row: Row) => T[],
+): Promise<T[]> {
+  const ways: T[] = [];
   for (const url of await filesFor(collection, box)) {
     const { file, metadata } = await openParquet(url);
     let start = 0;
@@ -248,4 +226,9 @@ export async function fetchOvertureBase(box: NeighborhoodBox): Promise<OsmWay[]>
       .catch(() => [] as OsmWay[]),
   ]);
   return [...roads, ...water];
+}
+
+/** Pier and wharf decks in a box, from Overture's infrastructure collection. Throws when the files cannot be read. */
+export function fetchOverturePiers(box: NeighborhoodBox): Promise<PierDeck[]> {
+  return readCollection("infrastructure", ["id", "class", "geometry", "bbox"], box, piersFromRow);
 }

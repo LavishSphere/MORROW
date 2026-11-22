@@ -13,6 +13,7 @@ export type BasemapLayer =
   | "waterway"
   | "coastline"
   | "sand"
+  | "pier"
   | "tree";
 
 export type BuildingFootprint = {
@@ -27,7 +28,7 @@ export type BuildingFootprint = {
 export type WayRibbon = {
   id: string;
   edgeId?: string;
-  layer: Exclude<BasemapLayer, "building" | "water" | "waterway" | "coastline" | "sand" | "tree">;
+  layer: Exclude<BasemapLayer, "building" | "water" | "waterway" | "coastline" | "sand" | "pier" | "tree">;
   name?: string;
   points: readonly (readonly [number, number])[];
   /** Scene units. Half of the resolved carriageway width, scaled into the miniature. */
@@ -85,6 +86,8 @@ export type ParsedBasemap = {
   trees?: { x: number; z: number; conifer: boolean }[];
   /** Beaches and sand, as closed rings in local [x, z]. */
   sand?: (readonly (readonly [number, number])[])[];
+  /** Piers and wharf decks over the water, as closed rings in local [x, z]. */
+  piers?: (readonly (readonly [number, number])[])[];
   /** Rail track, platforms, and stations (features with layer rail, rail_platform, station). */
   rail: RailNetwork;
 };
@@ -151,6 +154,7 @@ function layerOf(properties: Record<string, unknown> | null): BasemapLayer | nul
     layer === "waterway" ||
     layer === "coastline" ||
     layer === "sand" ||
+    layer === "pier" ||
     layer === "tree"
   ) {
     return layer;
@@ -178,6 +182,7 @@ export function parseBasemap(
   const waterways: Waterway[] = [];
   const coastlines: Coastline[] = [];
   const sand: (readonly (readonly [number, number])[])[] = [];
+  const piers: (readonly (readonly [number, number])[])[] = [];
   const trees: { x: number; z: number; conifer: boolean }[] = [];
 
   for (const feature of geoJson.features) {
@@ -230,6 +235,14 @@ export function parseBasemap(
       continue;
     }
 
+    if (layer === "pier" && f.geometry.type === "Polygon") {
+      const rings = f.geometry.coordinates as unknown[];
+      if (!Array.isArray(rings) || !Array.isArray(rings[0])) continue;
+      const ring = projectRing(rings[0] as unknown[], projector.project);
+      if (ring.length >= 3) piers.push(ring);
+      continue;
+    }
+
     if (layer === "water" && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")) {
       const polygons =
         f.geometry.type === "Polygon"
@@ -278,6 +291,7 @@ export function parseBasemap(
       layer !== "waterway" &&
       layer !== "coastline" &&
       layer !== "sand" &&
+      layer !== "pier" &&
       layer !== "tree" &&
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
@@ -325,5 +339,5 @@ export function parseBasemap(
   ) {
     return null;
   }
-  return { buildings, ways, water, waterways, coastlines, rail, ...(sand.length ? { sand } : {}), ...(trees.length ? { trees } : {}) };
+  return { buildings, ways, water, waterways, coastlines, rail, ...(sand.length ? { sand } : {}), ...(piers.length ? { piers } : {}), ...(trees.length ? { trees } : {}) };
 }
