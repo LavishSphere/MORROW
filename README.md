@@ -45,7 +45,7 @@ This is the outage path. It is also the path that ships today. Flags live in `sr
 | Tiger Data / live barrier API | Bundled Wellesley fixtures (`data/wellesley/`). Banner: live API unavailable. |
 | Gemini | Template proposal prose. Labeled unavailable. `aiGenerated` is false. |
 | Generate HTTP API | Same template, built in the browser from routing facts. |
-| Vultr / any backend | The static Pages (or local) app. No server required for the judge loop. |
+| Hosted API | The static Pages (or local) app. No server required for the judge loop. |
 | 3D canvas | The Wellesley scene is the page. The mode bar stays. |
 | Public Pages URL | `npm run dev` or `npm run preview` on a laptop. |
 
@@ -79,7 +79,7 @@ Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run de
 | `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
 | `VITE_API_BASE` | No | Front-end API base (no trailing slash). Empty = same-origin / proxy. Required for GitHub Pages → hosted API. |
 
-Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). Generate runs the Mastra proposal workflow. For Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin after Vultr (or another host) is up — see [`docs/deploy-api-vultr.md`](docs/deploy-api-vultr.md). Details: [`packages/api/README.md`](packages/api/README.md).
+Never put `GEMINI_API_KEY` or `DATABASE_URL` in `VITE_*` vars. Template env shape: [`.env.example`](.env.example). Generate runs the Mastra proposal workflow. For Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin (`https://api.morrow.khayrul.com`) after the VPS is up. Details: [`packages/api/README.md`](packages/api/README.md).
 
 ## Accessible Interface
 
@@ -104,7 +104,7 @@ Do not vendor a second routing package.
 - [Team plan](docs/team-plan.md) — four-person seat assignments and handoffs
 - [Project context](docs/project-context.md) — short north-star brief for the team
 - [Satellite town](docs/satellite-town.md) — top-down camera, AI-detected problems, and where stats live
-- [Vultr API host runbook](docs/deploy-api-vultr.md) — GHCR image → Vultr → `VITE_API_BASE` for Pages (blocked until Vultr credentials exist)
+- [API host](packages/api/README.md) — Pterodactyl egg, image `ghcr.io/lavishsphere/morrow:latest`, public origin `https://api.morrow.khayrul.com`
 
 ## Phase-1 starter data (Wellesley)
 
