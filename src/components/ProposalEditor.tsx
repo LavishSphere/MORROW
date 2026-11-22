@@ -1,5 +1,6 @@
 import { formatMeters } from '../satellite/stats/format'
 import { EvidenceBadge } from './EvidenceBadge'
+import { ProposalIssueFacts } from './ProposalIssues'
 import type { DraftProposal, ProposalFacts } from '../types'
 
 type Props = {
@@ -138,6 +139,8 @@ export function ProposalEditor({
             ))}
           </ul>
         </section>
+
+        <ProposalIssueFacts issues={facts.issues ?? []} />
 
         <section>
           <h3>6. Action requested</h3>

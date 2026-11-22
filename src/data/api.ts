@@ -322,6 +322,7 @@ export async function generateProposal(
           scenarioId: req.scenarioId,
           barrierId: req.barrierId,
           interventionId: req.interventionId,
+          ...(req.issueIds && req.issueIds.length > 0 ? { issueIds: req.issueIds } : {}),
         }),
         signal: AbortSignal.timeout(30_000),
       })

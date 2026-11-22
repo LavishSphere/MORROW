@@ -24,6 +24,8 @@ export function geminiModel(): string {
 const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
 State that results are modeled, retain the evidence status, and ask officials to assess feasibility.
 Do not invent real accessibility defects, agency names, source links, cost estimates, construction timelines, or outcome figures.
+If additionalIssues are supplied, the proposal covers every one of them: name where it is, what the problem is, the suggested fix, and its before/after exactly as given. Give each its own talking point when space allows.
+Their evidence status "community_reported" means OpenStreetMap mapper data, not a field survey; say so once.
 Return only the requested JSON fields.`;
 
 function buildUserPayload(facts: ProposalFacts): string {
@@ -44,6 +46,17 @@ function buildUserPayload(facts: ProposalFacts): string {
       },
       newlyReachableDestinations: facts.newlyReachableDestinations,
       assumptions: facts.modelAssumptions,
+      additionalIssues: (facts.issues ?? []).map((issue) => ({
+        title: issue.title,
+        where: issue.where,
+        evidenceStatus: issue.evidenceStatus,
+        source: issue.source,
+        suggestedFix: issue.fix,
+        before: issue.before,
+        after: issue.after,
+        numbers: issue.metrics,
+        modeled: issue.modeled,
+      })),
     },
     null,
     2,

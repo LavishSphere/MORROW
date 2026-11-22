@@ -7,6 +7,7 @@ import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { useChromeInsets } from './components/useChromeInsets'
+import { useIssueState } from './showcase/issueStore'
 import { fetchBarriers, getDemoScenario } from './data/api'
 import type { LoadedNeighborhood } from './data/overpass'
 import { getBarrier, interventionsForBarrier } from './data/fixtures'
@@ -25,6 +26,13 @@ export default function App() {
     if (next !== 'explore') setPanelMode(next)
   }
   const panelOpen = mode !== 'explore'
+  // Clicking an issue marker in the city opens it in Improve.
+  const { openImprove } = useIssueState()
+  useEffect(() => {
+    if (openImprove === 0) return
+    setMode('improve')
+    setPanelMode('improve')
+  }, [openImprove])
   const [barriers, setBarriers] = useState<Barrier[]>([])
   const [selectedBarrierId] = useState<string | null>(
     scenario.barrierId,

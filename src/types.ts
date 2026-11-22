@@ -1,3 +1,5 @@
+import type { IssueFact } from '../shared/types.ts'
+
 export type EvidenceStatus = 'verified' | 'community_reported' | 'illustrative'
 export type BarrierType = 'missing_ramp' | 'unsafe_crossing' | 'blocked_path'
 export type InterventionType = 'install_ramp' | 'improve_crossing' | 'connect_path'
@@ -67,6 +69,8 @@ export type ProposalFacts = {
   originLabel: string
   destinationLabel: string
   nextSteps: string
+  /** Extra map issues in this proposal (see shared/issues.ts). */
+  issues?: IssueFact[]
 }
 
 export type DraftProposal = {
@@ -81,6 +85,8 @@ export type GenerateProposalRequest = {
   scenarioId: string
   barrierId: string
   interventionId: string
+  /** Extra town-map issues, by id. The API recomputes their facts. */
+  issueIds?: string[]
 }
 
 export type GenerateProposalResponse = {

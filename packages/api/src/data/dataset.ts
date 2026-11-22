@@ -42,6 +42,13 @@ const raw = loadJson<RawDataset>("data/wellesley/demo-dataset.json");
 
 export const basemapGeoJSON: unknown = loadJson("data/wellesley/basemap.geojson");
 
+let town: unknown = null;
+/** Wider Wellesley extract: the source of town-map issues. Loaded on first use. */
+export function townGeoJSON(): unknown {
+  town ??= loadJson("data/wellesley/town.geojson");
+  return town;
+}
+
 export const dataset: DemoDataset = {
   ...raw,
   barriers: raw.barriers.map((b) => ({
