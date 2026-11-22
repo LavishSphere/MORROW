@@ -11,7 +11,13 @@ import {
   type GeminiProposalDraft,
 } from "./schema.ts";
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
+/** Tried in order when the preferred model is retired or at capacity. */
+const FALLBACK_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+] as const;
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -19,6 +25,16 @@ export function geminiConfigured(): boolean {
 
 export function geminiModel(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+export function modelCandidates(preferred = geminiModel()): string[] {
+  const seen = new Set<string>();
+  const ordered = [preferred, ...FALLBACK_MODELS];
+  return ordered.filter((id) => {
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
@@ -86,14 +102,11 @@ const RESPONSE_SCHEMA = {
   ],
 } as const;
 
-/** Wait this long before retrying a "model busy" reply (503 / 429). */
-const BUSY_RETRY_MS = [1000, 2000];
-/** Give up on one call after this long, so the request never hangs. */
-const CALL_TIMEOUT_MS = 14_000;
-
-function isBusy(message: string) {
-  return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(message);
-}
+/**
+ * Give up on one model after this long and try the next, so a request never
+ * hangs. Up to four models × 12 s stays under the 60 s proxy limit.
+ */
+const CALL_TIMEOUT_MS = 12_000;
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -107,44 +120,36 @@ export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
 
-export async function draftWithGemini(
-  facts: ProposalFacts,
-): Promise<GeminiDraftResult> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, reason: "GEMINI_API_KEY not set" };
-  }
+function shouldTryNextModel(reason: string): boolean {
+  return /503|404|429|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|high demand|no longer available|timed out/i.test(
+    reason,
+  );
+}
 
+async function requestDraft(
+  apiKey: string,
+  facts: ProposalFacts,
+  model: string,
+): Promise<GeminiDraftResult> {
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const call = () =>
-      withTimeout(
-        ai.models.generateContent({
-          model: geminiModel(),
-          contents: `${PROMPT_CONTRACT}\n\nFacts:\n${buildUserPayload(facts)}`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: RESPONSE_SCHEMA,
-            temperature: 0.4,
-            // Room for several extra issues in one proposal.
-            maxOutputTokens: 2048,
-          },
-        }),
-        CALL_TIMEOUT_MS,
-      );
-    // Gemini sometimes answers "high demand"; a short retry usually succeeds.
-    let response: Awaited<ReturnType<typeof call>> | undefined;
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        response = await call();
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const wait = BUSY_RETRY_MS[attempt];
-        if (wait === undefined || !isBusy(message)) throw err;
-        await new Promise((resolve) => setTimeout(resolve, wait));
-      }
-    }
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model,
+        contents: `${PROMPT_CONTRACT}
+
+Facts:
+${buildUserPayload(facts)}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+          temperature: 0.4,
+          // Room for several extra issues in one proposal.
+          maxOutputTokens: 2048,
+        },
+      }),
+      CALL_TIMEOUT_MS,
+    );
 
     const text = response.text;
     if (!text) {
@@ -164,4 +169,23 @@ export async function draftWithGemini(
     const message = err instanceof Error ? err.message : "Gemini call failed";
     return { ok: false, reason: message };
   }
+}
+
+export async function draftWithGemini(
+  facts: ProposalFacts,
+): Promise<GeminiDraftResult> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, reason: "GEMINI_API_KEY not set" };
+  }
+
+  let last: GeminiDraftResult = { ok: false, reason: "Gemini call failed" };
+  for (const model of modelCandidates()) {
+    const result = await requestDraft(apiKey, facts, model);
+    if (result.ok) return result;
+    last = result;
+    if (!shouldTryNextModel(result.reason)) return result;
+    console.error(`[@morrow/api] Gemini ${model} skipped:`, result.reason);
+  }
+  return last;
 }

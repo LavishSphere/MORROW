@@ -1,8 +1,8 @@
 import { Sparkles } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
-import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
+import { adoptPotholes, scatterPotholes, selectPothole, usePotholeFix } from "../../city/potholeFix";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
@@ -411,25 +411,6 @@ function along(points: Ring, spacing: number, offset: number) {
   return out;
 }
 
-function pointAt(points: Ring, fraction: number) {
-  let total = 0;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    total += Math.hypot(points[i + 1]![0] - points[i]![0], points[i + 1]![1] - points[i]![1]);
-  }
-  let goal = total * fraction;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const [ax, az] = points[i]!;
-    const [bx, bz] = points[i + 1]!;
-    const len = Math.hypot(bx - ax, bz - az);
-    if (goal <= len && len > 0) {
-      return { x: ax + ((bx - ax) * goal) / len, z: az + ((bz - az) * goal) / len };
-    }
-    goal -= len;
-  }
-  const last = points[points.length - 1] ?? [0, 0];
-  return { x: last[0], z: last[1] };
-}
-
 /* —— Build everything once per map —— */
 
 type Placement = { x: number; z: number; rot?: number; s?: number; color?: string };
@@ -447,7 +428,7 @@ type Built = {
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
-  holes: { x: number; z: number }[];
+  holes: ReturnType<typeof scatterPotholes>;
   signs: SignSpot[];
 };
 
@@ -528,15 +509,8 @@ function buildCity(model: CityModel): Built {
     .filter((way) => way.layer === "footway")
     .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
 
-  // Potholes sit on the stretch of the real Central Street nearest the College.
-  const central = roadWays
-    .filter((way) => way.name === "Central Street")
-    .map((way) => {
-      const mid = pointAt(way.points, 0.5);
-      return { way, d: Math.hypot(mid.x, mid.z) };
-    })
-    .sort((a, b) => a.d - b.d)[0]?.way;
-  const holes = central ? [0.3, 0.5, 0.7].map((f) => pointAt(central.points, f)) : [];
+  // Illustrative holes on this city's roads, not only a street named Central.
+  const holes = scatterPotholes(roadWays);
 
   // Street signs along named roads, spaced so one street never crowds a block.
   const signs: SignSpot[] = [];
@@ -784,6 +758,9 @@ export function City({ geoJson }: { geoJson?: unknown }) {
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
 
+  useLayoutEffect(() => {
+    adoptPotholes(built.holes.map((hole) => hole.issue));
+  }, [built]);
   useEffect(() => publishMap(mapFor(model)), [model]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {
@@ -853,11 +830,9 @@ export function City({ geoJson }: { geoJson?: unknown }) {
       <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
 
-      {built.holes.map((spot, index) => {
-        const hole = POTHOLES[index];
-        if (!hole) return null;
-        return <Pothole key={hole.id} id={hole.id} x={spot.x} z={spot.z} size={0.38} />;
-      })}
+      {built.holes.map((spot) => (
+        <Pothole key={spot.issue.id} id={spot.issue.id} x={spot.x} z={spot.z} size={0.38} />
+      ))}
 
       <IssueLayer />
       <StreetSigns signs={built.signs} />

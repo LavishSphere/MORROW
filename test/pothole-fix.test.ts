@@ -7,6 +7,7 @@ import {
   getPotholeFix,
   patchPothole,
   resetPotholeFix,
+  scatterPotholes,
   selectPothole,
 } from "../src/city/potholeFix.ts";
 import type { DraftProposal } from "../src/types.ts";
@@ -21,6 +22,25 @@ test("a clicked pothole can be patched without inventing a route", () => {
   selectPothole("not-a-hole");
   assert.equal(getPotholeFix().selectedId, "boulevard-pothole-2");
   resetPotholeFix();
+});
+
+test("any city's roads get illustrative potholes", () => {
+  const roads = [
+    { id: "main", name: "Main Street", points: [[0, 0], [12, 0]] as const },
+    { id: "oak", name: "Oak Avenue", points: [[0, 5], [14, 5]] as const },
+  ];
+  const holes = scatterPotholes(roads);
+  assert.ok(holes.length >= 2);
+  const labels = holes.map((hole) => hole.issue.label).join(" ");
+  assert.match(labels, /Main Street/);
+  assert.match(labels, /Oak Avenue/);
+  const again = scatterPotholes(roads);
+  assert.deepEqual(
+    again.map((hole) => [hole.x, hole.z]),
+    holes.map((hole) => [hole.x, hole.z]),
+  );
+  assert.equal(scatterPotholes([]).length, 0);
+  assert.equal(scatterPotholes([{ id: "stub", points: [[0, 0]] }]).length, 0);
 });
 
 test("a generated draft names the clicked pothole and keeps the route text", () => {
