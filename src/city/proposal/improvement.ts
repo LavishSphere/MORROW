@@ -1,5 +1,6 @@
 import { tryCompareByIds } from '../../data/compare'
 import { SCENARIO } from '../../data/fixtures'
+import { formatImprovement, formatMeters } from '../../satellite/stats/format'
 import type { Issue, Kind } from './issue'
 
 const ILLUSTRATIVE: Record<Kind, string> = {
@@ -9,33 +10,22 @@ const ILLUSTRATIVE: Record<Kind, string> = {
   crossing: 'People can cross on an open curb.',
 }
 
-function modeledLine(
-  beforeMeters: number | null,
-  afterMeters: number | null,
-): string {
-  const beforeMissing = beforeMeters == null || !Number.isFinite(beforeMeters)
-  const afterMissing = afterMeters == null || !Number.isFinite(afterMeters)
-  if (beforeMissing && !afterMissing) {
-    const meters = Math.round(afterMeters).toLocaleString('en-US')
-    return `Became reachable, about ${meters} m.`
-  }
-  if (!beforeMissing && afterMissing) return 'No longer reachable'
-  if (beforeMissing || afterMissing) return 'No modeled change'
-  const delta = Math.round(afterMeters) - Math.round(beforeMeters)
-  if (delta === 0) return 'Same distance'
-  const amount = `${Math.abs(delta).toLocaleString('en-US')} m`
-  return delta < 0 ? `${amount} shorter` : `${amount} longer`
-}
-
 /** Benefit of the fix. The demo barrier uses the local model. Other issues stay illustrative. */
 export function improvementLine(issue: Issue): string {
   if (issue.id !== SCENARIO.barrierId) {
-    return `Illustrative. ${ILLUSTRATIVE[issue.kind]}`
+    return `Illustrative. ${ILLUSTRATIVE[issue.kind]} No modeled route change.`
   }
+
   const compare = tryCompareByIds({
     scenarioId: SCENARIO.id,
     interventionId: SCENARIO.interventionId,
   })
-  if (!compare) return `Illustrative. ${ILLUSTRATIVE.ramp}`
-  return modeledLine(compare.beforeMeters, compare.afterMeters)
+  if (!compare) {
+    return 'Illustrative. Modeled route unavailable.'
+  }
+
+  const before = formatMeters(compare.beforeMeters)
+  const after = formatMeters(compare.afterMeters)
+  const change = formatImprovement(compare.beforeMeters, compare.afterMeters)
+  return `Illustrative modeled improvement: ${before} before → ${after} after. ${change}. No site inspection or engineering feasibility assessment.`
 }
