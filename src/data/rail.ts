@@ -21,7 +21,7 @@ export const RAIL_TYPES = [
 /** railway=* values on nodes that are stops or entrances. */
 export const STATION_NODE_TYPES = ["station", "halt", "tram_stop", "subway_entrance"] as const;
 
-/** Tags kept on rail ways, platforms, and stations. OSM `layer` is stored as `osmLayer`. */
+/** Tags kept on rail ways, platforms, and stations. OSM `layer` is stored as `layer:osm`. */
 export const RAIL_TAGS = [
   "railway",
   "service",
@@ -35,6 +35,9 @@ export const RAIL_TAGS = [
   "ref",
   "network",
 ] as const;
+
+/** Where OSM's vertical `layer` tag is kept, so it never clashes with our feature layer. */
+export const OSM_LAYER = "layer:osm";
 
 /** Track drawn thinner and in a neutral tone: not a passenger line. */
 const MINOR_SERVICE = new Set(["crossover", "yard", "siding", "spur"]);
@@ -50,8 +53,8 @@ export function railTags(raw: Record<string, unknown> | undefined | null): Recor
     const value = raw[key];
     if (typeof value === "string") tags[key] = value;
   }
-  // Never overwrite our own feature `layer`: OSM's vertical layer is osmLayer.
-  if (typeof raw.layer === "string") tags.osmLayer = raw.layer;
+  // Never overwrite our own feature `layer`: OSM's vertical layer is `layer:osm`.
+  if (typeof raw.layer === "string") tags[OSM_LAYER] = raw.layer;
   return tags;
 }
 
@@ -81,7 +84,7 @@ export function isBridge(tags: Record<string, unknown>): boolean {
 export function isUnderground(tags: Record<string, unknown>): boolean {
   if (yes(tags.tunnel)) return true;
   if (isBridge(tags)) return false;
-  const layer = num(tags.osmLayer ?? tags.layer);
+  const layer = num(tags[OSM_LAYER]);
   if (layer !== null && layer < 0) return true;
   const level = num(tags.level);
   return level !== null && level < 0;

@@ -42,7 +42,7 @@ test("rail ways pick up their route relation's colour and ref", () => {
   assert.equal(red.lineColour, "#da291c");
   assert.equal(red.lineRef, "Red");
   // OSM `layer` never overwrites our feature layer.
-  assert.equal(red.tags?.osmLayer, "-2");
+  assert.equal(red.tags?.["layer:osm"], "-2");
   assert.equal(red.tags?.layer, undefined);
   assert.equal(ways.find((w) => w.id === 11)?.lineColour, "#80276c");
   assert.equal(ways.find((w) => w.id === 12)?.lineColour, null);
@@ -86,10 +86,10 @@ test("tunnels, negative layers, and negative levels are underground; bridges are
   assert.equal(isUnderground({ tunnel: "yes" }), true);
   assert.equal(isUnderground({ tunnel: "building_passage" }), true);
   assert.equal(isUnderground({ tunnel: "no" }), false);
-  assert.equal(isUnderground({ osmLayer: "-3" }), true);
+  assert.equal(isUnderground({ "layer:osm": "-3" }), true);
   assert.equal(isUnderground({ level: "-1" }), true);
-  assert.equal(isUnderground({ osmLayer: "-1", bridge: "yes" }), false);
-  assert.equal(isUnderground({ osmLayer: "1", bridge: "yes" }), false);
+  assert.equal(isUnderground({ "layer:osm": "-1", bridge: "yes" }), false);
+  assert.equal(isUnderground({ "layer:osm": "1", bridge: "yes" }), false);
   assert.equal(isUnderground({ railway: "subway" }), false);
 });
 
@@ -141,7 +141,7 @@ test("the scene network carries tunnels, bridges, minor track, and station colou
   const net = parseRail(
     [
       { type: "Feature", geometry: { type: "LineString", coordinates: [[-71.0, 42.0], [-71.0, 41.99]] }, properties: { layer: "rail", osmId: 1, railway: "subway", colour: "#DA291C", tunnel: "yes" } },
-      { type: "Feature", geometry: { type: "LineString", coordinates: [[-70.99, 42.0], [-70.99, 41.99]] }, properties: { layer: "rail", osmId: 2, railway: "rail", bridge: "yes", osmLayer: "1" } },
+      { type: "Feature", geometry: { type: "LineString", coordinates: [[-70.99, 42.0], [-70.99, 41.99]] }, properties: { layer: "rail", osmId: 2, railway: "rail", bridge: "yes", "layer:osm": "1" } },
       { type: "Feature", geometry: { type: "LineString", coordinates: [[-70.98, 42.0], [-70.98, 41.99]] }, properties: { layer: "rail", osmId: 3, railway: "rail", service: "siding", colour: "#80276C" } },
       { type: "Feature", geometry: { type: "Point", coordinates: [-71.0005, 41.995] }, properties: { layer: "station", osmId: 4, name: "Downtown", railway: "station", wheelchair: "yes" } },
       { type: "Feature", geometry: { type: "Point", coordinates: [-71.0005, 41.996] }, properties: { layer: "station", osmId: 5, railway: "subway_entrance" } },
