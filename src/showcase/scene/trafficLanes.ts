@@ -131,10 +131,13 @@ export class FootprintGrid {
   private readonly cells = new Map<number, number[]>();
   private readonly rings: readonly (readonly Pt[])[];
   private readonly cell: number;
+  /** Each ring's box (minX, maxX, minZ, maxZ), checked before its edges. */
+  private readonly boxes: Float64Array;
 
   constructor(rings: readonly (readonly Pt[])[], cell = 4) {
     this.rings = rings;
     this.cell = cell;
+    this.boxes = new Float64Array(rings.length * 4);
     rings.forEach((ring, index) => {
       if (ring.length < 3) return;
       let minX = Infinity;
@@ -147,6 +150,7 @@ export class FootprintGrid {
         minZ = Math.min(minZ, z);
         maxZ = Math.max(maxZ, z);
       }
+      this.boxes.set([minX, maxX, minZ, maxZ], index * 4);
       for (let cx = Math.floor(minX / cell); cx <= Math.floor(maxX / cell); cx += 1) {
         for (let cz = Math.floor(minZ / cell); cz <= Math.floor(maxZ / cell); cz += 1) {
           const key = this.key(cx, cz);
@@ -165,7 +169,10 @@ export class FootprintGrid {
   inside(x: number, z: number): boolean {
     const list = this.cells.get(this.key(Math.floor(x / this.cell), Math.floor(z / this.cell)));
     if (!list) return false;
+    const boxes = this.boxes;
     for (const index of list) {
+      const b = index * 4;
+      if (x < boxes[b]! || x > boxes[b + 1]! || z < boxes[b + 2]! || z > boxes[b + 3]!) continue;
       const ring = this.rings[index]!;
       let hit = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
