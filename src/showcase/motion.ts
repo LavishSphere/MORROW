@@ -55,6 +55,12 @@ export class MotionTracker {
 export const cameraMotion = new MotionTracker();
 
 /**
+ * True while a grown city builds in slices. More tiles wait until it is
+ * done, so a new batch never throws away a rebuild halfway through.
+ */
+export const cityBuild = { slicing: false };
+
+/**
  * Run `run` once the camera has rested for `quietMs`, checking every
  * `everyMs`. Returns a cancel function. For work that would stall a
  * frame, like rebuilding the city, so it never lands mid-gesture.
