@@ -150,7 +150,7 @@ test("OpenRouter is an optional last resort before the template", async () => {
   assert.match(workflow, /if \(!aiGenerated && openRouterConfigured\(\)\)/);
   // Gemini only gives up time for it when the key is there.
   assert.match(gemini, /TOTAL_BUDGET_MS - \(openRouterConfigured\(\) \? OPENROUTER_RESERVE_MS : 0\)/);
-  // Gemini 3 models through OpenRouter, cheapest first, with a capped bill.
-  assert.match(router, /"google\/gemini-3\.5-flash-lite",\n  "google\/gemini-3\.6-flash",\n  "google\/gemini-3\.8-flash",/);
+  // Gemini 3 models through OpenRouter, 3.8 first, with a capped bill.
+  assert.match(router, /"google\/gemini-3\.8-flash",\n {2}"google\/gemini-3\.6-flash",\n {2}"google\/gemini-3\.5-flash-lite",/);
   assert.match(router, /max_tokens: 4096/);
 });

@@ -19,16 +19,17 @@ import { geminiProposalDraftSchema, mapGeminiToDraft } from "./schema.ts";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
- * Gemini 3 on OpenRouter, cheapest first (per million tokens in/out, Nov 2026):
- * 3.5 Flash-Lite $0.30/$2.50, 3.6 Flash $0.75/$3.75, 3.8 Flash $0.83/$4.13.
- * Older 2.5 and 3.1 models are cheaper but write noticeably weaker drafts.
- * A draft is about 2k tokens in and under 2k out: roughly half a cent at most.
+ * Gemini 3 on OpenRouter, best first; OpenRouter moves down the list when a
+ * model is busy (per million tokens in/out, Nov 2026): 3.8 Flash $0.83/$4.13,
+ * 3.6 Flash $0.75/$3.75, 3.5 Flash-Lite $0.30/$2.50. Older 2.5 and 3.1 models
+ * are left out: they write weaker drafts, and 3.1 is on the free Gemini tier.
+ * A draft is about 2k tokens in and under 4k out: about two cents at most.
  * OPENROUTER_MODELS (comma-separated) replaces this list.
  */
 export const OPENROUTER_DEFAULT_MODELS = [
-  "google/gemini-3.5-flash-lite",
-  "google/gemini-3.6-flash",
   "google/gemini-3.8-flash",
+  "google/gemini-3.6-flash",
+  "google/gemini-3.5-flash-lite",
 ] as const;
 
 export function openRouterModels(): string[] {
