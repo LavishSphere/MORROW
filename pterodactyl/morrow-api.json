@@ -58,6 +58,26 @@
       "field_type": "text"
     },
     {
+      "name": "OpenRouter API key",
+      "description": "Optional. When Gemini is slow or busy, proposals are drafted with Gemini through OpenRouter. Leave empty to turn this off.",
+      "env_variable": "OPENROUTER_API_KEY",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "OpenRouter models",
+      "description": "Optional comma-separated list. Empty uses google/gemini-3.8-flash, google/gemini-3.6-flash, google/gemini-3.5-flash-lite.",
+      "env_variable": "OPENROUTER_MODELS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:300",
+      "field_type": "text"
+    },
+    {
       "name": "Pages origin",
       "description": "Exact GitHub Pages origin allowed to call the API, for example https://lavishsphere.github.io. Empty allows any origin.",
       "env_variable": "MORROW_CORS_ORIGIN",

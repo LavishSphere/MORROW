@@ -29,6 +29,8 @@ test("the Pterodactyl egg runs the public API image and stores no secrets", asyn
     "DATABASE_URL",
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODELS",
     "MORROW_CORS_ORIGIN",
   ]);
   for (const variable of egg.variables) {
