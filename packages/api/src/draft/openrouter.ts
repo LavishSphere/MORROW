@@ -44,7 +44,11 @@ export type OpenRouterResult =
   | { ok: true; draft: DraftProposal; model: string }
   | { ok: false; reason: string };
 
-export async function draftWithOpenRouter(facts: ProposalFacts, timeoutMs: number): Promise<OpenRouterResult> {
+export async function draftWithOpenRouter(
+  facts: ProposalFacts,
+  timeoutMs: number,
+  cancel?: AbortSignal,
+): Promise<OpenRouterResult> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey || !openRouterConfigured()) return { ok: false, reason: "OPENROUTER_API_KEY not set" };
   if (timeoutMs < 3_000) return { ok: false, reason: "no time left for OpenRouter" };
@@ -52,7 +56,7 @@ export async function draftWithOpenRouter(facts: ProposalFacts, timeoutMs: numbe
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: cancel ? AbortSignal.any([cancel, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
@@ -95,3 +99,38 @@ export async function draftWithOpenRouter(facts: ProposalFacts, timeoutMs: numbe
 }
 
 export { failureKind };
+
+/**
+ * Startup check, logged to the server console only: is the key accepted, and
+ * how much credit is left. Never sent to the browser.
+ */
+export async function checkOpenRouter(): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) return "OpenRouter fallback: off (no OPENROUTER_API_KEY)";
+  const auth = { authorization: `Bearer ${apiKey}` };
+  try {
+    const keyRes = await fetch("https://openrouter.ai/api/v1/key", { headers: auth, signal: AbortSignal.timeout(8_000) });
+    if (keyRes.status === 401 || keyRes.status === 403) return "OpenRouter fallback: KEY REJECTED, check OPENROUTER_API_KEY";
+    if (!keyRes.ok) return `OpenRouter fallback: key check answered ${keyRes.status}`;
+    const key = ((await keyRes.json()) as { data?: { limit_remaining?: number | null } }).data ?? {};
+    let left: number | null = typeof key.limit_remaining === "number" ? key.limit_remaining : null;
+    // Account balance, for keys with no spending limit of their own.
+    const creditRes = await fetch("https://openrouter.ai/api/v1/credits", { headers: auth, signal: AbortSignal.timeout(8_000) }).catch(
+      () => null,
+    );
+    if (creditRes?.ok) {
+      const c = ((await creditRes.json()) as { data?: { total_credits?: number; total_usage?: number } }).data;
+      if (c && typeof c.total_credits === "number" && typeof c.total_usage === "number") {
+        const balance = c.total_credits - c.total_usage;
+        left = left === null ? balance : Math.min(left, balance);
+      }
+    }
+    const models = openRouterModels().join(", ");
+    if (left === null) return `OpenRouter fallback: connected (balance unknown) · ${models}`;
+    const money = `$${left.toFixed(2)} left`;
+    if (left < 0.25) return `OpenRouter fallback: connected but LOW BALANCE (${money}); top up or slow drafts will use the template`;
+    return `OpenRouter fallback: connected · ${money} · ${models}`;
+  } catch (err) {
+    return `OpenRouter fallback: could not reach OpenRouter (${err instanceof Error ? err.message : "error"})`;
+  }
+}

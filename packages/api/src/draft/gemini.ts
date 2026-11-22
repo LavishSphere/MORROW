@@ -168,10 +168,11 @@ const PRIMARY_TIMEOUT_MS = 22_000;
  */
 const TOTAL_BUDGET_MS = 48_000;
 /**
- * With an OpenRouter key, Gemini stops this much earlier so the OpenRouter
- * fallback still fits inside the same reply window.
+ * With an OpenRouter key, OpenRouter starts alongside Gemini when Gemini has
+ * not answered after this long, and the first good draft wins. Most drafts
+ * still come free from Gemini; slow ones are covered within ~15-20 s.
  */
-export const OPENROUTER_RESERVE_MS = 14_000;
+export const OPENROUTER_HEAD_START_MS = 8_000;
 /** Not worth starting another model with less time left than this. */
 const MIN_CALL_MS = 4_000;
 
@@ -299,7 +300,7 @@ export async function draftWithGemini(
   }
 
   const started = Date.now();
-  const budget = TOTAL_BUDGET_MS - (openRouterConfigured() ? OPENROUTER_RESERVE_MS : 0);
+  const budget = TOTAL_BUDGET_MS;
   const ai = new GoogleGenAI({ apiKey });
   const tried: string[] = [];
   let last: DraftAttempt = { ok: false, reason: "Gemini call failed" };

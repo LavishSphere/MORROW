@@ -21,13 +21,16 @@ import {
 } from "../data/dataset.ts";
 import { saveProposal } from "../data/proposals.ts";
 import {
-  OPENROUTER_RESERVE_MS,
+  OPENROUTER_HEAD_START_MS,
   draftWithGemini,
   failureKind,
   geminiConfigured,
   openRouterConfigured,
 } from "../draft/gemini.ts";
 import { draftWithOpenRouter } from "../draft/openrouter.ts";
+
+/** OpenRouter's own limit, so the reply still beats the browser's 55 s wait. */
+const ROUTER_TIMEOUT_MS = 30_000;
 import {
   draftProposalSchema,
   generateRequestSchema,
@@ -171,49 +174,94 @@ const generateDraft = createStep({
     let draftModel: string | null = null;
     let geminiFailed = "";
 
-    if (keyPresent) {
-      const gemini = await draftWithGemini(inputData.facts);
-      if (gemini.ok) {
-        try {
-          draft = parseDraftProposal(gemini.draft);
-          aiGenerated = true;
-          draftModel = gemini.model;
-          if (gemini.primaryFailure) {
-            warnings.push(`Gemini 3.8 Flash ${gemini.primaryFailure}, so ${gemini.model} wrote this draft.`);
+    // Free Gemini first. With an OpenRouter key, OpenRouter joins after a head
+    // start and the first good draft wins; without one, Gemini alone.
+    type Outcome = { source: "gemini" | "openrouter"; ok: boolean; draft?: DraftProposal; model?: string; note: string };
+    const router = openRouterConfigured();
+    const cancelRouter = new AbortController();
+    let settled = false;
+
+    const geminiRun: Promise<Outcome> = keyPresent
+      ? draftWithGemini(inputData.facts).then((g): Outcome => {
+          if (g.ok) {
+            return {
+              source: "gemini",
+              ok: true,
+              draft: g.draft,
+              model: g.model,
+              note: g.primaryFailure ? `Gemini 3.8 Flash ${g.primaryFailure}, so ${g.model} wrote this draft.` : "",
+            };
           }
-        } catch {
-          draft = buildTemplateDraft(inputData.facts);
-          warnings.push(
-            "Gemini draft failed schema validation — using deterministic template.",
-          );
-        }
-      } else {
-        draft = buildTemplateDraft(inputData.facts);
-        console.error("[@morrow/api] Gemini draft skipped:", gemini.reason);
-        geminiFailed = `Gemini did not return a draft (tried ${gemini.tried.length} model${gemini.tried.length === 1 ? "" : "s"}; 3.8 Flash ${gemini.primaryFailure ?? failureKind(gemini.reason)})`;
+          console.error("[@morrow/api] Gemini draft skipped:", g.reason);
+          return {
+            source: "gemini",
+            ok: false,
+            note: `Gemini did not return a draft (tried ${g.tried.length} model${g.tried.length === 1 ? "" : "s"}; 3.8 Flash ${g.primaryFailure ?? failureKind(g.reason)})`,
+          };
+        })
+      : Promise.resolve({ source: "gemini", ok: false, note: "GEMINI_API_KEY not set" });
+
+    const routerRun: Promise<Outcome> | null = router
+      ? (async (): Promise<Outcome> => {
+          // Wait out the head start unless Gemini finishes sooner.
+          const geminiDone = await Promise.race([
+            geminiRun,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), keyPresent ? OPENROUTER_HEAD_START_MS : 0)),
+          ]);
+          if (geminiDone?.ok || settled) return { source: "openrouter", ok: false, note: "" };
+          const r = await draftWithOpenRouter(inputData.facts, ROUTER_TIMEOUT_MS, cancelRouter.signal);
+          if (r.ok) return { source: "openrouter", ok: true, draft: r.draft, model: r.model, note: "" };
+          if (cancelRouter.signal.aborted) return { source: "openrouter", ok: false, note: "" };
+          console.error("[@morrow/api] OpenRouter draft skipped:", r.reason);
+          return { source: "openrouter", ok: false, note: `OpenRouter ${failureKind(r.reason)}` };
+        })()
+      : null;
+
+    const runs = routerRun ? [geminiRun, routerRun] : [geminiRun];
+    const winner = await new Promise<Outcome | null>((resolve) => {
+      let pending = runs.length;
+      for (const run of runs) {
+        void run
+          .catch((err): Outcome => ({ source: "gemini", ok: false, note: err instanceof Error ? err.message : "failed" }))
+          .then((outcome) => {
+            let o = outcome;
+            if (o.ok && o.draft) {
+              try {
+                o = { ...o, draft: parseDraftProposal(o.draft) };
+                if (!settled) {
+                  settled = true;
+                  resolve(o);
+                }
+                return;
+              } catch {
+                o = { ...o, ok: false, note: `${o.source === "gemini" ? "Gemini" : "OpenRouter"} draft failed schema validation` };
+              }
+            }
+            if (o.note) geminiFailed = geminiFailed ? `${geminiFailed}; ${o.note}` : o.note;
+            pending -= 1;
+            if (pending === 0 && !settled) {
+              settled = true;
+              resolve(null);
+            }
+          });
       }
+    });
+    // Gemini won: stop paying for an OpenRouter call still in flight.
+    cancelRouter.abort();
+
+    if (winner?.draft) {
+      draft = winner.draft;
+      aiGenerated = true;
+      if (winner.source === "openrouter") {
+        draftModel = `${winner.model} (OpenRouter)`;
+        warnings.push(`Gemini was slow or busy, so ${winner.model} on OpenRouter wrote this draft.`);
+      } else {
+        draftModel = winner.model ?? null;
+        if (winner.note) warnings.push(winner.note);
+      }
+      geminiFailed = "";
     } else {
       draft = buildTemplateDraft(inputData.facts);
-      geminiFailed = "GEMINI_API_KEY not set";
-    }
-
-    // Optional last resort: Gemini through OpenRouter, only when its key is set.
-    if (!aiGenerated && openRouterConfigured()) {
-      const viaRouter = await draftWithOpenRouter(inputData.facts, OPENROUTER_RESERVE_MS - 1_000);
-      if (viaRouter.ok) {
-        try {
-          draft = parseDraftProposal(viaRouter.draft);
-          aiGenerated = true;
-          draftModel = `${viaRouter.model} (OpenRouter)`;
-          warnings.push(`${geminiFailed}, so ${viaRouter.model} on OpenRouter wrote this draft.`);
-          geminiFailed = "";
-        } catch {
-          // Falls through to the template below.
-        }
-      } else {
-        console.error("[@morrow/api] OpenRouter draft skipped:", viaRouter.reason);
-        geminiFailed += `; OpenRouter ${failureKind(viaRouter.reason)}`;
-      }
     }
 
     if (!aiGenerated && geminiFailed) {

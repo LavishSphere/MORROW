@@ -1,4 +1,5 @@
 import { geminiConfigured, geminiModel } from "./draft/gemini.ts";
+import { checkOpenRouter } from "./draft/openrouter.ts";
 import {
   databaseUrlConfigured,
   initTiger,
@@ -49,4 +50,6 @@ if (isMain) {
   console.log(
     `[@morrow/api] tigerLive=${tigerLive()} mastra=${mastraConfigured()}`,
   );
+  // Key accepted? Credit left? Logged here only, never sent to the browser.
+  void checkOpenRouter().then((line) => console.log(`[@morrow/api] ${line}`));
 }

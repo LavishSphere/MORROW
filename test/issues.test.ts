@@ -147,9 +147,13 @@ test("OpenRouter is an optional last resort before the template", async () => {
   const gemini = await readFile("packages/api/src/draft/gemini.ts", "utf8");
   // Skipped entirely without a key.
   assert.match(router, /OPENROUTER_API_KEY not set/);
-  assert.match(workflow, /if \(!aiGenerated && openRouterConfigured\(\)\)/);
-  // Gemini only gives up time for it when the key is there.
-  assert.match(gemini, /TOTAL_BUDGET_MS - \(openRouterConfigured\(\) \? OPENROUTER_RESERVE_MS : 0\)/);
+  assert.match(workflow, /const router = openRouterConfigured\(\);/);
+  // Free Gemini gets a head start; OpenRouter joins only if it is slow, and is cancelled if Gemini wins.
+  assert.match(gemini, /export const OPENROUTER_HEAD_START_MS = 8_000;/);
+  assert.match(workflow, /cancelRouter\.abort\(\);/);
+  // The server console says whether the key works and how much credit is left.
+  assert.match(router, /export async function checkOpenRouter/);
+  assert.match(router, /LOW BALANCE/);
   // Gemini 3 models through OpenRouter, 3.8 first, with a capped bill.
   assert.match(router, /"google\/gemini-3\.8-flash",\n {2}"google\/gemini-3\.6-flash",\n {2}"google\/gemini-3\.5-flash-lite",/);
   assert.match(router, /max_tokens: 4096/);
