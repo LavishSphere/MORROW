@@ -11,6 +11,7 @@ Proposal and barrier HTTP API for MORROW (Ashsmith lane).
 | `GET` | `/api/barriers/:id` | One barrier (Tiger Data first, then bundled), or 404 |
 | `POST` | `/api/proposals/generate` | Ids only → reload dataset → `@morrow/routing` recompute → Gemini or template |
 | `GET` | `/api/proposals/:id` | Saved draft (memory, then Tiger Data) |
+| `GET` | `/api/transit/vehicles?feed=<id>` | Live rail vehicle positions as JSON, cached 10 s per feed |
 
 `POST /api/proposals/generate` accepts only:
 
@@ -20,6 +21,25 @@ Proposal and barrier HTTP API for MORROW (Ashsmith lane).
 
 Meters, evidence status, and sources are never taken from the client.
 
+## Live transit
+
+`GET /api/transit/vehicles?feed=<id>` fetches one agency's GTFS-realtime (or CTA Train Tracker) feed, decodes vehicle positions and returns `[{ id, lat, lon, bearing, routeId, color, status, updatedAt }]`. Feeds are listed in [`shared/transitFeeds.ts`](../../shared/transitFeeds.ts); any other id is a 404. Mixed bus and rail feeds keep rail routes only.
+
+| Feed | Agency | Key |
+| --- | --- | --- |
+| `mta-lirr` | Long Island Rail Road | none |
+| `mta-mnr` | Metro-North | none |
+| `septa` | SEPTA Regional Rail and trolleys | none |
+| `metro-transit` | Metro Transit (Minneapolis) light rail | none |
+| `rtd` | RTD Denver light and commuter rail | none |
+| `wmata` | WMATA Metrorail | `WMATA_API_KEY` |
+| `cta` | CTA 'L' | `CTA_TRAIN_TRACKER_KEY` |
+| `metra` | Metra | `METRA_API_TOKEN` |
+| `trimet` | TriMet MAX and WES | `TRIMET_APP_ID` |
+| `muni` | Muni Metro, streetcars, cable cars | `SF511_API_KEY` (cached 60 s for 511's hourly limit) |
+
+A keyed feed without its env var answers 501, and the web app stops polling it. An upstream error answers 502 (504 on timeout) unless a good answer from the last two minutes can be served instead.
+
 ## Environment
 
 | Variable | Required | Default | Purpose |
@@ -27,6 +47,7 @@ Meters, evidence status, and sources are never taken from the client.
 | `GEMINI_API_KEY` | No | — | Server-side Google Gemini key. When unset, the deterministic template always runs. |
 | `GEMINI_MODEL` | No | `gemini-3.8-flash` | First model to try. A retired or busy model is followed by other Flash models. |
 | `DATABASE_URL` | No | — | Tiger Data / PostGIS URL with TLS (`sslmode=require`). When unset or unreachable, the API uses the bundled dataset. |
+| `WMATA_API_KEY`, `CTA_TRAIN_TRACKER_KEY`, `METRA_API_TOKEN`, `TRIMET_APP_ID`, `SF511_API_KEY` | No | — | Free developer keys for the keyed live transit feeds above. Sent only from the server. |
 | `PORT` | No | `8787` | Listen port. `SERVER_PORT` wins when Pterodactyl sets it. |
 | `HOST` | No | `127.0.0.1` | Bind address. `0.0.0.0` when `SERVER_PORT` is set and `HOST` is empty. |
 | `MORROW_CORS_ORIGIN` | No | `*` | Exact browser origin to allow, or omit for `*` |

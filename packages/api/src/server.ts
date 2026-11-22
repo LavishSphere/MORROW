@@ -9,6 +9,7 @@ import {
   handleGenerateProposal,
   handleGetProposal,
 } from "./routes/proposals.ts";
+import { handleTransitVehicles } from "./routes/transit.ts";
 
 export type MorrowApiServer = ReturnType<typeof createServer>;
 
@@ -48,6 +49,11 @@ async function dispatch(
   const barrierMatch = matchPath(pathname, /^\/api\/barriers\/([^/]+)$/);
   if (req.method === "GET" && barrierMatch) {
     await handleGetBarrier(req, res, decodeURIComponent(barrierMatch[1] ?? ""));
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/transit/vehicles") {
+    await handleTransitVehicles(req, res, url);
     return;
   }
 
