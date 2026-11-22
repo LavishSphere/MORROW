@@ -1,8 +1,9 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OPENING_DESCEND_MS, OPENING_REDUCED_DESCEND_MS } from "../../brand/OpeningSequence";
+import { getCityState, publishPose } from "../cityStore";
 
 type CameraRigProps = {
   reducedMotion: boolean;
@@ -12,6 +13,26 @@ type CameraRigProps = {
   span?: number;
   settled?: readonly [number, number, number];
 };
+
+/** Keys that move the camera. Lower-cased `KeyboardEvent.key` values. */
+const MOVE_KEYS = new Set([
+  "w", "a", "s", "d",
+  "arrowup", "arrowdown", "arrowleft", "arrowright",
+  "q", "e", "=", "+", "-", "_", "shift",
+]);
+
+/** Never steal keys from text fields, buttons, or the mode tabs. */
+function isTyping(el: Element | null) {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  if (el.getAttribute("role") === "tab") return true;
+  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(el.tagName);
+}
+
+type Controls = { target: THREE.Vector3; update: () => void };
+
+/** Closest the camera may get to what it looks at: street level. */
+const MIN_DISTANCE = 4;
 
 function smoothstep(value: number) {
   const t = Math.min(1, Math.max(0, value));
@@ -59,6 +80,19 @@ export function CameraRig({
   const descending = useRef(false);
   const [orbitReady, setOrbitReady] = useState(reducedMotion);
   const signalToken = descendSignal?.token ?? 0;
+  const controls = useThree((state) => state.controls) as unknown as Controls | null;
+  const keys = useRef(new Set<string>());
+  // Keys pressed since the last frame, so a quick tap still nudges the view.
+  const tapped = useRef(new Set<string>());
+  const forward = useMemo(() => new THREE.Vector3(), []);
+  const right = useMemo(() => new THREE.Vector3(), []);
+  const step = useMemo(() => new THREE.Vector3(), []);
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  /** Without a published map, how far from the center the camera may wander. */
+  const bound = span * 0.6;
+  const lastPublish = useRef(0);
+  const lastFly = useRef(0);
+  const flight = useRef<{ fromX: number; fromZ: number; toX: number; toZ: number; t: number } | null>(null);
   const signalDuration = descendSignal?.durationMs;
 
   useLayoutEffect(() => {
@@ -87,6 +121,138 @@ export function CameraRig({
     camera.lookAt(look);
   }, [signalToken, signalDuration, reducedMotion, camera, start, end, look]);
 
+  // Keyboard movement: WASD / arrows move, Q / E turn, + / − zoom, Shift is faster.
+  useEffect(() => {
+    const held = keys.current;
+    const down = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTyping(document.activeElement)) return;
+      const key = event.key.toLowerCase();
+      if (!MOVE_KEYS.has(key)) return;
+      held.add(key);
+      tapped.current.add(key);
+      if (key !== "shift") event.preventDefault();
+    };
+    const release = (event: KeyboardEvent) => held.delete(event.key.toLowerCase());
+    const clear = () => held.clear();
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", release);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", release);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+
+  useFrame(({ clock }, delta) => {
+    if (!orbitReady || !controls) return;
+    // A broken camera renders nothing (a black screen). Put it back.
+    const p = camera.position;
+    const g = controls.target;
+    if (!Number.isFinite(p.x + p.y + p.z + g.x + g.y + g.z)) {
+      g.copy(look);
+      camera.position.copy(end);
+      flight.current = null;
+      controls.update();
+      return;
+    }
+    const held = new Set([...keys.current, ...tapped.current]);
+    tapped.current.clear();
+    let moved = false;
+    const dt = Math.min(delta, 0.05);
+    const fast = held.has("shift") ? 2.6 : 1;
+
+    // Ground-plane directions from where the camera is looking.
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+    forward.normalize();
+    right.crossVectors(forward, up).normalize();
+
+    step.set(0, 0, 0);
+    if (held.has("w") || held.has("arrowup")) step.add(forward);
+    if (held.has("s") || held.has("arrowdown")) step.sub(forward);
+    if (held.has("d") || held.has("arrowright")) step.add(right);
+    if (held.has("a") || held.has("arrowleft")) step.sub(right);
+    if (step.lengthSq() > 0) {
+      step.normalize().multiplyScalar(span * 0.32 * fast * dt);
+      camera.position.add(step);
+      controls.target.add(step);
+      moved = true;
+    }
+
+    const turn = (held.has("q") ? 1 : 0) - (held.has("e") ? 1 : 0);
+    if (turn !== 0) {
+      const offset = camera.position.clone().sub(controls.target);
+      offset.applyAxisAngle(up, turn * 1.2 * fast * dt);
+      camera.position.copy(controls.target).add(offset);
+      moved = true;
+    }
+
+    const zoom = (held.has("=") || held.has("+") ? 1 : 0) - (held.has("-") || held.has("_") ? 1 : 0);
+    if (zoom !== 0) {
+      const offset = camera.position.clone().sub(controls.target);
+      const next = THREE.MathUtils.clamp(
+        offset.length() * (1 - zoom * 1.4 * fast * dt),
+        MIN_DISTANCE,
+        span * 1.8,
+      );
+      camera.position.copy(controls.target).add(offset.setLength(next));
+      moved = true;
+    }
+
+    // Minimap clicks: glide the view to the chosen spot.
+    const fly = getCityState().fly;
+    if (fly && fly.id !== lastFly.current) {
+      lastFly.current = fly.id;
+      flight.current = { fromX: controls.target.x, fromZ: controls.target.z, toX: fly.x, toZ: fly.z, t: 0 };
+    }
+    if (flight.current) {
+      const f = flight.current;
+      f.t = reducedMotion ? 1 : Math.min(1, f.t + dt / 0.9);
+      const k = smoothstep(f.t);
+      const nx = f.fromX + (f.toX - f.fromX) * k;
+      const nz = f.fromZ + (f.toZ - f.fromZ) * k;
+      camera.position.x += nx - controls.target.x;
+      camera.position.z += nz - controls.target.z;
+      controls.target.x = nx;
+      controls.target.z = nz;
+      moved = true;
+      if (f.t >= 1) flight.current = null;
+    }
+
+    // Keep the view over the city: clamp the target, carry the camera along.
+    const t = controls.target;
+    const edges = getCityState().map?.bounds;
+    const cx = edges
+      ? THREE.MathUtils.clamp(t.x, edges.minX, edges.maxX)
+      : THREE.MathUtils.clamp(t.x, look.x - bound, look.x + bound);
+    const cz = edges
+      ? THREE.MathUtils.clamp(t.z, edges.minZ, edges.maxZ)
+      : THREE.MathUtils.clamp(t.z, look.z - bound, look.z + bound);
+    if (cx !== t.x || cz !== t.z) {
+      camera.position.x += cx - t.x;
+      camera.position.z += cz - t.z;
+      t.x = cx;
+      t.z = cz;
+      moved = true;
+    }
+    if (moved) controls.update();
+
+    // Tell the minimap where we are, a few times a second.
+    if (clock.elapsedTime - lastPublish.current > 0.1) {
+      lastPublish.current = clock.elapsedTime;
+      publishPose({
+        x: t.x,
+        z: t.z,
+        dirX: forward.x,
+        dirZ: forward.z,
+        distance: camera.position.distanceTo(t),
+      });
+    }
+  });
+
   useFrame((_, delta) => {
     if (!descending.current || progress.current >= 1) return;
     progress.current = Math.min(
@@ -107,12 +273,17 @@ export function CameraRig({
 
   return (
     <OrbitControls
+      makeDefault
       enabled={orbitReady}
-      enablePan={false}
+      // Left-drag rotates, right-drag (two fingers on touch) slides across
+      // the ground, scroll or pinch zooms down to street level.
+      enablePan
+      screenSpacePanning={false}
+      panSpeed={1.1}
       enableDamping={!reducedMotion}
       dampingFactor={0.08}
-      minDistance={span * 0.45}
-      maxDistance={span * 1.35}
+      minDistance={MIN_DISTANCE}
+      maxDistance={span * 1.8}
       minPolarAngle={0.55}
       maxPolarAngle={Math.PI * 0.46}
       target={[look.x, look.y, look.z]}

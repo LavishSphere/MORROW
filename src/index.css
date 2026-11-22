@@ -1503,3 +1503,179 @@ code {
     visibility 0s linear 380ms;
 }
 
+
+/* —— Movement hints: bottom-left, in the overlay band —— */
+.move-hints {
+  position: absolute;
+  z-index: 6;
+  left: var(--overlay-left, 1.15rem);
+  bottom: calc(var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem));
+  margin: 0;
+  padding: 0.7rem 0.85rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(12, 20, 17, 0.62);
+  color: #f7faf8;
+  font-size: 0.8rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  transition:
+    opacity 320ms ease,
+    transform 480ms var(--overlay-ease, ease),
+    visibility 0s;
+}
+
+.move-hints--pill {
+  padding: 0.45rem 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.move-hints__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.45rem;
+}
+
+.move-hints__title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 250, 248, 0.7);
+}
+
+.move-hints__close {
+  border: 0;
+  background: transparent;
+  color: rgba(247, 250, 248, 0.7);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.move-hints__list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.move-hints__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.move-hints__keys {
+  display: inline-flex;
+  gap: 0.2rem;
+  min-width: 6.2rem;
+}
+
+.move-hints__or {
+  color: rgba(247, 250, 248, 0.6);
+}
+
+.move-hints kbd {
+  display: inline-block;
+  min-width: 1.35rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.app-shell--city.has-panel .move-hints {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-1.5rem);
+  transition:
+    opacity 220ms ease,
+    transform 380ms var(--overlay-ease, ease),
+    visibility 0s linear 380ms;
+}
+
+/* —— Minimap: bottom-right, just above the mode bar —— */
+.minimap {
+  position: absolute;
+  z-index: 6;
+  right: var(--overlay-left, 1.15rem);
+  bottom: calc(var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem));
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(12, 20, 17, 0.62);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  transition:
+    opacity 320ms ease,
+    transform 480ms var(--overlay-ease, ease),
+    visibility 0s;
+}
+
+.minimap__where {
+  max-width: 168px;
+  margin: 0.05rem 0.15rem 0.45rem;
+  overflow: hidden;
+  color: #f7faf8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.minimap__frame {
+  position: relative;
+}
+
+.minimap__canvas {
+  display: block;
+  border-radius: 10px;
+  cursor: crosshair;
+}
+
+.minimap__north {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.45rem;
+  color: rgba(247, 250, 248, 0.75);
+  font-size: 0.65rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+
+/* —— Street signs: a small plate on a post, fading in —— */
+.street-sign {
+  padding: 0.22rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  background: rgba(16, 72, 52, 0.92);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  user-select: none;
+  animation: street-sign-in 360ms ease both;
+}
+
+@keyframes street-sign-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}

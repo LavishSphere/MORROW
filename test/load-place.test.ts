@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { waysFromOverpass } from "../src/data/overpass.ts";
+import { neighborhoodGeoJson, waysFromOverpass } from "../src/data/overpass.ts";
 import { placeFromEsri, suggestionsFromEsri } from "../src/data/places.ts";
 
 test("typed text lists every matching US city the geocoder suggests", () => {
@@ -78,4 +78,34 @@ test("the canvas loads a typed place on the satellite scene", async () => {
   assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(query, /Not a barrier inventory/);
   assert.match(town, /No modeled route for this place/);
+});
+
+test("a loaded city becomes a basemap the glass city can rebuild from", async () => {
+  const geo = neighborhoodGeoJson({
+    place: { label: "Cambridge, Massachusetts", lng: -71.1, lat: 42.37 },
+    note: "",
+    ways: [
+      { id: 1, name: "Main Street", kind: "road", highway: "primary", building: null, points: [[-71.1, 42.37], [-71.101, 42.371]] },
+      { id: 2, name: null, kind: "road", highway: "footway", building: null, points: [[-71.1, 42.37], [-71.1, 42.371]] },
+      { id: 3, name: "Hall", kind: "building", highway: null, building: "college", points: [[-71.1, 42.37], [-71.1, 42.3702], [-71.0998, 42.3702]] },
+    ],
+  });
+  assert.equal(geo.type, "FeatureCollection");
+  const [road, foot, hall] = geo.features as {
+    geometry: { type: string; coordinates: number[][][] };
+    properties: Record<string, unknown>;
+  }[];
+  assert.equal(road?.properties.layer, "road");
+  assert.equal(foot?.properties.layer, "footway");
+  assert.equal(hall?.geometry.type, "Polygon");
+  assert.equal(hall?.properties.building, "college");
+  const ring = hall?.geometry.coordinates[0] ?? [];
+  assert.deepEqual(ring[0], ring[ring.length - 1]);
+
+  // The canvas hands the loaded map to the 3D city.
+  const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
+  const city = await readFile("src/showcase/scene/City.tsx", "utf8");
+  assert.match(slot, /neighborhoodGeoJson\(neighborhood\)/);
+  assert.match(slot, /geoJson=\{geoJson\}/);
+  assert.match(city, /export function City\(\{ geoJson \}/);
 });
