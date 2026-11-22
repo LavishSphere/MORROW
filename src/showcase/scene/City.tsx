@@ -318,6 +318,7 @@ class Occupancy {
   readonly cols: number;
   readonly rows: number;
   readonly data: Uint8Array;
+  readonly heights: Float32Array;
   readonly bounds: Bounds;
 
   constructor(bounds: Bounds) {
@@ -325,6 +326,7 @@ class Occupancy {
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / this.cell) + 1;
     this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / this.cell) + 1;
     this.data = new Uint8Array(this.cols * this.rows);
+    this.heights = new Float32Array(this.cols * this.rows);
   }
 
   private index(x: number, z: number) {
@@ -337,6 +339,48 @@ class Occupancy {
   private set(x: number, z: number) {
     const k = this.index(x, z);
     if (k >= 0) this.data[k] = 1;
+  }
+
+  markHeight(ring: Ring, height: number) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    for (let x = minX; x <= maxX; x += this.cell) {
+      for (let z = minZ; z <= maxZ; z += this.cell) {
+        if (!insideRing(x, z, ring)) continue;
+        const k = this.index(x, z);
+        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+      }
+    }
+  }
+
+  nearbyHeight(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    let best = 0;
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        const k = this.index(x + a * this.cell, z + b * this.cell);
+        if (k >= 0) best = Math.max(best, this.heights[k] ?? 0);
+      }
+    }
+    return best;
+  }
+
+  markDisk(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        if (a * a + b * b > steps * steps) continue;
+        this.set(x + a * this.cell, z + b * this.cell);
+      }
+    }
   }
 
   markRing(ring: Ring, margin: number) {
@@ -433,6 +477,7 @@ type Built = {
   lit: THREE.BufferGeometry;
   walks: Record<"sidewalk" | "footway" | "path", THREE.BufferGeometry>;
   trees: Placement[];
+  ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
@@ -491,6 +536,7 @@ function buildCity(model: CityModel): Built {
       cap(garden, ring, top);
     }
     occupancy.markRing(ring, 0.9);
+    occupancy.markHeight(ring, top);
   }
 
   const roads = new Bucket();
@@ -510,9 +556,37 @@ function buildCity(model: CityModel): Built {
     }
   }
 
-  // Trees on open lawn only.
-  const trees: Placement[] = [];
   const { minX, maxX, minZ, maxZ } = model.bounds;
+  const ponds: Built["ponds"] = [];
+  const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
+  const pondTarget = Math.min(22, Math.max(5, Math.round(area / 14000)));
+  const pondStep = 18;
+  for (let gx = minX; gx <= maxX && ponds.length < pondTarget; gx += pondStep) {
+    for (let gz = minZ; gz <= maxZ && ponds.length < pondTarget; gz += pondStep) {
+      if (hash(gx + 3, gz + 11) > 0.16) continue;
+      const x = gx + (hash(gz, gx + 1) - 0.5) * pondStep;
+      const z = gz + (hash(gx + 2, gz) - 0.5) * pondStep;
+      const rx = 1.7 + hash(x, z) * 4.4;
+      const rz = rx * (0.48 + hash(z, x) * 0.4);
+      const rot = hash(x + 4, z + 4) * Math.PI;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const pad = 0.9;
+      let blocked = false;
+      for (let u = -(rx + pad); u <= rx + pad && !blocked; u += occupancy.cell) {
+        for (let v = -(rz + pad); v <= rz + pad && !blocked; v += occupancy.cell) {
+          if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
+          blocked = occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos);
+        }
+      }
+      if (blocked) continue;
+      occupancy.markDisk(x, z, Math.max(rx, rz) + 0.8);
+      ponds.push({ x, z, rx, rz, rot });
+    }
+  }
+
+  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
+  const trees: Placement[] = [];
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
     for (let gz = minZ; gz <= maxZ; gz += step) {
@@ -522,10 +596,24 @@ function buildCity(model: CityModel): Built {
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (occupancy.taken(x, z)) continue;
       const palette = r > 0.9 ? AUTUMN : GREEN;
+      const roll = hash(x + 1, z + 3);
+      const near = occupancy.nearbyHeight(x, z, 8);
+      const target = near > 1 ? Math.min(near * (0.45 + roll * 0.4), 5.4) : 1.8 + roll * 2.2;
+      let s = Math.min(2.9, Math.max(0.65, target / 1.86));
+      const crownHitsRoad = (scale: number) => {
+        const reach = 0.62 * scale;
+        for (let i = 0; i < 6; i += 1) {
+          const t = (i / 6) * Math.PI * 2;
+          if (occupancy.taken(x + Math.cos(t) * reach, z + Math.sin(t) * reach)) return true;
+        }
+        return false;
+      };
+      while (s > 0.65 && crownHitsRoad(s)) s *= 0.8;
+      if (crownHitsRoad(s)) continue;
       trees.push({
         x,
         z,
-        s: 0.75 + hash(x, z) * 0.6,
+        s,
         color: palette[Math.floor(hash(z, x) * palette.length)] ?? GREEN[0],
       });
     }
@@ -563,6 +651,7 @@ function buildCity(model: CityModel): Built {
       path: walks.path.geometry(),
     },
     trees,
+    ponds,
     lamps,
     hydrants,
     benches,
@@ -647,6 +736,11 @@ function useMaterials() {
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
+        water: new THREE.MeshStandardMaterial({
+          color: "#6aa8b8",
+          roughness: 0.12,
+          metalness: 0.42,
+        }),
       },
     };
   }, []);
@@ -744,6 +838,8 @@ function Instanced({
  */
 export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
   const { glass, surfaces } = useMaterials();
+  const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
+  useEffect(() => () => pondShape.dispose(), [pondShape]);
   const { shapes, looks } = useFurniture();
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
@@ -808,6 +904,19 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.stone} material={surfaces.stone} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
       <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />
+
+      {built.ponds.map((pond) => (
+        <mesh
+          key={`${pond.x.toFixed(1)}-${pond.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.water}
+          position={[pond.x, 0.045, pond.z]}
+          rotation={[-Math.PI / 2, pond.rot, 0]}
+          scale={[pond.rx, pond.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
 
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
       <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
