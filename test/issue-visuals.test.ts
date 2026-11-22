@@ -127,7 +127,7 @@ test("each fix is drawn from start to end, so it can build along the street", ()
   }
 });
 
-test("every flat triangle faces up, so one-sided materials draw it from above", () => {
+test("no triangle faces down: flat ones face up, walls stand upright, so one-sided materials draw them", () => {
   const bent: [number, number][] = [
     [0, 0],
     [5, 3],
@@ -141,12 +141,39 @@ test("every flat triangle faces up, so one-sided materials draw it from above", 
   });
   for (const { positions } of meshes) {
     for (let i = 0; i < positions.length; i += 9) {
-      const [ax, , az, bx, , bz, cx, , cz] = positions.slice(i, i + 9) as number[];
-      // y of (b - a) × (c - a)
-      const up = (bz! - az!) * (cx! - ax!) - (bx! - ax!) * (cz! - az!);
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = positions.slice(i, i + 9) as number[];
+      const [ux, uy, uz, vx, vy, vz] = [bx! - ax!, by! - ay!, bz! - az!, cx! - ax!, cy! - ay!, cz! - az!];
+      // (b - a) × (c - a)
+      const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+      const up = n[1]!;
+      // The ramp's walls, rails and posts are upright; every other face points up.
+      if (Math.abs(up) <= 1e-9 * Math.hypot(n[0]!, n[2]!)) continue;
       assert.ok(up > 0, "triangle faces up");
     }
   }
+});
+
+test("the stairs ramp is solid: it rises to the end, its walls face out, and it stays cheap", () => {
+  const short: [number, number][] = [
+    [0, 0],
+    [3, 0],
+  ];
+  const { surface, edges } = patchMesh({ kind: "stairs", path: short });
+  const ys = surface.positions.filter((_, i) => i % 3 === 1);
+  assert.ok(Math.max(...ys) > 0.3, "rails stand above the top of the ramp");
+  let walls = 0;
+  for (let i = 0; i < surface.positions.length; i += 9) {
+    const [ax, ay, az, bx, by, bz, cx, cy, cz] = surface.positions.slice(i, i + 9) as number[];
+    const [ux, uy, uz, vx, vy, vz] = [bx! - ax!, by! - ay!, bz! - az!, cx! - ax!, cy! - ay!, cz! - az!];
+    const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    if (Math.abs(n[1]!) > 1e-9 * Math.hypot(n[0]!, n[2]!)) continue;
+    walls += 1;
+    // A side wall faces away from the ramp's centre line (z = RAMP_OFFSET); posts face every way.
+    const mz = (az! + bz! + cz!) / 3;
+    if (Math.abs(n[0]!) < 1e-9 && Math.abs(mz - 0.46) > 0.19) assert.ok(Math.sign(n[2]!) === Math.sign(mz - 0.46), "wall faces out");
+  }
+  assert.ok(walls > 0, "the ramp has upright sides");
+  assert.ok((surface.positions.length + edges.positions.length) / 9 < 200, "under 200 triangles");
 });
 
 test("a crossing fix adds tactile paving at both ends; stairs keep their treads beside the ramp", () => {

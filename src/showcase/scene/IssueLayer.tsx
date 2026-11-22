@@ -35,15 +35,14 @@ export { ISSUE_COLOR } from "../issueVisuals";
 /** Seconds a fix takes to build itself along the street. */
 const BUILD_SECONDS = 1.1;
 
-/** A flat triangle soup with a color per vertex, facing up. */
+/** A triangle soup with a color per vertex; flat parts face up, the ramp's walls and rails face out. */
 function useFlatGeometry(mesh: FlatMesh) {
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(mesh.positions, 3));
     g.setAttribute("color", new THREE.Float32BufferAttribute(mesh.colors, 3));
-    const normals = new Float32Array(mesh.positions.length);
-    for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
-    g.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    // Non-indexed, so these are face normals: straight up on flat parts, outward on walls.
+    g.computeVertexNormals();
     return g;
   }, [mesh]);
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -210,6 +209,10 @@ const poleHeight = (pin: Pin) => 1.05 + 0.15 * ISSUE_SEVERITY[pin.kind];
 
 type View = { cell: number; labels: string[]; scale: number };
 
+/** Below this camera distance, every open pin gets a ring on the ground. */
+const RING_ZOOM = 45;
+const RING_OPACITY = 0.55;
+
 /**
  * One pin per issue, colored and shaped by kind, instanced so hundreds cost
  * a few draw calls. Pins keep about the same size on screen at any zoom;
@@ -221,11 +224,13 @@ function IssuePins({
   fixed,
   selectedId,
   peekLabel,
+  reducedMotion,
 }: {
   issues: SceneIssue[];
   fixed: ReadonlySet<string>;
   selectedId: string | null;
   peekLabel: string | null;
+  reducedMotion: boolean;
 }) {
   const camera = useThree((state) => state.camera);
   const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3 } | null;
@@ -276,6 +281,15 @@ function IssuePins({
       heads: Object.fromEntries(SHAPES.map((shape) => [shape, headGeometry(shape)])) as Record<IssueShape, THREE.BufferGeometry>,
       poleShape: new THREE.CylinderGeometry(0.025, 0.025, 1, 6).translate(0, 0.5, 0),
       hitShape: new THREE.SphereGeometry(0.5, 8, 6),
+      // Lying flat, facing up.
+      ringShape: new THREE.RingGeometry(0.45, 0.55, 32).rotateX(-Math.PI / 2),
+      ring: new THREE.MeshBasicMaterial({
+        fog: false,
+        toneMapped: false,
+        transparent: true,
+        opacity: RING_OPACITY,
+        depthWrite: false,
+      }),
     };
   }, []);
   useEffect(
@@ -288,6 +302,8 @@ function IssuePins({
       looks.hit.dispose();
       looks.poleShape.dispose();
       looks.hitShape.dispose();
+      looks.ringShape.dispose();
+      looks.ring.dispose();
       for (const g of Object.values(looks.heads)) g.dispose();
     },
     [looks],
@@ -295,6 +311,7 @@ function IssuePins({
 
   const poles = useRef<THREE.InstancedMesh>(null);
   const hits = useRef<THREE.InstancedMesh>(null);
+  const rings = useRef<THREE.InstancedMesh>(null);
   const heads = useRef<Partial<Record<IssueShape, THREE.InstancedMesh | null>>>({});
   // Rims and ghosts share each head's matrices and colours; only their counts are copied.
   const extras = useRef<Partial<Record<IssueShape, (THREE.InstancedMesh | null)[]>>>({});
@@ -316,6 +333,29 @@ function IssuePins({
         scale: Math.round(scale * 10) / 10,
       };
       if (next.cell !== view.cell || next.scale !== view.scale || next.labels.join() !== view.labels.join()) setView(next);
+    }
+
+    // Zoomed in: a ring on the ground under every open pin, gently pulsing.
+    const ringMesh = rings.current;
+    if (ringMesh) {
+      ringMesh.visible = distance < RING_ZOOM;
+      if (ringMesh.visible) {
+        const pulse = reducedMotion ? 0 : 0.5 + 0.5 * Math.sin(clock.elapsedTime * 2.4);
+        (ringMesh.material as THREE.MeshBasicMaterial).opacity = RING_OPACITY * (1 - 0.35 * pulse);
+        const k = scale * (1 + 0.15 * pulse);
+        const { m, q, p, s, c } = temp;
+        let n = 0;
+        for (const pin of pins) {
+          if (pin.fixed || pin.key === selectedId) continue;
+          m.compose(p.set(pin.x, 0.1, pin.z), q, s.set(k, 1, k));
+          ringMesh.setMatrixAt(n, m);
+          ringMesh.setColorAt(n, c.set(ISSUE_COLOR[pin.kind]));
+          n += 1;
+        }
+        ringMesh.count = n;
+        ringMesh.instanceMatrix.needsUpdate = true;
+        if (ringMesh.instanceColor) ringMesh.instanceColor.needsUpdate = true;
+      }
     }
 
     const d = drawn.current;
@@ -378,6 +418,17 @@ function IssuePins({
 
   return (
     <group name="issue-pins">
+      <instancedMesh
+        key={`rings-${capacity}`}
+        ref={(mesh) => {
+          rings.current = mesh;
+          if (mesh) mesh.count = 0;
+        }}
+        args={[looks.ringShape, looks.ring, capacity]}
+        frustumCulled={false}
+        renderOrder={2}
+        raycast={() => null}
+      />
       <instancedMesh key={`poles-${capacity}`} ref={poles} args={[looks.poleShape, looks.pole, capacity]} frustumCulled={false} raycast={() => null} />
       {SHAPES.map((shape) => (
         <instancedMesh
@@ -545,7 +596,7 @@ export function IssueLayer({ reducedMotion = false }: { reducedMotion?: boolean 
         <Patch key={`fix-${issue.id}-${fixed.has(issue.id) ? "real" : "preview"}`} issue={issue} preview={!fixed.has(issue.id)} reducedMotion={reducedMotion} />
       ))}
       {selected && <Selected key={selected.id} issue={selected} mode={mode} reducedMotion={reducedMotion} />}
-      <IssuePins issues={issues} fixed={fixed} selectedId={selectedId} peekLabel={peekLabel} />
+      <IssuePins issues={issues} fixed={fixed} selectedId={selectedId} peekLabel={peekLabel} reducedMotion={reducedMotion} />
       {/* A happy crowd gathers at every fix; bigger where more people live nearby. */}
       {issues
         .filter((issue) => fixed.has(issue.id))

@@ -242,12 +242,13 @@ function flatten(quads: Quad[]): FlatMesh {
   return { positions, colors };
 }
 
-/** Quads of a flat band along a path, `offset` to one side, `half` wide each way. */
-function bandQuads(path: Path, half: number, y: number, color: Rgb, offset = 0): Quad[] {
-  const total = pathLength(path) || 1;
-  // Drop repeated points so every segment has a direction.
-  const pts = path.filter((p, i) => i === 0 || Math.hypot(p[0] - path[i - 1]![0], p[1] - path[i - 1]![1]) >= 1e-4);
-  if (pts.length < 2) return [];
+/** A path without repeated points, so every segment has a direction. */
+function distinct(path: Path): Path {
+  return path.filter((p, i) => i === 0 || Math.hypot(p[0] - path[i - 1]![0], p[1] - path[i - 1]![1]) >= 1e-4);
+}
+
+/** Each segment's left normal, and a mitered side direction at each point. */
+function miters(pts: Path) {
   const normals = pts.slice(0, -1).map((p, i) => {
     const q = pts[i + 1]!;
     const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
@@ -268,6 +269,15 @@ function bandQuads(path: Path, half: number, y: number, color: Rgb, offset = 0):
     const stretch = 1 / Math.max(0.5, mx * b[0] + mz * b[1]);
     return [mx * stretch, mz * stretch] as const;
   });
+  return { normals, corner };
+}
+
+/** Quads of a flat band along a path, `offset` to one side, `half` wide each way. */
+function bandQuads(path: Path, half: number, y: number, color: Rgb, offset = 0): Quad[] {
+  const total = pathLength(path) || 1;
+  const pts = distinct(path);
+  if (pts.length < 2) return [];
+  const { normals, corner } = miters(pts);
   const l = offset - half;
   const r = offset + half;
   const quads: Quad[] = [];
@@ -441,6 +451,131 @@ const PAVING: Rgb = hexToRgb("#ece7dc");
 const STRIPE: Rgb = hexToRgb("#ffffff");
 const TACTILE: Rgb = hexToRgb("#ffd23f");
 const CURB: Rgb = hexToRgb("#cfd6da");
+const RAMP_SIDE: Rgb = hexToRgb("#b9c2c8");
+const RAIL: Rgb = hexToRgb("#8d99a3");
+
+type V3 = readonly [number, number, number];
+const UP: V3 = [0, 1, 0];
+
+/** Two triangles over a–b and c–d (a beside c, b beside d), wound to face `out`. */
+function facing(a: V3, b: V3, c: V3, d: V3, out: V3): number[] {
+  const [ux, uy, uz] = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const [vx, vy, vz] = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  const ok = n[0]! * out[0] + n[1]! * out[1] + n[2]! * out[2] >= 0;
+  return ok ? [...a, ...b, ...c, ...b, ...d, ...c] : [...a, ...c, ...b, ...b, ...c, ...d];
+}
+
+/** Points along a path about `step` apart: position, mitered side direction, and place along it (0–1). */
+function frames(path: Path, step: number) {
+  const pts = distinct(path);
+  if (pts.length < 2) return [];
+  const { normals, corner } = miters(pts);
+  const total = pathLength(pts) || 1;
+  const out: { x: number; z: number; sx: number; sz: number; t: number }[] = [];
+  let walked = 0;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const [ax, az] = pts[i]!;
+    const [bx, bz] = pts[i + 1]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    const k = Math.max(1, Math.round(len / step));
+    for (let j = i === 0 ? 0 : 1; j <= k; j += 1) {
+      const f = j / k;
+      const [sx, sz] = j === 0 ? corner[i]! : j === k ? corner[i + 1]! : normals[i]!;
+      out.push({ x: ax + (bx - ax) * f, z: az + (bz - az) * f, sx, sz, t: (walked + len * f) / total });
+    }
+    walked += len;
+  }
+  return out;
+}
+
+const RAMP_HALF = 0.2;
+const RAIL_HEIGHT = 0.18;
+
+/**
+ * A solid ramp beside the stairs: a wedge rising from the ground at the path's
+ * start to the top of the stairs at its end, with posts and a top rail on each
+ * side. `trim` is the blue proposed-fix outline along its two outer edges.
+ */
+function rampQuads(path: Path, offset: number, blue: Rgb): { surface: Quad[]; trim: Quad[] } {
+  const length = pathLength(path);
+  const rise = Math.min(0.45, Math.max(0.15, length * 0.12));
+  // About six pieces, so the ramp builds along the stairs and stays cheap.
+  const fs = frames(path, Math.max(0.4, length / 6));
+  if (fs.length < 2) return { surface: [], trim: [] };
+  const h = (t: number) => 0.02 + (rise - 0.02) * t;
+  type F = (typeof fs)[number];
+  const at = (f: F, side: number, y: number): V3 => [f.x + f.sx * side, y, f.z + f.sz * side];
+  const left = offset - RAMP_HALF;
+  const right = offset + RAMP_HALF;
+  const surface: Quad[] = [];
+  const trim: Quad[] = [];
+  for (let i = 0; i < fs.length - 1; i += 1) {
+    const a = fs[i]!;
+    const b = fs[i + 1]!;
+    const ha = h(a.t);
+    const hb = h(b.t);
+    const along = (a.t + b.t) / 2;
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    // This piece's left normal; the right wall faces along it, the left wall away.
+    const n: V3 = [-(b.z - a.z) / len, 0, (b.x - a.x) / len];
+    const quad = (positions: number[], color: Rgb) => surface.push({ along, positions, color });
+    quad(facing(at(a, left, ha), at(a, right, ha), at(b, left, hb), at(b, right, hb), UP), SURFACE);
+    quad(facing(at(a, left, 0), at(a, left, ha), at(b, left, 0), at(b, left, hb), [-n[0], 0, -n[2]]), RAMP_SIDE);
+    quad(facing(at(a, right, 0), at(a, right, ha), at(b, right, 0), at(b, right, hb), n), RAMP_SIDE);
+    for (const [edge, out] of [
+      [left, -1],
+      [right, 1],
+    ] as const) {
+      // Top rail: a thin bar following the slope, its top and its outer face.
+      const rail = edge - out * 0.04;
+      const top = (f: F, hf: number, s: number) => at(f, rail + s * 0.018, hf + RAIL_HEIGHT);
+      quad(facing(top(a, ha, -1), top(a, ha, 1), top(b, hb, -1), top(b, hb, 1), UP), RAIL);
+      const side = rail + out * 0.018;
+      quad(
+        facing(at(a, side, ha + RAIL_HEIGHT - 0.03), at(a, side, ha + RAIL_HEIGHT), at(b, side, hb + RAIL_HEIGHT - 0.03), at(b, side, hb + RAIL_HEIGHT), [n[0] * out, 0, n[2] * out]),
+        RAIL,
+      );
+      // Blue trim on the ramp's outer edge, just above its surface.
+      const lift = 0.012;
+      const inner = edge - out * 0.03;
+      trim.push({ along, positions: facing(at(a, inner, ha + lift), at(a, edge, ha + lift), at(b, inner, hb + lift), at(b, edge, hb + lift), UP), color: blue });
+    }
+  }
+  // The high end, where the ramp meets the top of the stairs.
+  const end = fs[fs.length - 1]!;
+  const prev = fs[fs.length - 2]!;
+  const endLen = Math.hypot(end.x - prev.x, end.z - prev.z) || 1;
+  surface.push({
+    along: 1,
+    positions: facing(at(end, left, 0), at(end, left, rise), at(end, right, 0), at(end, right, rise), [(end.x - prev.x) / endLen, 0, (end.z - prev.z) / endLen]),
+    color: RAMP_SIDE,
+  });
+  // Posts about every half unit on both sides, at most five a side.
+  const posts = Math.min(fs.length, Math.min(5, Math.max(2, Math.round(length / 0.5) + 1)));
+  for (let p = 0; p < posts; p += 1) {
+    const f = fs[Math.round((p * (fs.length - 1)) / (posts - 1))]!;
+    const m = Math.hypot(f.sx, f.sz) || 1;
+    const [nx, nz] = [f.sx / m, f.sz / m];
+    const [ux, uz] = [nz, -nx];
+    const y0 = h(f.t) - 0.01;
+    const y1 = h(f.t) + RAIL_HEIGHT - 0.01;
+    const r = 0.016;
+    for (const edge of [left + 0.04, right - 0.04]) {
+      const cx = f.x + f.sx * edge;
+      const cz = f.z + f.sz * edge;
+      const corner = (su: number, sn: number, y: number): V3 => [cx + (ux * su + nx * sn) * r, y, cz + (uz * su + nz * sn) * r];
+      const positions = [
+        ...facing(corner(1, -1, y0), corner(1, -1, y1), corner(1, 1, y0), corner(1, 1, y1), [ux, 0, uz]),
+        ...facing(corner(-1, -1, y0), corner(-1, -1, y1), corner(-1, 1, y0), corner(-1, 1, y1), [-ux, 0, -uz]),
+        ...facing(corner(-1, 1, y0), corner(-1, 1, y1), corner(1, 1, y0), corner(1, 1, y1), [nx, 0, nz]),
+        ...facing(corner(-1, -1, y0), corner(-1, -1, y1), corner(1, -1, y0), corner(1, -1, y1), [-nx, 0, -nz]),
+      ];
+      surface.push({ along: f.t, positions, color: RAIL });
+    }
+  }
+  return { surface, trim };
+}
 
 /**
  * The proposed fix, built from the issue's own way: `surface` is the new
@@ -454,10 +589,10 @@ export function patchMesh(issue: PatchIssue): { surface: FlatMesh; edges: FlatMe
   const edges: Quad[] = [];
   switch (issue.kind) {
     case "stairs": {
-      // A ramp beside the stairs, with a handrail glow on each side.
-      surface.push(...bandQuads(issue.path, 0.2, 0.11, SURFACE, RAMP_OFFSET));
-      edges.push(...bandQuads(issue.path, 0.025, 0.13, blue, RAMP_OFFSET + 0.22));
-      edges.push(...bandQuads(issue.path, 0.025, 0.13, blue, RAMP_OFFSET - 0.22));
+      // A solid ramp beside the stairs, with handrails and blue trim on each side.
+      const ramp = rampQuads(issue.path, RAMP_OFFSET, blue);
+      surface.push(...ramp.surface);
+      edges.push(...ramp.trim);
       break;
     }
     case "unmarked_crossing": {
