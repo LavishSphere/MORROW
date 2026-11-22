@@ -9,7 +9,7 @@ import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "..
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
-import { cameraMotion, REBUILD_QUIET_MS, whenCameraRests } from "../motion";
+import { cameraMotion, cityBuild, REBUILD_QUIET_MS, whenCameraRests } from "../motion";
 import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
 import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
@@ -20,7 +20,7 @@ import { AddressPin } from "./AddressPin";
 import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
 import { Traffic } from "./Traffic";
-import { buildTrafficLanes, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
+import { buildTrafficLanesSteps, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
 import { RailLayer } from "./RailLayer";
 import { RAIL_CLEARANCE } from "./railGeometry";
 import { cellView, chunkPlacements, LOD_NEAR, VIEW_FAR } from "./chunks.ts";
@@ -1777,6 +1777,7 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
   for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
     yield;
     for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      yield;
       if (hash(gx + 3, gz + 11) > 0.55) continue;
       const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
       const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
@@ -1812,6 +1813,8 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
     for (let gz = minZ; gz <= maxZ; gz += step) {
       const r = hash(gx, gz);
       if (r < 0.45) continue;
+      // A big city has rows of hundreds of spots: pause between spots too.
+      yield;
       const x = gx + (hash(gz, gx) - 0.5) * step;
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (occupancy.taken(x, z)) continue;
@@ -1915,7 +1918,7 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
   const peoplePants = people.map((p) => ({ ...p, color: PANTS[Math.floor(hash(p.x, p.z + 9) * PANTS.length)] ?? PANTS[0] }));
   yield;
   // Moving traffic keeps to the ground for now; decks are drawn without it.
-  const traffic = buildTrafficLanes(model.parsed.ways.filter((way) => !way.bridge), footprints);
+  const traffic = yield* buildTrafficLanesSteps(model.parsed.ways.filter((way) => !way.bridge), footprints);
   const lamps = allRoads.flatMap((way) => {
     const deck = plan.decks.get(way.id);
     // On a deck the lamps stand just inside the railing.
@@ -2536,6 +2539,7 @@ function useBuiltCity(model: CityModel): Built {
   useEffect(() => {
     if (shown.model === model) return;
     const steps = buildCitySteps(model);
+    cityBuild.slicing = true;
     let frame = 0;
     let work = 0;
     let longest = 0;
@@ -2548,6 +2552,7 @@ function useBuiltCity(model: CityModel): Built {
         const next = steps.next();
         if (next.done) {
           cancelAnimationFrame(frame);
+          cityBuild.slicing = false;
           const took = performance.now() - start;
           work += took;
           longest = Math.max(longest, took);
@@ -2567,6 +2572,7 @@ function useBuiltCity(model: CityModel): Built {
     frame = requestAnimationFrame(run);
     return () => {
       cancelAnimationFrame(frame);
+      cityBuild.slicing = false;
       steps.return(undefined as never);
     };
   }, [model, shown.model, first.base]);

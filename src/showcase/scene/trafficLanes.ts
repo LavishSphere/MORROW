@@ -314,6 +314,15 @@ function atIntersections(points: readonly Pt[], shared: ReadonlyMap<string, numb
  * the pieces inside buildings cut out.
  */
 export function buildTrafficLanes(ways: readonly TrafficWay[], grid?: FootprintGrid): TrafficLanes {
+  const steps = buildTrafficLanesSteps(ways, grid);
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
+/** The same, pausing (`yield`) after each way, for a city built a slice at a time. */
+export function* buildTrafficLanesSteps(ways: readonly TrafficWay[], grid?: FootprintGrid): Generator<void, TrafficLanes, void> {
   const cars: Lane[] = [];
   const walks: Lane[] = [];
   // How many streets touch each point.
@@ -323,6 +332,7 @@ export function buildTrafficLanes(ways: readonly TrafficWay[], grid?: FootprintG
     for (const key of new Set(way.points.map(snapKey))) shared.set(key, (shared.get(key) ?? 0) + 1);
   }
   for (const way of ways) {
+    yield;
     if (way.points.length < 2 || way.indoor) continue;
     const highway = way.highway ?? "";
     if (drivable(way)) {

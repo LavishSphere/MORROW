@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { getCityState, setLoadingMore, subscribeCity, useCitySelector, type CityMap } from '../showcase/cityStore'
-import { cameraMotion } from '../showcase/motion'
+import { cameraMotion, cityBuild } from '../showcase/motion'
 import { frameStrain } from '../showcase/viewBudget'
 import {
   fetchTile,
@@ -199,8 +199,9 @@ export function useCityStreaming(
       const base = latest.current
       const batch = pending.current
       if (signal.aborted || !base || base.place !== place || batch.keys.length === 0) return
-      // The camera moved while this waited for an idle moment: wait again.
-      if (stillFor() < URGENT_STILL_MS) {
+      // The camera moved while this waited for an idle moment, or the last
+      // batch is still building: wait again.
+      if (stillFor() < URGENT_STILL_MS || cityBuild.slicing) {
         if (!commitTimer.current) commitTimer.current = setTimeout(checkCommit, COMMIT_CHECK_MS)
         return
       }
@@ -216,7 +217,7 @@ export function useCityStreaming(
       commitTimer.current = null
       if (signal.aborted || pending.current.keys.length === 0 || cancelIdle.current) return
       const now = Date.now()
-      const ready = shouldCommit({
+      const ready = !cityBuild.slicing && shouldCommit({
         pending: pending.current.keys.length,
         urgent: pending.current.urgent,
         sinceCommitMs: now - lastCommit.current,
