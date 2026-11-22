@@ -1,5 +1,6 @@
 import { Edges, Sparkles } from "@react-three/drei";
 import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
+import { useStreetImprovements } from "../../city/streetImprovements";
 
 const GLASS = "#3ec8d8";
 const GLASS_GLOW = "#7af4ff";
@@ -587,13 +588,137 @@ function Bin({ x, z }: { x: number; z: number }) {
   );
 }
 
+/** Proposed props glow with a ring so they read as additions, not existing furniture. */
+const PROPOSED_RING = "#f7ffff";
+const TRASH_BODY = "#5b6f78";
+const TRASH_GLOW = "#c9f6ff";
+const RECYCLE_BODY = "#2fa58a";
+const RECYCLE_GLOW = "#7dffd8";
+
+/** `beside` at a fractional boulevard index, so new props can sit between existing ones. */
+function besideAt(points: readonly (readonly [number, number])[], at: number, dist: number) {
+  const lo = Math.floor(at);
+  const t = at - lo;
+  const a = beside(points, lo, dist);
+  if (t === 0) return a;
+  const b = beside(points, lo + 1, dist);
+  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, rot: a.rot + (b.rot - a.rot) * t };
+}
+
+/** Litter bins near the crossings (8, 16), the benches (7, 18) and the bus stop (12). */
+const GARBAGE_SPOTS = [
+  { at: 8, dist: -3.0 },
+  { at: 16, dist: -3.0 },
+  { at: 7.45, dist: 2.9 },
+  { at: 18.45, dist: 2.9 },
+  { at: 12.5, dist: -3.1 },
+] as const;
+/** Existing waste stations (the plain bins at 6 and 20). */
+const EXISTING_BIN_SPOTS = [
+  { at: 6, dist: 3.1 },
+  { at: 20, dist: 3.1 },
+] as const;
+/** Recycling sits just down the street from the waste station it pairs with. */
+const RECYCLE_PAIR_STEP = 0.2;
+const PROPOSED_BENCH_SPOTS = [
+  { at: 13, dist: 2.7 },
+  { at: 23, dist: 2.7 },
+] as const;
+const PROPOSED_LAMP_SPOTS = [
+  { at: 8.5, dist: 2.6 },
+  { at: 16.5, dist: 2.6 },
+] as const;
+
+function ProposedRing({ radius }: { radius: number }) {
+  return (
+    <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+      <ringGeometry args={[radius, radius + 0.08, 24]} />
+      <meshBasicMaterial color={PROPOSED_RING} transparent opacity={0.85} toneMapped={false} />
+    </mesh>
+  );
+}
+
+function ProposedCan({ x, z, kind }: { x: number; z: number; kind: "garbage" | "recycling" }) {
+  const body = kind === "recycling" ? RECYCLE_BODY : TRASH_BODY;
+  const glow = kind === "recycling" ? RECYCLE_GLOW : TRASH_GLOW;
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, 0.45, 0]} castShadow raycast={() => null}>
+        <cylinderGeometry args={[0.24, 0.21, 0.9, 12]} />
+        <meshStandardMaterial color={body} emissive={glow} emissiveIntensity={0.18} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 0.62, 0]} raycast={() => null}>
+        <cylinderGeometry args={[0.245, 0.245, 0.07, 12]} />
+        <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={1.2} toneMapped={false} />
+      </mesh>
+      <mesh position={[0, 0.94, 0]} castShadow raycast={() => null}>
+        <cylinderGeometry args={[0.2, 0.27, 0.1, 12]} />
+        <meshStandardMaterial color={kind === "recycling" ? "#e9fff7" : "#eef8fb"} roughness={0.4} />
+      </mesh>
+      <ProposedRing radius={0.42} />
+    </group>
+  );
+}
+
+function ProposedStreetImprovements() {
+  const { selectedIds } = useStreetImprovements();
+  const garbage = selectedIds.includes("add-garbage-cans");
+  const recycling = selectedIds.includes("add-recycling");
+  const benches = selectedIds.includes("add-benches");
+  const lighting = selectedIds.includes("add-better-lighting");
+  if (!garbage && !recycling && !benches && !lighting) return null;
+  const stations = [...EXISTING_BIN_SPOTS, ...(garbage ? GARBAGE_SPOTS : [])];
+  return (
+    <group>
+      {garbage
+        ? GARBAGE_SPOTS.map(({ at, dist }) => {
+            const spot = besideAt(BOULEVARD, at, dist);
+            return <ProposedCan key={`garbage-${at}`} kind="garbage" x={spot.x} z={spot.z} />;
+          })
+        : null}
+      {recycling
+        ? stations.map(({ at, dist }) => {
+            const spot = besideAt(BOULEVARD, at + RECYCLE_PAIR_STEP, dist);
+            return <ProposedCan key={`recycling-${at}`} kind="recycling" x={spot.x} z={spot.z} />;
+          })
+        : null}
+      {benches
+        ? PROPOSED_BENCH_SPOTS.map(({ at, dist }) => {
+            const spot = besideAt(BOULEVARD, at, dist);
+            return (
+              <group key={`proposed-bench-${at}`}>
+                <Bench x={spot.x} z={spot.z} rot={spot.rot} />
+                <group position={[spot.x, 0, spot.z]}>
+                  <ProposedRing radius={1.0} />
+                </group>
+              </group>
+            );
+          })
+        : null}
+      {lighting
+        ? PROPOSED_LAMP_SPOTS.map(({ at, dist }) => {
+            const spot = besideAt(BOULEVARD, at, dist);
+            return (
+              <group key={`proposed-lamp-${at}`}>
+                <Lamp x={spot.x} z={spot.z} />
+                <group position={[spot.x, 0, spot.z]}>
+                  <ProposedRing radius={0.5} />
+                </group>
+              </group>
+            );
+          })
+        : null}
+    </group>
+  );
+}
+
 function StreetLife() {
   const hydrants = [4, 10, 16, 22].map((index) => beside(BOULEVARD, index, 2.5));
   const lamps = [3, 9, 15, 21].map((index) => beside(BOULEVARD, index, -2.6));
   const benches = [7, 18].map((index) => beside(BOULEVARD, index, 2.7));
   const walks = [8, 16].map((index) => beside(BOULEVARD, index, 0));
   const stop = beside(BOULEVARD, 12, -3.1);
-  const bins = [6, 20].map((index) => beside(BOULEVARD, index, 3.1));
+  const bins = EXISTING_BIN_SPOTS.map(({ at, dist }) => beside(BOULEVARD, at, dist));
   return (
     <group>
       {hydrants.map((spot) => (
@@ -612,6 +737,7 @@ function StreetLife() {
       {bins.map((spot) => (
         <Bin key={`bin-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
       ))}
+      <ProposedStreetImprovements />
     </group>
   );
 }

@@ -9,6 +9,12 @@ import {
   resetPotholeFix,
   selectPothole,
 } from "../src/city/potholeFix.ts";
+import {
+  getStreetImprovementState,
+  resetStreetImprovements,
+  STREET_IMPROVEMENTS,
+  toggleStreetImprovement,
+} from "../src/city/streetImprovements.ts";
 import type { DraftProposal } from "../src/types.ts";
 
 test("a clicked pothole can be patched without inventing a route", () => {
@@ -54,4 +60,13 @@ test("the city popup and the three mode pages share the pothole", async () => {
   assert.match(compare, /Not a Gemini estimate/);
   assert.match(propose, /usePotholeFix\(/);
   assert.equal(compare.includes("amountUsd"), false);
+});
+
+test("street improvements include garbage cans and do not affect route state", () => {
+  resetStreetImprovements();
+  assert.ok(STREET_IMPROVEMENTS.some((item) => item.name === "Add garbage cans"));
+  toggleStreetImprovement("add-garbage-cans");
+  assert.deepEqual(getStreetImprovementState().selectedIds, ["add-garbage-cans"]);
+  toggleStreetImprovement("add-garbage-cans");
+  assert.deepEqual(getStreetImprovementState().selectedIds, []);
 });

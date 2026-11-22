@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PATCH_DESCRIPTION,
   draftForPothole,
   potholeById,
   usePotholeFix,
 } from '../city/potholeFix'
+import {
+  draftForStreetImprovements,
+  improvementsByIds,
+  useStreetImprovements,
+} from '../city/streetImprovements'
 import {
   compareByIds,
   generateProposal,
@@ -23,6 +28,8 @@ export function ProposeSheet() {
   const fix = usePotholeFix()
   const hole = potholeById(fix.selectedId)
   const patched = hole ? fix.patchedIds.includes(hole.id) : false
+  const { selectedIds } = useStreetImprovements()
+  const improvements = useMemo(() => improvementsByIds(selectedIds), [selectedIds])
   const scenario = getDemoScenario()
   const intervention = getDemoIntervention()
   const [loading, setLoading] = useState(false)
@@ -32,8 +39,10 @@ export function ProposeSheet() {
 
   useEffect(() => {
     if (!baseDraft) return
-    setDraft(draftForPothole(baseDraft, hole, patched))
-  }, [baseDraft, hole, patched])
+    setDraft(
+      draftForStreetImprovements(draftForPothole(baseDraft, hole, patched), improvements),
+    )
+  }, [baseDraft, hole, patched, improvements])
 
   let beforeMeters: number | null = null
   let afterMeters: number | null = null
@@ -59,7 +68,9 @@ export function ProposeSheet() {
       })
       setResult(next)
       setBaseDraft(next.draft)
-      setDraft(draftForPothole(next.draft, hole, patched))
+      setDraft(
+        draftForStreetImprovements(draftForPothole(next.draft, hole, patched), improvements),
+      )
     } finally {
       setLoading(false)
     }
@@ -75,6 +86,9 @@ export function ProposeSheet() {
               ? `${hole.label}. ${patched ? 'Patched in this demo.' : 'Not patched yet.'} `
               : null}
             {scenario.originLabel} to {scenario.destinationLabel}.
+            {improvements.length > 0
+              ? ` Includes: ${improvements.map((item) => item.name).join(', ')}.`
+              : null}
           </p>
         </div>
         <button
