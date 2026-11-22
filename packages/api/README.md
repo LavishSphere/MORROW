@@ -70,7 +70,7 @@ curl -s -X POST "http://127.0.0.1:8787/api/proposals/generate" \
 
 ## Frontend
 
-Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin, such as `https://oh2.uniplex.xyz`. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin, such as `https://api.morrow.khayrul.com`. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
 
 ## Pterodactyl
 
