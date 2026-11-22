@@ -8,6 +8,7 @@ import { fetchOvertureBuildings } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
+import { oceanPolygons, stitchCoast } from "./coastline.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
 import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
 import { GLASS_TINTS, worldCurtainWall } from "./glass";
@@ -314,44 +315,55 @@ function cap(bucket: Bucket, ring: Ring, y: number) {
   }
 }
 
-/** Join coastline pieces that share an endpoint so the ocean is one shore. */
-function stitchChains(lines: Ring[]): Ring[] {
-  const pool = lines
-    .map((line) => line.map((p) => [p[0], p[1]] as [number, number]))
-    .filter((line) => line.length >= 2);
-  const chains: Ring[] = [];
-  const near = (a: readonly [number, number], b: readonly [number, number]) =>
-    Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05;
-  while (pool.length > 0) {
-    const chain = pool.pop();
-    if (!chain) break;
-    let progressed = true;
-    while (progressed) {
-      progressed = false;
-      for (let i = 0; i < pool.length; i += 1) {
-        const other = pool[i]!;
-        const head = chain[0]!;
-        const tail = chain[chain.length - 1]!;
-        const start = other[0]!;
-        const end = other[other.length - 1]!;
-        if (near(tail, start)) chain.push(...other.slice(1));
-        else if (near(tail, end)) chain.push(...other.slice(0, -1).reverse());
-        else if (near(head, end)) chain.unshift(...other.slice(0, -1));
-        else if (near(head, start)) chain.unshift(...other.slice(1).reverse());
-        else continue;
-        pool.splice(i, 1);
-        progressed = true;
-        break;
-      }
-    }
-    chains.push(chain);
+/**
+ * The sea from mapped coastline. Inside a box a little past the city, the
+ * water side of the shore is traced into real polygons (islands as holes).
+ * If the download stopped partway along a shore, a narrow strip on the water
+ * side is drawn instead: a hint of the shoreline, never a flood.
+ */
+function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number) {
+  const span = Math.max(80, bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
+  // Try a box well past the city edge, then one just around it.
+  for (const pad of [span * 1.5, span * 0.08]) {
+    const rect = {
+      minX: bounds.minX - pad,
+      maxX: bounds.maxX + pad,
+      minZ: bounds.minZ - pad,
+      maxZ: bounds.maxZ + pad,
+    };
+    const { polygons, complete } = oceanPolygons(lines, rect);
+    if (!complete) continue;
+    for (const polygon of polygons) fill(bucket, polygon.outer, polygon.holes, y);
+    return;
   }
-  return chains;
+  for (const coast of stitchCoast(lines)) shoreBand(bucket, coast, SHORE_FALLBACK, y);
+}
+
+/** About 40 m of water along a shore whose other pieces were not downloaded. */
+const SHORE_FALLBACK = 6;
+
+/** A flat polygon with holes, triangulated once. */
+function fill(bucket: Bucket, outer: Ring, holes: Ring[], y: number) {
+  try {
+    const contour = outer.map(([x, z]) => new THREE.Vector2(x, z));
+    const holeRings = holes.map((hole) => hole.map(([x, z]) => new THREE.Vector2(x, z)));
+    const faces = THREE.ShapeUtils.triangulateShape(contour, holeRings);
+    // triangulateShape drops a repeated closing point, so index the arrays after it ran.
+    const all = [contour, ...holeRings].flat();
+    for (const [i, j, k] of faces) {
+      const a = all[i!];
+      const b = all[j!];
+      const c = all[k!];
+      if (a && b && c) bucket.up([a.x, a.y], [b.x, b.y], [c.x, c.y], y);
+    }
+  } catch {
+    // A self-crossing shore cannot be triangulated; leave that piece dry.
+  }
 }
 
 /**
- * OSM coastline keeps water on the right. The band covers that side
- * past the city edge, so the ocean stays visible when you look outward.
+ * OSM coastline keeps water on the right. A strip of `width` on that side,
+ * used only when the shore could not be traced into a polygon.
  */
 function shoreBand(bucket: Bucket, points: Ring, width: number, y: number) {
   const clean = points.filter(
@@ -944,18 +956,11 @@ function buildCity(model: CityModel): Built {
     cap(water, body.ring, 0.025);
     occupancy.markRing(body.ring, 0.3);
   }
-  // Wider than the city, on the water side only, so looking past the edge
-  // shows ocean instead of stopping at the streets. Not a wall.
-  const citySpan = Math.max(
-    80,
-    model.bounds.maxX - model.bounds.minX,
-    model.bounds.maxZ - model.bounds.minZ,
-  );
-  const shoreWidth = citySpan * 1.5;
-  for (const coast of stitchChains(model.parsed.coastlines.map((line) => line.points))) {
-    shoreBand(water, coast, shoreWidth, 0.02);
-    occupancy.markLine(coast, 1.2);
-  }
+  // The sea runs past the city edge on the water side only, so looking
+  // outward shows ocean instead of stopping at the streets. Not a wall.
+  const coastLines = model.parsed.coastlines.map((line) => line.points);
+  ocean(water, coastLines, model.bounds, 0.02);
+  for (const coast of coastLines) occupancy.markLine(coast, 1.2);
   const streams = new Bucket();
   for (const brook of model.parsed.waterways) {
     const half = brook.wide ? RIVER_HALF : STREAM_HALF;
