@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { ISSUE_KIND_LABEL, type IssueKind, type IssueMeasure } from '../../shared/issues.ts'
-import { flyTo, useCityState } from '../showcase/cityStore'
-import { measureFor, setShowBefore, useIssueState } from '../showcase/issueStore'
+import { useCityState } from '../showcase/cityStore'
+import { measureFor, selectIssue, setShowBefore, useIssueState } from '../showcase/issueStore'
 import { buildingsNear, NEAR_METERS, PEOPLE_METHOD, peopleIn, placesNear } from '../showcase/people'
 import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
 
@@ -159,7 +159,7 @@ export function IssueComparisons() {
               <span className="compare-sheet__note">
                 {measure.modeled ? 'Modeled with the routing graph.' : 'Measured from the map.'} Not a Gemini estimate.
               </span>
-              <button type="button" className="benefit-show" onClick={() => flyTo(issue.x, issue.z, { distance: 22 })}>
+              <button type="button" className="benefit-show" onClick={() => selectIssue(issue.id)}>
                 Show me
               </button>
             </div>

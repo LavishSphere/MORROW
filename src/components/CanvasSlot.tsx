@@ -20,7 +20,14 @@ type Props = {
 export function CanvasSlot({ mode, reducedMotion, neighborhood, onNeighborhood }: Props) {
   useCityStreaming(neighborhood, onNeighborhood)
   const place = neighborhood?.place.label ?? 'Wellesley College'
-  useEffect(() => setPlaceLabel(neighborhood?.place.label ?? 'Wellesley, MA'), [neighborhood])
+  useEffect(
+    () =>
+      setPlaceLabel(
+        neighborhood?.place.label ?? 'Wellesley, MA',
+        neighborhood?.place.town ?? neighborhood?.place.label ?? 'Wellesley, MA',
+      ),
+    [neighborhood],
+  )
   // A loaded place rebuilds the glass city. Without one, the Wellesley showcase stays.
   const geoJson = useMemo(
     () =>

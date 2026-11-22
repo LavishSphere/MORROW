@@ -1996,14 +1996,14 @@ code {
   }
 }
 
-/* —— One-page PDF: only the proposal, compact, scaled to fit —— */
+/* —— One-page PDF: only the proposal, a formal letter, scaled to fit —— */
 #print-root {
   position: absolute;
   top: 0;
   left: -10000px;
   background: #ffffff;
-  color: #111111;
-  font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  color: #1a1a1a;
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
 }
 
 #print-root .proposal-print {
@@ -2012,84 +2012,94 @@ code {
   padding: 0;
   border: 0;
   background: #ffffff;
-  color: #111111;
+  color: #1a1a1a;
 }
 
 #print-root .proposal-print__banner {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   padding: 0 0 6px;
-  border-bottom: 2px solid #1488ff;
+  border-bottom: 2px solid #0b3d6e;
 }
 
 #print-root .proposal-print__brand {
-  margin: 0;
-  color: #1488ff;
-  font-size: 9pt;
-  letter-spacing: 0.2em;
-}
-
-#print-root .proposal-print h2 {
-  margin: 2px 0;
-  font-size: 15pt;
-  line-height: 1.15;
+  color: #0b3d6e;
+  font-size: 13pt;
+  letter-spacing: 0.24em;
 }
 
 #print-root .proposal-print__sub {
-  margin: 0;
   font-size: 9pt;
+  color: #444444;
+}
+
+#print-root .proposal-print__meta dt,
+#print-root .proposal-print__memo dt {
+  color: #555555;
 }
 
 #print-root .proposal-print section {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   break-inside: avoid;
 }
 
 #print-root .proposal-print h3 {
-  margin: 0 0 2px;
-  color: #111111;
-  font-size: 10.5pt;
+  margin: 0 0 3px;
+  padding-bottom: 1px;
+  border-bottom: 0.5px solid #b8c4d0;
+  color: #0b3d6e;
+  font-size: 10pt;
+  letter-spacing: 0.04em;
 }
 
 #print-root .proposal-print p,
-#print-root .proposal-print li {
-  margin: 0;
+#print-root .proposal-print li,
+#print-root .proposal-print dd,
+#print-root .proposal-print td,
+#print-root .proposal-print th {
   font-size: 9.5pt;
-  line-height: 1.35;
+  line-height: 1.38;
 }
 
-#print-root .proposal-print ul {
+#print-root .proposal-print ul,
+#print-root .proposal-print ol {
   margin: 2px 0 0;
-  padding-left: 14px;
+  padding-left: 16px;
 }
 
-#print-root .propose-brief__meters {
-  display: flex;
-  gap: 8px;
-  margin: 2px 0;
+#print-root .proposal-print__table th {
+  background: #eef2f6;
 }
 
 #print-root .propose-brief__meters div {
-  padding: 3px 8px;
-  border: 1px solid #cccccc;
-  border-radius: 6px;
+  border-color: #b8c4d0;
   background: #ffffff;
 }
 
-#print-root .propose-brief__meters dt {
-  font-size: 7.5pt;
+#print-root .proposal-print__limitations,
+#print-root .proposal-print__footer {
+  font-size: 7.5pt !important;
+  color: #555555;
 }
 
-#print-root .propose-brief__meters dd {
-  margin: 0;
-  font-size: 11pt;
+#print-root .proposal-print__sign-grid p,
+#print-root .proposal-print__kind {
+  color: #555555;
 }
 
-#print-root .proposal-print__limitations {
-  font-size: 8pt !important;
+#print-root .proposal-print__line {
+  color: #1a1a1a;
+}
+
+#print-root .evidence-badge {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #1a1a1a;
+  font-weight: 700;
 }
 
 #print-root a {
-  color: #111111;
+  color: #1a1a1a;
   text-decoration: none;
 }
 
@@ -2328,4 +2338,165 @@ code {
 
 .benefit-method {
   margin-top: 0.8rem;
+}
+
+/* —— Proposal letter (on screen and printed) —— */
+.proposal-print__banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #0b3d6e;
+}
+
+.proposal-print__brand {
+  margin: 0;
+  color: #0b3d6e;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+
+.proposal-print__meta,
+.proposal-print__memo {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+.proposal-print__meta {
+  text-align: right;
+  font-size: 0.78rem;
+}
+
+.proposal-print__meta div,
+.proposal-print__memo div {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.proposal-print__meta div {
+  justify-content: flex-end;
+}
+
+.proposal-print__meta dt,
+.proposal-print__memo dt {
+  min-width: 3.2rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.proposal-print__meta dt {
+  min-width: 0;
+}
+
+.proposal-print__meta dd,
+.proposal-print__memo dd {
+  margin: 0;
+}
+
+.proposal-print__memo {
+  margin-top: 0.7rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+
+.proposal-print__label {
+  margin-top: 0.4rem !important;
+  font-weight: 700;
+}
+
+.proposal-print ol {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.proposal-print__table {
+  width: 100%;
+  margin-top: 0.3rem;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.proposal-print__table th,
+.proposal-print__table td {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+.proposal-print__table th {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.proposal-print__table td:first-child {
+  width: 1.4rem;
+  text-align: center;
+}
+
+.proposal-print__kind {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+}
+
+.proposal-print__sign-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem 1.4rem;
+  margin-top: 0.9rem;
+}
+
+.proposal-print__sign-grid p {
+  font-size: 0.72rem !important;
+  color: var(--ink-soft);
+}
+
+.proposal-print__line {
+  display: block;
+  min-height: 1.25rem;
+  border-bottom: 1px solid currentColor;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.proposal-print__footer {
+  margin-top: 0.8rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
+.proposal-issues__list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.proposal-issues__show {
+  flex: none;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.proposal-issues__show:hover {
+  border-color: #1488ff;
+  color: #1488ff;
 }

@@ -1,6 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { issueFact, measureIssue, type IssueMeasure, type MapIssue } from "../../shared/issues.ts";
 import type { IssueFact } from "../../shared/types.ts";
+import { flyTo } from "./cityStore";
+
+/** How close the camera comes when an issue is selected (street-sign range). */
+const ISSUE_ZOOM = 26;
 
 /**
  * The accessibility issues found in the current map, and what the resident
@@ -80,6 +84,9 @@ export function publishIssues(issues: SceneIssue[], collection: unknown, serverK
 }
 
 export function selectIssue(id: string | null, options: { openImprove?: boolean } = {}) {
+  // Zoom in on it, whether picked in a list or clicked on the map.
+  const issue = id ? state.issues.find((item) => item.id === id) : null;
+  if (issue) flyTo(issue.x, issue.z, { distance: ISSUE_ZOOM, overhead: true });
   emit({
     selectedId: id,
     ...(options.openImprove ? { openImprove: state.openImprove + 1 } : {}),

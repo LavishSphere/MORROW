@@ -1,6 +1,8 @@
 import { formatMeters } from '../satellite/stats/format'
 import { EvidenceBadge } from './EvidenceBadge'
-import { ProposalIssueFacts } from './ProposalIssues'
+import { useState } from 'react'
+import { ProposalIssueFacts, ProposalIssueTable } from './ProposalIssues'
+import { defaultRecipientFor, localDay, proposalFileName, townName } from './proposalLetter'
 import type { DraftProposal, ProposalFacts } from '../types'
 
 type Props = {
@@ -11,7 +13,8 @@ type Props = {
   geminiAvailable: boolean
   apiAvailable: boolean
   onChange: (draft: DraftProposal) => void
-  onExportPdf: () => void
+  /** Prints the letter; the name becomes the PDF's suggested file name. */
+  onExportPdf: (fileName: string) => void
 }
 
 export function ProposalEditor({
@@ -32,6 +35,22 @@ export function ProposalEditor({
 
   // Issues only: the resident's map issues, no showcase route or trip.
   const issuesOnly = facts.scope === 'issues'
+
+  // Who it goes to and who signs it: typed by the resident, never sent anywhere.
+  const town = townName(facts.city)
+  const defaultRecipient = defaultRecipientFor(facts.city)
+  const [recipient, setRecipient] = useState('')
+  const [sender, setSender] = useState('')
+  const [contact, setContact] = useState('')
+  // The letter's date, fixed when the draft opens.
+  const [issued] = useState(() => new Date())
+  const today = issued.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const reference = `MRW-${localDay(issued).replaceAll('-', '')}-${(facts.issues?.length ?? 1)
+    .toString()
+    .padStart(2, '0')}`
+  const sources = [...new Set(facts.evidenceSources.map((source) => source.title))]
+  // Gemini's limitations often restate the assumptions; print them once.
+  const assumptions = facts.modelAssumptions.filter((a) => !draft.limitations.includes(a))
 
   const addPoint = () => {
     onChange({
@@ -60,134 +79,145 @@ export function ProposalEditor({
 
       <article id="proposal-print" className="proposal-print">
         <header className="proposal-print__banner">
-          <p className="proposal-print__brand">MORROW</p>
-          <h2>{draft.headline || 'Community accessibility proposal'}</h2>
-          <p className="proposal-print__sub">Make tomorrow possible.</p>
-        </header>
-
-        <section>
-          <h3>1. {issuesOnly ? 'Where' : 'Location'}</h3>
-          <p>
-            {facts.city} — {facts.locationLabel}
-          </p>
-          {!issuesOnly && (
-            <p>
-              Trip: {facts.originLabel} → {facts.destinationLabel}
-            </p>
-          )}
-        </section>
-
-        <section>
-          <h3>2. {issuesOnly ? 'Summary' : 'Issue'}</h3>
-          {!issuesOnly && (
-            <p>
-              Barrier type: <strong>{facts.barrierType.replaceAll('_', ' ')}</strong>
-            </p>
-          )}
-          <p>{draft.plainLanguageSummary}</p>
-        </section>
-
-        {issuesOnly && <ProposalIssueFacts issues={facts.issues ?? []} title="3. Issues" />}
-
-        <section>
-          <h3>{issuesOnly ? '4' : '3'}. Evidence</h3>
-          <p>
-            <EvidenceBadge status={facts.evidenceStatus} />
-          </p>
-          {facts.evidenceSources.length === 0 ? (
-            <p>No external source attached — illustrative / simulation dataset.</p>
-          ) : (
-            <ul>
-              {facts.evidenceSources.map((s) => (
-                <li key={s.title}>
-                  {s.url ? (
-                    <a href={s.url} target="_blank" rel="noreferrer">
-                      {s.title}
-                    </a>
-                  ) : (
-                    s.title
-                  )}
-                  {s.observedAt ? ` (${s.observedAt})` : ''}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {!issuesOnly && (
-          <section>
-            <h3>4. Suggested intervention</h3>
-            <p>{facts.intervention}</p>
-          </section>
-        )}
-
-        {!issuesOnly && (
-        <section>
-          <h3>5. Modeled outcome</h3>
-          <dl className="propose-brief__meters">
+          <div>
+            <p className="proposal-print__brand">MORROW</p>
+            <p className="proposal-print__sub">Community accessibility proposal</p>
+          </div>
+          <dl className="proposal-print__meta">
             <div>
-              <dt>Before</dt>
-              <dd>{formatMeters(facts.beforeMeters)}</dd>
+              <dt>Date</dt>
+              <dd>{today}</dd>
             </div>
             <div>
-              <dt>After</dt>
-              <dd>{formatMeters(facts.afterMeters)}</dd>
+              <dt>Municipality</dt>
+              <dd>{facts.city}</dd>
+            </div>
+            <div>
+              <dt>Reference</dt>
+              <dd>{reference}</dd>
             </div>
           </dl>
-          <p>
-            Accessible route before:{' '}
-            <strong>{formatMeters(facts.beforeMeters)}</strong>
-            ; after:{' '}
-            <strong>{formatMeters(facts.afterMeters)}</strong>.
-          </p>
-          {facts.newlyReachableDestinations != null && (
+        </header>
+
+        <dl className="proposal-print__memo">
+          <div>
+            <dt>To</dt>
+            <dd>{recipient.trim() || defaultRecipient}</dd>
+          </div>
+          <div>
+            <dt>From</dt>
+            <dd>{sender.trim() || `Residents of ${town}`}</dd>
+          </div>
+          <div>
+            <dt>Re</dt>
+            <dd>
+              <strong>{draft.headline || 'Community accessibility proposal'}</strong>
+            </dd>
+          </div>
+        </dl>
+
+        <section>
+          <h3>1. Summary</h3>
+          <p>{draft.plainLanguageSummary}</p>
+          {!issuesOnly && (
             <p>
-              Newly reachable destinations: {facts.newlyReachableDestinations}
+              Location: {facts.locationLabel}. Trip: {facts.originLabel} → {facts.destinationLabel}. Barrier type:{' '}
+              <strong>{facts.barrierType.replaceAll('_', ' ')}</strong>.
             </p>
           )}
-          <ul>
-            {facts.modelAssumptions.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
         </section>
+
+        {issuesOnly ? (
+          <ProposalIssueTable issues={facts.issues ?? []} title="2. Locations and proposed improvements" />
+        ) : (
+          <section>
+            <h3>2. Proposed improvement and modeled outcome</h3>
+            <p>{facts.intervention}</p>
+            <dl className="propose-brief__meters">
+              <div>
+                <dt>Accessible route today</dt>
+                <dd>{formatMeters(facts.beforeMeters)}</dd>
+              </div>
+              <div>
+                <dt>With the improvement</dt>
+                <dd>{formatMeters(facts.afterMeters)}</dd>
+              </div>
+            </dl>
+            {facts.newlyReachableDestinations != null && (
+              <p>Newly reachable destinations: {facts.newlyReachableDestinations}</p>
+            )}
+          </section>
         )}
 
         {!issuesOnly && <ProposalIssueFacts issues={facts.issues ?? []} />}
 
         <section>
-          <h3>{issuesOnly ? '5' : '6'}. Action requested</h3>
+          <h3>3. Requested action</h3>
           <p>{draft.requestForReview}</p>
-          {draft.meetingTalkingPoints.length > 0 && (
+          {draft.meetingTalkingPoints.some((p) => p.trim()) && (
             <>
-              <p>
-                <strong>Talking points</strong>
-              </p>
-              <ul>
+              <p className="proposal-print__label">Points for discussion</p>
+              <ol>
                 {draft.meetingTalkingPoints
                   .filter((p) => p.trim())
                   .map((p) => (
                     <li key={p}>{p}</li>
                   ))}
-              </ul>
+              </ol>
             </>
           )}
         </section>
 
         <section>
-          <h3>{issuesOnly ? '6' : '7'}. Next steps</h3>
-          <p>{facts.nextSteps}</p>
+          <h3>4. Evidence and method</h3>
+          <p>
+            Evidence status: <EvidenceBadge status={facts.evidenceStatus} />
+            {sources.length > 0 && <> Sources: {sources.join('; ')}.</>}
+          </p>
+          {assumptions.length > 0 && (
+            <ul>
+              {assumptions.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
           <p className="proposal-print__limitations">{draft.limitations}</p>
         </section>
+
+        <section className="proposal-print__sign">
+          <p>Respectfully submitted,</p>
+          <div className="proposal-print__sign-grid">
+            <p>
+              <span className="proposal-print__line" />
+              Signature
+            </p>
+            <p>
+              <span className="proposal-print__line">{sender.trim()}</span>
+              Name
+            </p>
+            <p>
+              <span className="proposal-print__line">{contact.trim()}</span>
+              Address, email, or phone
+            </p>
+            <p>
+              <span className="proposal-print__line">{today}</span>
+              Date
+            </p>
+          </div>
+        </section>
+
+        <footer className="proposal-print__footer">
+          Prepared with MORROW from OpenStreetMap data (© OpenStreetMap contributors). Reference {reference}.
+        </footer>
       </article>
 
       <div className="proposal-editor__actions">
-        <button type="button" className="btn-primary" onClick={onExportPdf}>
+        <button type="button" className="btn-primary" onClick={() => onExportPdf(proposalFileName(facts.city, issued))}>
           Export PDF
         </button>
         <p className="muted">
-          Opens the print dialog — choose “Save as PDF”. Official metrics and
-          evidence come from the brief above, not the editable prose.
+          Opens the print dialog — choose “Save as PDF”. Saves as “{proposalFileName(facts.city, issued)}.pdf”. Add your
+          name under “Edit the draft” to sign it.
         </p>
       </div>
 
@@ -202,6 +232,29 @@ export function ProposalEditor({
       <details className="proposal-editor__edit">
         <summary>Edit the draft</summary>
         <div className="proposal-editor__fields">
+        <label>
+          Addressed to
+          <input
+            type="text"
+            value={recipient}
+            placeholder={defaultRecipient}
+            onChange={(e) => setRecipient(e.target.value)}
+          />
+        </label>
+        <label>
+          Your name (signs the letter)
+          <input
+            type="text"
+            value={sender}
+            placeholder={`Residents of ${town}`}
+            autoComplete="name"
+            onChange={(e) => setSender(e.target.value)}
+          />
+        </label>
+        <label>
+          Your address, email, or phone (optional)
+          <input type="text" value={contact} onChange={(e) => setContact(e.target.value)} />
+        </label>
         <label>
           Headline
           <input

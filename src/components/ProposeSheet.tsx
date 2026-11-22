@@ -35,7 +35,7 @@ export function ProposeSheet() {
   const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
   const [draft, setDraft] = useState<DraftProposal | null>(null)
   const { chosen, serverKnown } = useIssueState()
-  const { placeLabel } = useCityState()
+  const { placeLabel, town } = useCityState()
   const count = chosen.size
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function ProposeSheet() {
       const next = await generateProposal({
         ...(serverKnown ? { issueIds: [...chosen] } : {}),
         localIssues: chosenFacts(),
-        city: placeLabel,
+        city: town,
       })
       setResult(next)
       setBaseDraft(next.draft)
