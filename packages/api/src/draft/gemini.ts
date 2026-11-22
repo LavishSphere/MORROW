@@ -120,10 +120,36 @@ export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
 
-function shouldTryNextModel(reason: string): boolean {
-  return /503|404|429|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|high demand|no longer available|timed out/i.test(
+/** Capacity, timeouts, and bad drafts move on. A rejected key stops, because every model would fail the same way. */
+export function shouldTryNextModel(reason: string): boolean {
+  if (
+    /401|403|PERMISSION_DENIED|API_KEY_INVALID|API key not valid|unregistered callers/i.test(
+      reason,
+    )
+  ) {
+    return false;
+  }
+  return /503|404|429|UNAVAILABLE|NOT_FOUND|RESOURCE_EXHAUSTED|high demand|no longer available|timed out|Empty Gemini response|Gemini returned non-JSON|Gemini draft failed validation/i.test(
     reason,
   );
+}
+
+function parseModelJson(text: string): unknown | undefined {
+  const trimmed = text.trim();
+  const candidates = [trimmed];
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) candidates.push(fenced[1].trim());
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as unknown;
+    } catch {
+      // The next candidate may be the object buried in prose.
+    }
+  }
+  return undefined;
 }
 
 async function requestDraft(
@@ -152,20 +178,22 @@ ${buildUserPayload(facts)}`,
     );
 
     const text = response.text;
-    if (!text) {
+    if (!text?.trim()) {
       return { ok: false, reason: "Empty Gemini response" };
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text) as unknown;
-    } catch {
-      return { ok: false, reason: "Gemini returned non-JSON" };
+    const parsed = parseModelJson(text);
+    if (parsed === undefined) {
+      const snippet = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      return { ok: false, reason: `Gemini returned non-JSON: ${snippet}` };
     }
 
     const validated: GeminiProposalDraft = geminiProposalDraftSchema.parse(parsed);
     return { ok: true, draft: mapGeminiToDraft(validated) };
   } catch (err) {
+    if (err instanceof Error && err.name === "ZodError") {
+      return { ok: false, reason: `Gemini draft failed validation: ${err.message}` };
+    }
     const message = err instanceof Error ? err.message : "Gemini call failed";
     return { ok: false, reason: message };
   }
@@ -184,8 +212,8 @@ export async function draftWithGemini(
     const result = await requestDraft(apiKey, facts, model);
     if (result.ok) return result;
     last = result;
-    if (!shouldTryNextModel(result.reason)) return result;
     console.error(`[@morrow/api] Gemini ${model} skipped:`, result.reason);
+    if (!shouldTryNextModel(result.reason)) return result;
   }
   return last;
 }

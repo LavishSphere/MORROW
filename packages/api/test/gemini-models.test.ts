@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { modelCandidates } from "../src/draft/gemini.ts";
+import { modelCandidates, shouldTryNextModel } from "../src/draft/gemini.ts";
 
 test("a busy or retired Gemini model is followed by other Flash models", () => {
   const previous = process.env.GEMINI_MODEL;
@@ -17,4 +17,12 @@ test("a busy or retired Gemini model is followed by other Flash models", () => {
   assert.equal(again.filter((id) => id === "gemini-3.6-flash").length, 1);
   if (previous === undefined) delete process.env.GEMINI_MODEL;
   else process.env.GEMINI_MODEL = previous;
+});
+
+test("a non-JSON or empty draft moves on, and a rejected key does not", () => {
+  assert.equal(shouldTryNextModel("Gemini returned non-JSON: sure, here is a draft"), true);
+  assert.equal(shouldTryNextModel("Empty Gemini response"), true);
+  assert.equal(shouldTryNextModel("Gemini draft failed validation: expected string"), true);
+  assert.equal(shouldTryNextModel("Gemini timed out after 12000 ms"), true);
+  assert.equal(shouldTryNextModel("403 PERMISSION_DENIED API key not valid"), false);
 });
