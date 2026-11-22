@@ -209,15 +209,18 @@ export function PerfProbe() {
       "position:fixed;left:8px;bottom:8px;z-index:9999;margin:0;padding:6px 8px;font:11px/1.35 ui-monospace,monospace;" +
       "color:#e8fff9;background:rgba(0,0,0,.72);border-radius:6px;pointer-events:none;white-space:pre";
     document.body.appendChild(overlay);
+    // The overlay reads only the latest frames, so it costs next to nothing.
     const tick = window.setInterval(() => {
-      const s = snapshot();
-      const recent = samples.slice(-120).map((x) => x.gap);
+      const recent = samples.slice(-120);
+      const gaps = recent.map((x) => x.gap);
+      const cpu = recent.map((x) => x.cpu);
+      const memory = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
       overlay.textContent =
-        `frame p50 ${round(quantile(recent, 0.5))} p95 ${round(quantile(recent, 0.95))} ms\n` +
-        `cpu p50 ${s.cpuP50} p95 ${s.cpuP95} · render ${s.renderP50} ms\n` +
-        `calls ${s.calls} · tris ${(s.triangles / 1000).toFixed(0)}k\n` +
-        `geo ${s.geometries} · tex ${s.textures} · prog ${s.programs}` +
-        (s.heapMB !== null ? ` · heap ${s.heapMB} MB` : "");
+        `frame p50 ${round(quantile(gaps, 0.5))} p95 ${round(quantile(gaps, 0.95))} ms\n` +
+        `cpu p50 ${round(quantile(cpu, 0.5))} p95 ${round(quantile(cpu, 0.95))} ms\n` +
+        `calls ${info.calls} · tris ${(info.triangles / 1000).toFixed(0)}k\n` +
+        `geo ${gl.info.memory.geometries} · tex ${gl.info.memory.textures} · prog ${gl.info.programs?.length ?? 0}` +
+        (memory ? ` · heap ${round(memory.usedJSHeapSize / 1048576)} MB` : "");
     }, 500);
 
     return () => {
