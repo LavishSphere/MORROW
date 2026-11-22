@@ -27,7 +27,7 @@ const UPSTREAMS = [
 ] as const;
 
 /** Overpass asks API clients to say who they are. */
-const USER_AGENT = "MORROW/1.0 (accessibility proposals; +https://morrow.khayrul.com)";
+const USER_AGENT = "MORROW/1.0 (accessibility proposals; +https://plsfixthisshit.work)";
 
 /** Map data changes slowly; a week-old street map is fine for a demo. */
 const FRESH_MS = 7 * 24 * 60 * 60 * 1000;
