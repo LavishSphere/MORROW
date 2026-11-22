@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { mkdir, open, rename } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import { gzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import {
   firstViewQueries,
   MAJOR_CITIES,
@@ -231,6 +231,17 @@ export async function osmAnswer(query: string, background = false): Promise<{ gz
   return { gz: await pending, hit: false };
 }
 
+function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, hit: boolean) {
+  const gzipOk = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=86400",
+    "x-morrow-cache": hit ? "hit" : "miss",
+    ...(gzipOk ? { "content-encoding": "gzip", vary: "accept-encoding" } : {}),
+  });
+  res.end(gzipOk ? gz : gunzipSync(gz));
+}
+
 export async function handleOsm(req: IncomingMessage, res: ServerResponse): Promise<void> {
   let body: unknown;
   try {
@@ -244,16 +255,21 @@ export async function handleOsm(req: IncomingMessage, res: ServerResponse): Prom
     sendJson(res, 400, { error: "Expected an Overpass [out:json] query." });
     return;
   }
+  // Cache only: answer from disk, or say "not cached" at once and download
+  // it in the background so the next visitor gets it instantly.
+  if ((body as { cacheOnly?: unknown }).cacheOnly === true) {
+    const cached = await readCached(keyFor(query));
+    if (!cached) {
+      void osmAnswer(query, true).catch(() => undefined);
+      sendJson(res, 404, { error: "Not cached yet; downloading in the background." });
+      return;
+    }
+    sendGz(req, res, cached, true);
+    return;
+  }
   try {
     const { gz, hit } = await osmAnswer(query);
-    const gzipOk = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
-    res.writeHead(200, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "public, max-age=86400",
-      "x-morrow-cache": hit ? "hit" : "miss",
-      ...(gzipOk ? { "content-encoding": "gzip", vary: "accept-encoding" } : {}),
-    });
-    res.end(gzipOk ? gz : (await import("node:zlib")).gunzipSync(gz));
+    sendGz(req, res, gz, hit);
   } catch (err) {
     sendJson(res, 502, { error: `OpenStreetMap is unavailable: ${err instanceof Error ? err.message : "failed"}` });
   }
