@@ -27,6 +27,8 @@ type State = {
   chosen: ReadonlySet<string>;
   /** Bumped when a 3D marker is clicked, so the app opens Improve. */
   openImprove: number;
+  /** Compare's switch: show the city as it is today, without the fixes. */
+  showBefore: boolean;
 };
 
 let state: State = {
@@ -37,6 +39,7 @@ let state: State = {
   fixed: new Set(),
   chosen: new Set(),
   openImprove: 0,
+  showBefore: false,
 };
 const listeners = new Set<() => void>();
 const measures = new Map<string, IssueMeasure>();
@@ -98,6 +101,10 @@ export function toggleChosen(id: string) {
   if (chosen.has(id)) chosen.delete(id);
   else chosen.add(id);
   emit({ chosen });
+}
+
+export function setShowBefore(showBefore: boolean) {
+  if (state.showBefore !== showBefore) emit({ showBefore });
 }
 
 /** Before/after for one issue, computed once per map. */

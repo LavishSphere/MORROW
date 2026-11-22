@@ -208,7 +208,9 @@ function Marker({ issue, fixed, selected }: { issue: SceneIssue; fixed: boolean;
  * open it in Improve.
  */
 export function IssueLayer() {
-  const { issues, fixed, selectedId } = useIssueState();
+  const { issues, fixed: improved, selectedId, showBefore } = useIssueState();
+  // Compare's "Today" view hides every fix so the change is easy to see.
+  const fixed = showBefore ? new Set<string>() : improved;
   const selected = issues.find((issue) => issue.id === selectedId) ?? null;
   return (
     <group name="issues">

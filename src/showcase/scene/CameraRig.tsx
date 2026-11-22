@@ -92,7 +92,15 @@ export function CameraRig({
   const bound = span * 0.6;
   const lastPublish = useRef(0);
   const lastFly = useRef(0);
-  const flight = useRef<{ fromX: number; fromZ: number; toX: number; toZ: number; t: number } | null>(null);
+  const flight = useRef<{
+    fromX: number;
+    fromZ: number;
+    toX: number;
+    toZ: number;
+    fromDist: number;
+    toDist: number | null;
+    t: number;
+  } | null>(null);
   const signalDuration = descendSignal?.durationMs;
 
   useLayoutEffect(() => {
@@ -206,7 +214,15 @@ export function CameraRig({
     const fly = getCityState().fly;
     if (fly && fly.id !== lastFly.current) {
       lastFly.current = fly.id;
-      flight.current = { fromX: controls.target.x, fromZ: controls.target.z, toX: fly.x, toZ: fly.z, t: 0 };
+      flight.current = {
+        fromX: controls.target.x,
+        fromZ: controls.target.z,
+        toX: fly.x,
+        toZ: fly.z,
+        fromDist: camera.position.distanceTo(controls.target),
+        toDist: fly.distance ?? null,
+        t: 0,
+      };
     }
     if (flight.current) {
       const f = flight.current;
@@ -218,6 +234,12 @@ export function CameraRig({
       camera.position.z += nz - controls.target.z;
       controls.target.x = nx;
       controls.target.z = nz;
+      if (f.toDist !== null) {
+        // Zoom in or out on the way, keeping the viewing angle.
+        const offset = camera.position.clone().sub(controls.target);
+        const want = THREE.MathUtils.clamp(f.fromDist + (f.toDist - f.fromDist) * k, MIN_DISTANCE, span * 1.8);
+        camera.position.copy(controls.target).add(offset.setLength(want));
+      }
       moved = true;
       if (f.t >= 1) flight.current = null;
     }

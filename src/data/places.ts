@@ -77,6 +77,29 @@ export async function suggestUsCities(
   return suggestionsFromEsri(await res.json())
 }
 
+/** Addresses and named places inside a box (the loaded map). */
+export async function suggestAddresses(
+  query: string,
+  box: { west: number; south: number; east: number; north: number },
+  signal?: AbortSignal,
+): Promise<CitySuggestion[]> {
+  const text = query.trim()
+  if (text.length < 3) return []
+  const url = new URL(SUGGEST)
+  url.searchParams.set('f', 'json')
+  url.searchParams.set('text', text)
+  url.searchParams.set('countryCode', 'USA')
+  url.searchParams.set('searchExtent', `${box.west},${box.south},${box.east},${box.north}`)
+  url.searchParams.set('location', `${(box.west + box.east) / 2},${(box.south + box.north) / 2}`)
+  url.searchParams.set('maxSuggestions', '6')
+  const res = await fetch(url, {
+    headers: { accept: 'application/json' },
+    signal,
+  })
+  if (!res.ok) return []
+  return suggestionsFromEsri(await res.json())
+}
+
 /** Resolve a typed US place name to a point. Does not invent a match. */
 export async function geocodeUsPlace(
   query: string,

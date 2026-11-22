@@ -9,6 +9,7 @@ import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo"
 import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
 import { GLASS_TINTS, worldCurtainWall } from "./glass";
 import { parseBasemap, type ParsedBasemap, type WayRibbon } from "./parseBasemap";
+import { AddressPin } from "./AddressPin";
 import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
 
@@ -71,6 +72,8 @@ type CityModel = {
   bounds: Bounds;
   /** Longitude/latitude → scene [x, z] for this map. */
   project: (lon: number, lat: number) => readonly [number, number];
+  /** Longitude / latitude box of the map's buildings. */
+  geoBounds: { west: number; south: number; east: number; north: number };
 };
 
 function hash(a: number, b: number) {
@@ -141,7 +144,13 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     }
   }
   if (!Number.isFinite(bounds.minX)) Object.assign(bounds, { minX: -40, maxX: 40, minZ: -40, maxZ: 40 });
-  return { parsed, kinds, bounds, project: projector.project };
+  return {
+    parsed,
+    kinds,
+    bounds,
+    project: projector.project,
+    geoBounds: { west: box.west, south: box.south, east: box.east, north: box.north },
+  };
 }
 
 /** The Wellesley town extract, centered on the College showcase. */
@@ -565,7 +574,17 @@ function mapFor(model: CityModel): CityMap {
     const [x, z] = centroid(b.ring);
     return [{ name: b.name, x, z }];
   });
-  return { bounds: model.bounds, roads: roads.join(""), walks: walks.join(""), buildings, streets, places };
+  return {
+    bounds: model.bounds,
+    geoBounds: model.geoBounds,
+    project: model.project,
+    buildingPoints: model.parsed.buildings.map((b) => centroid(b.ring)),
+    roads: roads.join(""),
+    walks: walks.join(""),
+    buildings,
+    streets,
+    places,
+  };
 }
 
 /* —— Materials and shared shapes —— */
@@ -776,6 +795,7 @@ export function City({ geoJson }: { geoJson?: unknown }) {
       <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
 
       <IssueLayer />
+      <AddressPin />
       <StreetSigns signs={built.signs} />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
