@@ -9,7 +9,7 @@ export function buildTemplateDraft(facts: ProposalFacts): DraftProposal {
 
   return {
     headline: `Review a modeled accessibility improvement near ${facts.locationLabel}`,
-    plainLanguageSummary: `This draft proposes reviewing a potential pedestrian accessibility improvement in ${facts.city} at ${facts.locationLabel}. The evidence status is ${evidenceLabel}. MORROW's demonstration model compares an accessible trip from ${facts.originLabel} to ${facts.destinationLabel}: ${before} before the suggested change and ${after} after “${facts.intervention}”. These results are modeled, not measured.`,
+    plainLanguageSummary: `This draft proposes reviewing a potential pedestrian accessibility improvement in ${facts.city} at ${facts.locationLabel}. The evidence status is ${evidenceLabel}. MORROW's demonstration model compares an accessible trip from ${facts.originLabel} to ${facts.destinationLabel}: ${before} before the suggested change and ${after} after “${facts.intervention}”. Results are modeled only.`,
     requestForReview:
       'Please assess this location on site and evaluate whether an accessible improvement is feasible. This document is a community conversation aid, not an engineering or construction recommendation.',
     meetingTalkingPoints: [

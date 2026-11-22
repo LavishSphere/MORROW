@@ -28,7 +28,7 @@ test("proposed cans are distinct from the plain bin and stay out of click target
     city.match(/const RECYCLE_BODY = "(#[0-9a-f]+)"/)?.[1],
   );
   assert.match(can, /<ProposedRing/);
-  const meshes = can.match(/<mesh\b[^>]*>/g) ?? [];
+  const meshes = can.match(/<mesh\b[^\n]*/g) ?? [];
   assert.ok(meshes.length >= 3);
   for (const mesh of meshes) assert.match(mesh, /raycast=\{\(\) => null\}/);
   // Pothole click target is still interactive.
