@@ -1,345 +1,324 @@
-import { Edges, Sparkles } from "@react-three/drei";
+import { Sparkles } from "@react-three/drei";
+import { useEffect, useMemo } from "react";
+import * as THREE from "three";
+import basemap from "../../../data/wellesley/basemap.geojson";
 import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
+import { createProjector } from "../geo";
+import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
+import { GLASS_TINTS, worldCurtainWall } from "./glass";
+import { parseBasemap, type BuildingFootprint, type WayRibbon } from "./parseBasemap";
+import { createRibbonGeometry } from "./ribbonGeometry";
 
-const GLASS = "#3ec8d8";
-const GLASS_GLOW = "#7af4ff";
-const EDGE = "#f8ffff";
-const GROUND = "#0a3842";
-const ROAD = "#e8fbff";
-const CRYSTAL = "#f4ffff";
+/**
+ * Wellesley, reimagined. Every building, road, and footpath comes from the
+ * OpenStreetMap extract in data/wellesley/basemap.geojson, at true position
+ * and outline. The buildings are rebuilt as glass with green roofs; heights
+ * are a design choice (OSM has none here), not a survey.
+ */
 
-type Lot = {
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  h: number;
-  glow: number;
-  stepped: boolean;
-  wire: boolean;
+/** Scene units per metre. The ~650 m showcase spans about 90 units. */
+const CITY_SCALE = 0.14;
+const projector = createProjector(SHOWCASE_BBOX, CITY_SCALE);
+/** Width of the real neighborhood in scene units; the camera frames this. */
+export const CITY_SPAN = projector.span;
+
+const PARSED = parseBasemap(basemap, projector) ?? { buildings: [], ways: [] };
+
+/** One glass bay and one floor, in scene units (about 4 m and 5 m). */
+const BAY = 0.55;
+const FLOOR_H = 0.75;
+
+/** Floors by OSM building type, before a little per-building variation. */
+const FLOORS: Record<string, number> = {
+  university: 9,
+  college: 7,
+  dormitory: 7,
+  apartments: 8,
+  chapel: 4,
+  church: 4,
+  house: 3,
+  residential: 4,
 };
 
-type TreeSpec = {
-  x: number;
-  z: number;
-  leaf: string;
-  scale: number;
-  crystal?: boolean;
-};
-
-const GREEN = ["#2f6a32", "#3d7a38", "#5a9a48", "#6ea84a"] as const;
-const AUTUMN = ["#c4a03a", "#d7b25a", "#c9782a"] as const;
+const STONE = "#d9dcd8";
+const ROOF_METAL = "#dfe5e8";
+const ROOF_GARDEN = "#5f8f55";
+const LAWN = "#7d9a68";
+const ASPHALT = "#3b4448";
+const SMART_LINE = "#8ff3ff";
+const LOGO_BLUE = "#1488ff";
+const GREEN = ["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"] as const;
+const AUTUMN = ["#b98c3a", "#c99a4c", "#b8692c"] as const;
 
 function hash(a: number, b: number) {
   const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
   return n - Math.floor(n);
 }
 
-function pickLeaf(ix: number, iz: number) {
-  return hash(ix + 3, iz + 11) < 0.6
-    ? GREEN[Math.floor(hash(ix, iz) * GREEN.length) % GREEN.length]
-    : AUTUMN[Math.floor(hash(iz, ix) * AUTUMN.length) % AUTUMN.length];
+function idHash(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h % 1000) / 1000;
 }
 
-function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: number } } {
-  const lots: Lot[] = [];
-  const trees: TreeSpec[] = [];
-  const STEP = 16;
-  const downtown = { x: 8, z: 6 };
-
-  for (let ix = -4; ix <= 4; ix += 1) {
-    for (let iz = -4; iz <= 4; iz += 1) {
-      if (ix === 0 && iz === 0) continue;
-      const x = ix * STEP + (hash(ix, iz) - 0.5) * 4.4;
-      const z = iz * STEP + (hash(iz, ix + 9) - 0.5) * 4.4;
-      const dist = Math.hypot(x - downtown.x, z - downtown.z);
-      if (hash(ix * 3, iz * 7) < 0.22 && dist > 22) {
-        const count = 3 + Math.floor(hash(ix, iz) * 3);
-        for (let t = 0; t < count; t += 1) {
-          trees.push({
-            x: x + (hash(ix + t, iz) - 0.5) * 9,
-            z: z + (hash(iz, ix + t + 4) - 0.5) * 9,
-            leaf: pickLeaf(ix + t, iz),
-            scale: 0.9 + hash(t, ix) * 0.55,
-          });
-        }
-        continue;
-      }
-
-      const downtownLot = dist < 20;
-      const w = downtownLot ? 4.1 + hash(ix + 1, iz) * 2.4 : 3.0 + hash(ix + 1, iz) * 3.4;
-      const d = downtownLot ? 3.9 + hash(ix, iz + 1) * 2.3 : 2.9 + hash(ix, iz + 1) * 3.2;
-      const h = downtownLot ? 8 + hash(ix, iz) * 12 : 3.4 + hash(ix, iz) * 8;
-      lots.push({
-        x,
-        z,
-        w,
-        d,
-        h,
-        glow: downtownLot ? 0.62 : 0.22,
-        stepped: downtownLot && h > 10,
-        wire: dist > 38,
-      });
-      trees.push({
-        x: x + (hash(ix, iz) > 0.5 ? 1 : -1) * (w * 0.5 + 2.1),
-        z: z + (hash(iz, ix) - 0.5) * (d + 2.4),
-        leaf: pickLeaf(ix, iz + 5),
-        scale: 0.8 + hash(ix, 3) * 0.45,
-      });
-    }
+function centroid(ring: readonly (readonly [number, number])[]): [number, number] {
+  let x = 0;
+  let z = 0;
+  for (const [px, pz] of ring) {
+    x += px;
+    z += pz;
   }
-
-  lots.push(
-    { x: 8.2, z: 7.4, w: 5.1, d: 5.3, h: 22, glow: 0.95, stepped: true, wire: false },
-    { x: 13.4, z: 6.2, w: 4.6, d: 4.8, h: 11, glow: 0.8, stepped: true, wire: false },
-    { x: 12.8, z: 11.8, w: 3.4, d: 3.4, h: 16, glow: 0.78, stepped: true, wire: false },
-    { x: 4.0, z: 12.2, w: 4.0, d: 4.4, h: 10, glow: 0.62, stepped: true, wire: false },
-    { x: 7.2, z: 2.6, w: 3.4, d: 3.5, h: 7.2, glow: 0.48, stepped: false, wire: false },
-  );
-
-  trees.push(
-    { x: -6.8, z: 4.0, leaf: CRYSTAL, scale: 1.15, crystal: true },
-    { x: 2.4, z: 18.6, leaf: "#c4a03a", scale: 1.28 },
-    { x: 19.2, z: 3.2, leaf: "#3d7a38", scale: 1.12 },
-    { x: 20.6, z: 14.4, leaf: "#d7b25a", scale: 1.08 },
-    { x: -3.2, z: -9.4, leaf: "#6ea84a", scale: 1.18 },
-    { x: 16.4, z: -8.2, leaf: "#c9782a", scale: 1.05 },
-  );
-
-  return { lots, trees, plaza: { x: 8.8, z: 1.6 } };
+  return [x / ring.length, z / ring.length];
 }
 
-const CITY = buildCity();
+function shrink(
+  ring: readonly (readonly [number, number])[],
+  factor: number,
+): (readonly [number, number])[] {
+  const [cx, cz] = centroid(ring);
+  return ring.map(([x, z]) => [cx + (x - cx) * factor, cz + (z - cz) * factor] as const);
+}
 
-function WindowPane({
-  position,
-  size,
-  lit,
+/** Extrude a footprint upward. Shape y is −z so the footprint is not mirrored. */
+function extrude(ring: readonly (readonly [number, number])[], height: number) {
+  const shape = new THREE.Shape(ring.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: height,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  geometry.rotateX(-Math.PI / 2);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function floorsFor(building: BuildingFootprint, kind: string) {
+  const base = FLOORS[kind] ?? 6;
+  return base + Math.floor(idHash(building.id) * 4);
+}
+
+function buildingKind(id: string): string {
+  const feature = (basemap as { features?: { properties?: Record<string, unknown> }[] }).features?.find(
+    (f) => String(f.properties?.osmId) === id,
+  );
+  return String(feature?.properties?.building ?? "yes");
+}
+
+/** Shared glass materials: one per tint, all reading the same pane grid. */
+function useGlassMaterials() {
+  const materials = useMemo(() => {
+    const maps = worldCurtainWall(BAY, FLOOR_H);
+    return {
+      maps,
+      glass: GLASS_TINTS.map(
+        (tint) =>
+          new THREE.MeshPhysicalMaterial({
+            color: tint,
+            map: maps.color,
+            roughnessMap: maps.rough,
+            roughness: 1,
+            metalness: 0.78,
+            clearcoat: 0.6,
+            clearcoatRoughness: 0.12,
+            envMapIntensity: 1.4,
+          }),
+      ),
+      roofMetal: new THREE.MeshStandardMaterial({ color: ROOF_METAL, metalness: 0.5, roughness: 0.35 }),
+      roofGarden: new THREE.MeshStandardMaterial({ color: ROOF_GARDEN, roughness: 0.95 }),
+      stone: new THREE.MeshStandardMaterial({ color: STONE, roughness: 0.72 }),
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      materials.maps.color.dispose();
+      materials.maps.rough.dispose();
+      for (const m of materials.glass) m.dispose();
+      materials.roofMetal.dispose();
+      materials.roofGarden.dispose();
+      materials.stone.dispose();
+    },
+    [materials],
+  );
+  return materials;
+}
+
+type GlassMaterials = ReturnType<typeof useGlassMaterials>;
+
+/** A real Wellesley footprint, rebuilt as a glass building. */
+function HoloBuilding({
+  building,
+  materials,
 }: {
-  position: [number, number, number];
-  size: [number, number, number];
-  lit: boolean;
+  building: BuildingFootprint;
+  materials: GlassMaterials;
 }) {
+  const kind = buildingKind(building.id);
+  const floors = floorsFor(building, kind);
+  const height = floors * FLOOR_H;
+  const tall = floors >= 9;
+  const crownFloors = tall ? 2 + Math.floor(idHash(building.id) * 2) : 0;
+  const glass =
+    materials.glass[Math.floor(idHash(building.id) * materials.glass.length)] ??
+    materials.glass[0];
+  // Lower buildings carry roof gardens; towers finish in a glass crown.
+  const roof = tall ? materials.roofMetal : materials.roofGarden;
+
+  const geometry = useMemo(() => {
+    const podium = extrude(shrink(building.ring, 1.03), 0.35);
+    const shaft = extrude(building.ring, height);
+    const crown = crownFloors ? extrude(shrink(building.ring, 0.68), crownFloors * FLOOR_H) : null;
+    return { podium, shaft, crown };
+  }, [building.ring, height, crownFloors]);
+
+  useEffect(
+    () => () => {
+      geometry.podium.dispose();
+      geometry.shaft.dispose();
+      geometry.crown?.dispose();
+    },
+    [geometry],
+  );
+
   return (
-    <mesh position={position} raycast={() => null}>
-      <boxGeometry args={size} />
-      <meshStandardMaterial
-        color={lit ? "#e9fdff" : "#0d4552"}
-        emissive={lit ? "#c8f7ff" : "#1c7f8e"}
-        emissiveIntensity={lit ? 1.05 : 0.4}
-        roughness={0.12}
+    <group name={building.name ?? building.id}>
+      <mesh geometry={geometry.podium} material={materials.stone} castShadow receiveShadow />
+      {/* ExtrudeGeometry groups: 0 = roof and floor caps, 1 = walls. */}
+      <mesh
+        geometry={geometry.shaft}
+        material={[roof, glass]}
+        position={[0, 0.35, 0]}
+        castShadow
+        receiveShadow
       />
-    </mesh>
+      {geometry.crown && (
+        <mesh
+          geometry={geometry.crown}
+          material={[materials.roofMetal, glass]}
+          position={[0, 0.35 + height, 0]}
+          castShadow
+        />
+      )}
+    </group>
   );
 }
 
-function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
-  const fill = wire ? 0.55 : 0.9 + glow * 0.15;
-  const floors = Math.min(7, Math.max(3, Math.floor(h / 2.1)));
-  const crown = stepped ? h * 0.22 : 0;
-  const story = (index: number) => 0.85 + ((h - 1.1) * (index + 1)) / (floors + 1);
+/** Ground width for each OSM way type, in scene units. */
+const WAY_HALF_WIDTH: Record<WayRibbon["layer"], number> = {
+  road: 0.62,
+  sidewalk: 0.22,
+  footway: 0.2,
+  path: 0.16,
+};
+
+const WAY_COLOR: Record<WayRibbon["layer"], string> = {
+  road: ASPHALT,
+  sidewalk: "#d3d6d0",
+  footway: "#d9d3c4",
+  path: "#cfc7b2",
+};
+
+const HIGHLIGHT = new Set<string>(INTERVENTION_EDGE_IDS);
+
+function Way({ way }: { way: WayRibbon }) {
+  const road = way.layer === "road";
+  const lit = Boolean(way.edgeId && HIGHLIGHT.has(way.edgeId));
+  const geometry = useMemo(
+    () => createRibbonGeometry(way.points, WAY_HALF_WIDTH[way.layer], road ? 0.02 : 0.015, 0.03),
+    [way.points, way.layer, road],
+  );
+  const line = useMemo(
+    () => (road ? createRibbonGeometry(way.points, 0.035, 0.052, 0.006) : null),
+    [way.points, road],
+  );
+  useEffect(
+    () => () => {
+      geometry?.dispose();
+      line?.dispose();
+    },
+    [geometry, line],
+  );
+  if (!geometry) return null;
   return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.38, 0]} castShadow>
-        <boxGeometry args={[w * 1.14, 0.76, d * 1.14]} />
-        <meshStandardMaterial color="#146e7c" emissive="#7af4ff" emissiveIntensity={0.35} roughness={0.4} />
-      </mesh>
-      <mesh position={[0, 0.38 + h / 2, 0]} castShadow>
-        <boxGeometry args={[w, h, d]} />
+    <group name={way.name ?? way.id}>
+      <mesh geometry={geometry} receiveShadow raycast={() => null}>
         <meshStandardMaterial
-          color={GLASS}
-          emissive={GLASS_GLOW}
-          emissiveIntensity={fill}
-          roughness={0.18}
-          metalness={0.22}
+          color={lit ? LOGO_BLUE : WAY_COLOR[way.layer]}
+          emissive={lit ? LOGO_BLUE : "#000000"}
+          emissiveIntensity={lit ? 0.6 : 0}
+          roughness={road ? 0.85 : 0.9}
         />
-        <Edges threshold={15} color={EDGE} />
       </mesh>
-      {Array.from({ length: floors }, (_, index) => (
-        <mesh key={`floor-${index}`} position={[0, story(index), 0]} raycast={() => null}>
-          <boxGeometry args={[w * 1.012, 0.045, d * 1.012]} />
-          <meshBasicMaterial color="#f4ffff" transparent opacity={0.72} />
-        </mesh>
-      ))}
-      {Array.from({ length: floors }, (_, row) =>
-        ([-0.3, 0, 0.3] as const).map((along, slot) => {
-          const paneH = Math.max(0.32, (h / floors) * 0.42);
-          const y = story(row) - paneH * 0.7;
-          const lit = (row + slot) % 3 === 0;
-          const litOpposite = (row + slot + 1) % 3 === 0;
-          return (
-            <group key={`win-${row}-${along}`}>
-              <WindowPane position={[along * w, y, d / 2 + 0.03]} size={[w * 0.2, paneH, 0.03]} lit={lit} />
-              <WindowPane position={[along * w, y, -d / 2 - 0.03]} size={[w * 0.2, paneH, 0.03]} lit={litOpposite} />
-              <WindowPane position={[w / 2 + 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={lit} />
-              <WindowPane position={[-w / 2 - 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={litOpposite} />
-            </group>
-          );
-        }),
-      )}
-      {([-1, 1] as const).flatMap((side) =>
-        ([1, -1] as const).map((face) => (
-          <mesh
-            key={`mullion-${side}-${face}`}
-            position={[side * w * 0.22, 0.38 + h / 2, face * (d / 2 + 0.02)]}
-            raycast={() => null}
-          >
-            <boxGeometry args={[0.05, h * 0.96, 0.04]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-        )),
-      )}
-      <mesh position={[0, 0.38 + h + 0.06, 0]} raycast={() => null}>
-        <boxGeometry args={[w * 1.04, 0.1, d * 1.04]} />
-        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.45} />
-      </mesh>
-      <mesh position={[w * 0.12, 0.38 + h + 0.38, d * 0.08]}>
-        <boxGeometry args={[w * 0.38, 0.42, d * 0.32]} />
-        <meshStandardMaterial color="#d8fbff" emissive="#7af4ff" emissiveIntensity={0.7} roughness={0.3} />
-      </mesh>
-      {stepped && (
-        <mesh position={[0, 0.38 + h + crown / 2, 0]} castShadow>
-          <boxGeometry args={[w * 0.58, crown, d * 0.54]} />
-          <meshStandardMaterial color="#7af4ff" emissive="#d8fbff" emissiveIntensity={1.05} roughness={0.16} />
-          <Edges threshold={12} color="#ffffff" />
-        </mesh>
-      )}
-      {h > 14 && (
-        <mesh position={[w * 0.12, 0.38 + h + crown + 0.9, d * 0.08]} raycast={() => null}>
-          <cylinderGeometry args={[0.04, 0.04, 1.4, 6]} />
-          <meshBasicMaterial color="#ffffff" />
+      {line && (
+        // Smart-street center line: a faint glow down the middle of the road.
+        <mesh geometry={line} raycast={() => null}>
+          <meshStandardMaterial
+            color={SMART_LINE}
+            emissive={SMART_LINE}
+            emissiveIntensity={0.9}
+            toneMapped={false}
+          />
         </mesh>
       )}
     </group>
   );
 }
 
-function HoloTree({ x, z, leaf, scale, crystal }: TreeSpec) {
-  const canopy = crystal ? CRYSTAL : leaf;
-  return (
-    <group position={[x, 0, z]} scale={scale}>
-      <mesh position={[0, 1.05, 0]} castShadow>
-        <cylinderGeometry args={[0.12, 0.18, 2.1, 8]} />
-        <meshStandardMaterial
-          color={crystal ? "#cfeef4" : "#5c4634"}
-          emissive={crystal ? "#d7fbff" : "#000000"}
-          emissiveIntensity={crystal ? 0.5 : 0}
-          roughness={0.92}
-        />
-      </mesh>
-      <mesh position={[0, 2.35, 0]} castShadow>
-        <sphereGeometry args={[crystal ? 1.25 : 0.95, 16, 12]} />
-        <meshStandardMaterial
-          color={canopy}
-          emissive={crystal ? "#e9ffff" : "#000000"}
-          emissiveIntensity={crystal ? 0.6 : 0}
-          roughness={crystal ? 0.32 : 0.88}
-          transparent={Boolean(crystal)}
-          opacity={crystal ? 0.84 : 1}
-        />
-      </mesh>
-      <mesh position={[0.38, 2.7, 0.22]} castShadow>
-        <sphereGeometry args={[crystal ? 0.7 : 0.52, 12, 10]} />
-        <meshStandardMaterial
-          color={canopy}
-          emissive={crystal ? "#f4ffff" : "#000000"}
-          emissiveIntensity={crystal ? 0.45 : 0}
-          roughness={crystal ? 0.3 : 0.88}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function GlowSeg({
-  from,
-  to,
-  width = 0.13,
-  color = ROAD,
-  y = 0.05,
-  glow = 1.15,
-}: {
-  from: readonly [number, number];
-  to: readonly [number, number];
-  width?: number;
-  color?: string;
-  y?: number;
-  glow?: number;
-}) {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz);
-  if (len < 0.2) return null;
-  return (
-    <mesh
-      position={[(from[0] + to[0]) / 2, y, (from[1] + to[1]) / 2]}
-      rotation={[0, Math.atan2(dx, dz), 0]}
-      receiveShadow
-      raycast={() => null}
-    >
-      <boxGeometry args={[width, 0.045, len]} />
-      <meshStandardMaterial
-        color={color}
-        emissive={color}
-        emissiveIntensity={glow}
-        roughness={0.35}
-        toneMapped={glow > 0.4}
-      />
-    </mesh>
-  );
-}
-
-/** Driving surface in the same cyan family as the glass, wide enough to read as a street. */
-const DECK = "#1a7584";
-const WALK = "#103f4c";
-const CURB = "#f4ffff";
-const LANE = "#f7ffff";
-
-const AVENUES = [-40, -16, 8, 32];
-const CROSS_STREETS = [-36, -12, 12, 36];
-
-function quad(
-  a: readonly [number, number],
-  b: readonly [number, number],
-  c: readonly [number, number],
-  steps: number,
-) {
-  const points: [number, number][] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    const t = i / steps;
-    const u = 1 - t;
-    points.push([
-      u * u * a[0] + 2 * u * t * b[0] + t * t * c[0],
-      u * u * a[1] + 2 * u * t * b[1] + t * t * c[1],
-    ]);
-  }
-  return points;
-}
-
-const BOULEVARD = quad([-62, -20], [4, 18], [64, -6], 28);
-
-function shift(
-  from: readonly [number, number],
-  to: readonly [number, number],
+/** Points every `spacing` units along a polyline, with heading and side offset. */
+function along(
+  points: readonly (readonly [number, number])[],
+  spacing: number,
   offset: number,
-): { from: [number, number]; to: [number, number] } {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const nx = -dz / len;
-  const nz = dx / len;
-  return {
-    from: [from[0] + nx * offset, from[1] + nz * offset],
-    to: [to[0] + nx * offset, to[1] + nz * offset],
-  };
+) {
+  const out: { x: number; z: number; rot: number }[] = [];
+  let carry = spacing / 2;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const [ax, az] = points[i]!;
+    const [bx, bz] = points[i + 1]!;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) continue;
+    const nx = -dz / len;
+    const nz = dx / len;
+    let t = carry;
+    while (t < len) {
+      out.push({
+        x: ax + (dx / len) * t + nx * offset,
+        z: az + (dz / len) * t + nz * offset,
+        rot: Math.atan2(dx, dz),
+      });
+      t += spacing;
+    }
+    carry = t - len;
+  }
+  return out;
 }
 
-function Pothole({ id, x, z }: { id: string; x: number; z: number }) {
+function pointAt(points: readonly (readonly [number, number])[], fraction: number) {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    total += Math.hypot(points[i + 1]![0] - points[i]![0], points[i + 1]![1] - points[i]![1]);
+  }
+  let goal = total * fraction;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const [ax, az] = points[i]!;
+    const [bx, bz] = points[i + 1]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (goal <= len && len > 0) {
+      return { x: ax + ((bx - ax) * goal) / len, z: az + ((bz - az) * goal) / len };
+    }
+    goal -= len;
+  }
+  const last = points[points.length - 1] ?? [0, 0];
+  return { x: last[0], z: last[1] };
+}
+
+function Pothole({ id, x, z, size = 1 }: { id: string; x: number; z: number; size?: number }) {
   const fix = usePotholeFix();
   const patched = fix.patchedIds.includes(id);
   const selected = fix.selectedId === id;
   return (
-    <group position={[x, 0.1, z]}>
+    <group position={[x, 0.06, z]} scale={size}>
       <mesh rotation={[-Math.PI / 2, 0, 0.2]} raycast={() => null}>
         <circleGeometry args={[0.95, 8]} />
         <meshStandardMaterial
@@ -373,112 +352,16 @@ function Pothole({ id, x, z }: { id: string; x: number; z: number }) {
           document.body.style.cursor = "";
         }}
       >
-        <circleGeometry args={[1.2, 16]} />
+        <circleGeometry args={[1.4, 16]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
   );
 }
 
-function LaneDashes({ from, to }: { from: readonly [number, number]; to: readonly [number, number] }) {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz);
-  if (len < 1) return null;
-  const ux = dx / len;
-  const uz = dz / len;
-  const dashes: Array<readonly [readonly [number, number], readonly [number, number]]> = [];
-  for (let dist = 0.6; dist < len - 0.6; dist += 1.8) {
-    const end = Math.min(dist + 0.85, len - 0.4);
-    dashes.push([
-      [from[0] + ux * dist, from[1] + uz * dist],
-      [from[0] + ux * end, from[1] + uz * end],
-    ]);
-  }
-  return (
-    <group>
-      {dashes.map(([start, end], index) => (
-        <GlowSeg key={index} from={start} to={end} width={0.1} color={LANE} y={0.1} glow={0.7} />
-      ))}
-    </group>
-  );
-}
-
-/** A photo-style street: sidewalk, deck, curb, edge lines, dashed center. Colors stay in the glass palette. */
-function Paved({
-  from,
-  to,
-  width = 3.6,
-}: {
-  from: readonly [number, number];
-  to: readonly [number, number];
-  width?: number;
-}) {
-  const half = width / 2;
-  const leftCurb = shift(from, to, -(half + 0.08));
-  const rightCurb = shift(from, to, half + 0.08);
-  const leftEdge = shift(from, to, -(half - 0.22));
-  const rightEdge = shift(from, to, half - 0.22);
-  return (
-    <group>
-      <GlowSeg from={from} to={to} width={width + 2.2} color={WALK} y={0.03} glow={0.18} />
-      <GlowSeg from={from} to={to} width={width} color={DECK} y={0.055} glow={0.42} />
-      <GlowSeg from={leftCurb.from} to={leftCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
-      <GlowSeg from={rightCurb.from} to={rightCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
-      <GlowSeg from={leftEdge.from} to={leftEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
-      <GlowSeg from={rightEdge.from} to={rightEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
-      <LaneDashes from={from} to={to} />
-    </group>
-  );
-}
-
-function CurvedRoads() {
-  const holes = [6, 14, 22].map((index) => beside(BOULEVARD, index, 0.2));
-  return (
-    <group>
-      {BOULEVARD.slice(0, -1).map((from, index) => (
-        <Paved key={`bend-${index}`} from={from} to={BOULEVARD[index + 1] ?? from} width={3.8} />
-      ))}
-      {holes.map((spot, index) => {
-        const hole = POTHOLES[index];
-        if (!hole) return null;
-        return <Pothole key={hole.id} id={hole.id} x={spot.x} z={spot.z} />;
-      })}
-    </group>
-  );
-}
-
-function StreetGrid() {
-  const span = 58;
-  return (
-    <group>
-      {CROSS_STREETS.map((z) => (
-        <Paved key={`h-${z}`} from={[-span, z]} to={[span, z]} />
-      ))}
-      {AVENUES.map((x) => (
-        <Paved key={`v-${x}`} from={[x, -span]} to={[x, span]} />
-      ))}
-    </group>
-  );
-}
-
-function beside(points: readonly (readonly [number, number])[], index: number, dist: number) {
-  const prev = points[Math.max(0, index - 1)] ?? points[index]!;
-  const next = points[Math.min(points.length - 1, index + 1)] ?? points[index]!;
-  const dx = next[0] - prev[0];
-  const dz = next[1] - prev[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const here = points[index] ?? prev;
-  return {
-    x: here[0] + (-dz / len) * dist,
-    z: here[1] + (dx / len) * dist,
-    rot: Math.atan2(dx, dz),
-  };
-}
-
 function Hydrant({ x, z, rot }: { x: number; z: number; rot: number }) {
   return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
+    <group position={[x, 0, z]} rotation={[0, rot, 0]} scale={0.4}>
       <mesh position={[0, 0.42, 0]} castShadow>
         <cylinderGeometry args={[0.22, 0.26, 0.84, 8]} />
         <meshStandardMaterial color="#f3c2b4" emissive="#e08978" emissiveIntensity={0.35} roughness={0.45} />
@@ -487,28 +370,20 @@ function Hydrant({ x, z, rot }: { x: number; z: number; rot: number }) {
         <cylinderGeometry args={[0.14, 0.18, 0.22, 8]} />
         <meshStandardMaterial color="#fff6f2" roughness={0.4} />
       </mesh>
-      <mesh position={[0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
-        <meshStandardMaterial color="#fff6f2" />
-      </mesh>
-      <mesh position={[-0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
-        <meshStandardMaterial color="#fff6f2" />
-      </mesh>
     </group>
   );
 }
 
 function Lamp({ x, z }: { x: number; z: number }) {
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, 0, z]} scale={0.4}>
       <mesh position={[0, 1.45, 0]} castShadow>
         <cylinderGeometry args={[0.05, 0.08, 2.9, 6]} />
-        <meshStandardMaterial color="#f4ffff" emissive="#d8fbff" emissiveIntensity={0.35} />
+        <meshStandardMaterial color="#e9edef" metalness={0.6} roughness={0.3} />
       </mesh>
       <mesh position={[0.34, 2.85, 0]} rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.035, 0.035, 0.7, 6]} />
-        <meshStandardMaterial color="#f4ffff" />
+        <meshStandardMaterial color="#e9edef" metalness={0.6} roughness={0.3} />
       </mesh>
       <mesh position={[0.62, 2.72, 0]}>
         <sphereGeometry args={[0.22, 10, 8]} />
@@ -520,156 +395,191 @@ function Lamp({ x, z }: { x: number; z: number }) {
 
 function Bench({ x, z, rot }: { x: number; z: number; rot: number }) {
   return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
+    <group position={[x, 0, z]} rotation={[0, rot, 0]} scale={0.4}>
       <mesh position={[0, 0.42, 0]} castShadow>
         <boxGeometry args={[1.5, 0.08, 0.42]} />
-        <meshStandardMaterial color="#f7fbff" roughness={0.55} />
+        <meshStandardMaterial color="#c9a77c" roughness={0.7} />
       </mesh>
       <mesh position={[0, 0.68, -0.17]} castShadow>
         <boxGeometry args={[1.5, 0.42, 0.06]} />
-        <meshStandardMaterial color="#d7eef4" roughness={0.5} />
+        <meshStandardMaterial color="#c9a77c" roughness={0.7} />
       </mesh>
       {[-0.58, 0.58].map((leg) => (
         <mesh key={leg} position={[leg, 0.2, 0]}>
           <boxGeometry args={[0.08, 0.4, 0.36]} />
-          <meshStandardMaterial color="#9fd0da" />
+          <meshStandardMaterial color="#6f7b80" metalness={0.5} roughness={0.4} />
         </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Crosswalk({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0.07, z]} rotation={[0, rot, 0]}>
-      {[-0.7, -0.28, 0.14, 0.56].map((along) => (
-        <mesh key={along} position={[0, 0, along]} raycast={() => null}>
-          <boxGeometry args={[1.7, 0.02, 0.16]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Shelter({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
-      <mesh position={[0, 1.15, 0]} castShadow>
-        <boxGeometry args={[2.2, 2.1, 0.9]} />
-        <meshStandardMaterial
-          color={GLASS}
-          emissive={GLASS_GLOW}
-          emissiveIntensity={0.45}
-          transparent
-          opacity={0.55}
-          roughness={0.15}
-        />
-      </mesh>
-      <mesh position={[0, 2.28, 0]}>
-        <boxGeometry args={[2.4, 0.08, 1.05]} />
-        <meshStandardMaterial color="#f4ffff" />
-      </mesh>
-      <mesh position={[0, 0.38, 0.1]}>
-        <boxGeometry args={[1.8, 0.1, 0.4]} />
-        <meshStandardMaterial color="#f7fbff" />
-      </mesh>
-    </group>
-  );
-}
-
-function Bin({ x, z }: { x: number; z: number }) {
-  return (
-    <mesh position={[x, 0.45, z]} castShadow>
-      <cylinderGeometry args={[0.22, 0.2, 0.9, 8]} />
-      <meshStandardMaterial color="#1f6f7c" roughness={0.6} />
-    </mesh>
-  );
-}
-
-function StreetLife() {
-  const hydrants = [4, 10, 16, 22].map((index) => beside(BOULEVARD, index, 2.5));
-  const lamps = [3, 9, 15, 21].map((index) => beside(BOULEVARD, index, -2.6));
-  const benches = [7, 18].map((index) => beside(BOULEVARD, index, 2.7));
-  const walks = [8, 16].map((index) => beside(BOULEVARD, index, 0));
-  const stop = beside(BOULEVARD, 12, -3.1);
-  const bins = [6, 20].map((index) => beside(BOULEVARD, index, 3.1));
-  return (
-    <group>
-      {hydrants.map((spot) => (
-        <Hydrant key={`hydrant-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      {lamps.map((spot) => (
-        <Lamp key={`lamp-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
-      ))}
-      {benches.map((spot) => (
-        <Bench key={`bench-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      {walks.map((spot) => (
-        <Crosswalk key={`walk-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      <Shelter x={stop.x} z={stop.z} rot={stop.rot} />
-      {bins.map((spot) => (
-        <Bin key={`bin-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
       ))}
     </group>
   );
 }
 
 function Roads() {
+  const roads = PARSED.ways.filter((way) => way.layer === "road");
+  const walks = PARSED.ways.filter((way) => way.layer !== "road");
+  // Potholes sit on the real Central Street, the longest road in the extract.
+  const central = roads
+    .filter((way) => way.name === "Central Street")
+    .sort((a, b) => b.points.length - a.points.length)[0];
+  const holes = central ? [0.3, 0.5, 0.7].map((f) => pointAt(central.points, f)) : [];
+
   return (
-    <group>
-      <StreetGrid />
-      <CurvedRoads />
-      <StreetLife />
+    <group name="wellesley-streets">
+      {walks.map((way) => (
+        <Way key={way.id} way={way} />
+      ))}
+      {roads.map((way) => (
+        <Way key={way.id} way={way} />
+      ))}
+      {holes.map((spot, index) => {
+        const hole = POTHOLES[index];
+        if (!hole) return null;
+        return <Pothole key={hole.id} id={hole.id} x={spot.x} z={spot.z} size={0.38} />;
+      })}
+      {roads.flatMap((way) =>
+        along(way.points, 7, WAY_HALF_WIDTH.road + 0.35).map((spot) => (
+          <Lamp key={`lamp-${way.id}-${spot.x.toFixed(2)}`} x={spot.x} z={spot.z} />
+        )),
+      )}
+      {roads.flatMap((way) =>
+        along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)).map((spot) => (
+          <Hydrant key={`hydrant-${way.id}-${spot.x.toFixed(2)}`} x={spot.x} z={spot.z} rot={spot.rot} />
+        )),
+      )}
+      {walks
+        .filter((way) => way.layer === "footway")
+        .flatMap((way) =>
+          along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3).map((spot) => (
+            <Bench key={`bench-${way.id}-${spot.x.toFixed(2)}`} x={spot.x} z={spot.z} rot={spot.rot} />
+          )),
+        )}
     </group>
   );
 }
 
-function Plaza({ x, z }: { x: number; z: number }) {
-  const s = 3.4;
+function insideRing(x: number, z: number, ring: readonly (readonly [number, number])[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, zi] = ring[i]!;
+    const [xj, zj] = ring[j]!;
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function distToSegment(x: number, z: number, a: readonly [number, number], b: readonly [number, number]) {
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const len2 = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
+  return Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+}
+
+/** Trees on open lawn only: never inside a footprint or on a road or path. */
+function plantTrees() {
+  const out: { x: number; z: number; s: number; color: string }[] = [];
+  const half = CITY_SPAN / 2;
+  const step = 2.4;
+  const grown = PARSED.buildings.map((b) => shrink(b.ring, 1.18));
+  for (let gx = -half; gx <= half; gx += step) {
+    for (let gz = -half; gz <= half; gz += step) {
+      const r = hash(gx, gz);
+      if (r < 0.45) continue;
+      const x = gx + (hash(gz, gx) - 0.5) * step;
+      const z = gz + (hash(gx + 7, gz) - 0.5) * step;
+      if (grown.some((ring) => insideRing(x, z, ring))) continue;
+      const nearWay = PARSED.ways.some((way) =>
+        way.points.some((p, i) => {
+          const q = way.points[i + 1];
+          return q ? distToSegment(x, z, p, q) < WAY_HALF_WIDTH[way.layer] + 0.7 : false;
+        }),
+      );
+      if (nearWay) continue;
+      const palette = r > 0.9 ? AUTUMN : GREEN;
+      out.push({
+        x,
+        z,
+        s: 0.75 + hash(x, z) * 0.6,
+        color: palette[Math.floor(hash(z, x) * palette.length)] ?? GREEN[0],
+      });
+    }
+  }
+  return out;
+}
+
+/** Hundreds of trees in two draw calls: one for trunks, one for canopies. */
+function Trees() {
+  const trees = useMemo(plantTrees, []);
+  const { trunks, canopies } = useMemo(() => {
+    const trunk = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6),
+      new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
+      trees.length,
+    );
+    const canopy = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(0.62, 1),
+      new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }),
+      trees.length,
+    );
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const color = new THREE.Color();
+    trees.forEach((tree, i) => {
+      m.compose(new THREE.Vector3(tree.x, 0.45 * tree.s, tree.z), q, new THREE.Vector3(tree.s, tree.s, tree.s));
+      trunk.setMatrixAt(i, m);
+      m.compose(
+        new THREE.Vector3(tree.x, 1.15 * tree.s, tree.z),
+        q,
+        new THREE.Vector3(tree.s, tree.s * 1.15, tree.s),
+      );
+      canopy.setMatrixAt(i, m);
+      canopy.setColorAt(i, color.set(tree.color));
+    });
+    for (const mesh of [trunk, canopy]) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.raycast = () => null;
+    }
+    return { trunks: trunk, canopies: canopy };
+  }, [trees]);
+  useEffect(
+    () => () => {
+      for (const mesh of [trunks, canopies]) {
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+        mesh.dispose();
+      }
+    },
+    [trunks, canopies],
+  );
   return (
-    <group position={[x, 0.08, z]}>
-      <GlowSeg from={[-s, -s]} to={[s, -s]} width={0.3} />
-      <GlowSeg from={[-s, s]} to={[s, s]} width={0.3} />
-      <GlowSeg from={[-s, -s]} to={[-s, s]} width={0.3} />
-      <GlowSeg from={[s, -s]} to={[s, s]} width={0.3} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <planeGeometry args={[s * 1.3, s * 1.3]} />
-        <meshStandardMaterial
-          color="#7fe0ea"
-          transparent
-          opacity={0.32}
-          emissive="#c4f7ff"
-          emissiveIntensity={0.6}
-        />
-      </mesh>
+    <group name="trees">
+      <primitive object={trunks} />
+      <primitive object={canopies} />
     </group>
   );
 }
 
 export function City() {
+  const materials = useGlassMaterials();
   return (
-    <group>
+    <group name="wellesley-reimagined">
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.02, 0]}
         receiveShadow
         raycast={() => null}
       >
-        <planeGeometry args={[180, 180]} />
-        <meshStandardMaterial color={GROUND} roughness={0.95} metalness={0.08} />
+        {/* Wide enough that the fog hides its edge from any camera angle. */}
+        <planeGeometry args={[CITY_SPAN * 10, CITY_SPAN * 10]} />
+        <meshStandardMaterial color={LAWN} roughness={0.95} />
       </mesh>
       <Roads />
-      {CITY.lots.map((lot) => (
-        <HoloBuilding key={`b-${lot.x}-${lot.z}`} {...lot} />
+      {PARSED.buildings.map((building) => (
+        <HoloBuilding key={building.id} building={building} materials={materials} />
       ))}
-      {CITY.trees.map((tree) => (
-        <HoloTree key={`t-${tree.x}-${tree.z}`} {...tree} />
-      ))}
-      <Plaza x={CITY.plaza.x} z={CITY.plaza.z} />
-      <pointLight position={[9, 16, 7]} intensity={26} distance={52} color="#c8fbff" />
-      <Sparkles count={160} scale={110} size={3.4} speed={0.16} color="#e8ffff" opacity={0.72} />
+      <Trees />
+      <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
   );
 }
