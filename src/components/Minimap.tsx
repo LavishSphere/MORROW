@@ -195,8 +195,17 @@ export function Minimap({ placeLabel }: Props) {
             title="Click to go there"
             aria-label="Minimap. Click a spot to fly there."
           />
-          <span className="minimap__north" aria-hidden="true">
+          <span className="minimap__dir minimap__dir--n minimap__north" aria-hidden="true">
             N
+          </span>
+          <span className="minimap__dir minimap__dir--e" aria-hidden="true">
+            E
+          </span>
+          <span className="minimap__dir minimap__dir--s" aria-hidden="true">
+            S
+          </span>
+          <span className="minimap__dir minimap__dir--w" aria-hidden="true">
+            W
           </span>
           <button
             type="button"
