@@ -68,7 +68,7 @@ export function TownScene({
         lookAt={LOOK_AT}
         settled={SETTLED}
       />
-      <City />
+      <City geoJson={geoJson} />
       <group visible={false}>
         <Street
           selectedBarrierId={selectedBarrierId}

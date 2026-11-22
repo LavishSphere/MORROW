@@ -3,10 +3,15 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import basemap from "../../../data/wellesley/basemap.geojson";
 import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
-import { createProjector } from "../geo";
+import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
 import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
 import { GLASS_TINTS, worldCurtainWall } from "./glass";
-import { parseBasemap, type BuildingFootprint, type WayRibbon } from "./parseBasemap";
+import {
+  parseBasemap,
+  type BuildingFootprint,
+  type ParsedBasemap,
+  type WayRibbon,
+} from "./parseBasemap";
 import { createRibbonGeometry } from "./ribbonGeometry";
 
 /**
@@ -18,11 +23,63 @@ import { createRibbonGeometry } from "./ribbonGeometry";
 
 /** Scene units per metre. The ~650 m showcase spans about 90 units. */
 const CITY_SCALE = 0.14;
-const projector = createProjector(SHOWCASE_BBOX, CITY_SCALE);
-/** Width of the real neighborhood in scene units; the camera frames this. */
-export const CITY_SPAN = projector.span;
 
-const PARSED = parseBasemap(basemap, projector) ?? { buildings: [], ways: [] };
+type CityModel = {
+  parsed: ParsedBasemap;
+  /** OSM building tag per footprint id, for the height rule. */
+  kinds: Map<string, string>;
+  span: number;
+};
+
+/** Bounding box of every coordinate in a FeatureCollection. */
+function bboxOf(geoJson: unknown): ShowcaseBBox | null {
+  if (!isFeatureCollection(geoJson)) return null;
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  const visit = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === "number" && typeof value[1] === "number") {
+      west = Math.min(west, value[0]);
+      east = Math.max(east, value[0]);
+      south = Math.min(south, value[1]);
+      north = Math.max(north, value[1]);
+      return;
+    }
+    for (const item of value) visit(item);
+  };
+  // Buildings define the neighborhood; long roads can run far past it.
+  const features = geoJson.features as {
+    geometry?: { coordinates?: unknown };
+    properties?: Record<string, unknown>;
+  }[];
+  const buildings = features.filter((f) => f.properties?.layer === "building");
+  for (const feature of buildings.length > 0 ? buildings : features) {
+    visit(feature.geometry?.coordinates);
+  }
+  if (!Number.isFinite(west)) return null;
+  return { west, east, south, north, center: [(west + east) / 2, (south + north) / 2] };
+}
+
+/** Parse any basemap-shaped FeatureCollection into the city's model. */
+function buildModel(geoJson: unknown): CityModel {
+  const bbox = geoJson === basemap ? SHOWCASE_BBOX : (bboxOf(geoJson) ?? SHOWCASE_BBOX);
+  const projector = createProjector(bbox, CITY_SCALE);
+  const parsed = parseBasemap(geoJson, projector) ?? { buildings: [], ways: [] };
+  const kinds = new Map<string, string>();
+  if (isFeatureCollection(geoJson)) {
+    for (const feature of geoJson.features) {
+      const props = (feature as { properties?: Record<string, unknown> }).properties;
+      if (props?.layer === "building") kinds.set(String(props.osmId), String(props.building ?? "yes"));
+    }
+  }
+  return { parsed, kinds, span: projector.span };
+}
+
+const WELLESLEY = buildModel(basemap);
+/** Width of the Wellesley showcase in scene units; the camera frames this. */
+export const CITY_SPAN = WELLESLEY.span;
 
 /** One glass bay and one floor, in scene units (about 4 m and 5 m). */
 const BAY = 0.55;
@@ -97,13 +154,6 @@ function floorsFor(building: BuildingFootprint, kind: string) {
   return base + Math.floor(idHash(building.id) * 4);
 }
 
-function buildingKind(id: string): string {
-  const feature = (basemap as { features?: { properties?: Record<string, unknown> }[] }).features?.find(
-    (f) => String(f.properties?.osmId) === id,
-  );
-  return String(feature?.properties?.building ?? "yes");
-}
-
 /** Shared glass materials: one per tint, all reading the same pane grid. */
 function useGlassMaterials() {
   const materials = useMemo(() => {
@@ -147,12 +197,13 @@ type GlassMaterials = ReturnType<typeof useGlassMaterials>;
 /** A real Wellesley footprint, rebuilt as a glass building. */
 function HoloBuilding({
   building,
+  kind,
   materials,
 }: {
   building: BuildingFootprint;
+  kind: string;
   materials: GlassMaterials;
 }) {
-  const kind = buildingKind(building.id);
   const floors = floorsFor(building, kind);
   const height = floors * FLOOR_H;
   const tall = floors >= 9;
@@ -414,9 +465,9 @@ function Bench({ x, z, rot }: { x: number; z: number; rot: number }) {
   );
 }
 
-function Roads() {
-  const roads = PARSED.ways.filter((way) => way.layer === "road");
-  const walks = PARSED.ways.filter((way) => way.layer !== "road");
+function Roads({ model }: { model: CityModel }) {
+  const roads = model.parsed.ways.filter((way) => way.layer === "road");
+  const walks = model.parsed.ways.filter((way) => way.layer !== "road");
   // Potholes sit on the real Central Street, the longest road in the extract.
   const central = roads
     .filter((way) => way.name === "Central Street")
@@ -476,11 +527,11 @@ function distToSegment(x: number, z: number, a: readonly [number, number], b: re
 }
 
 /** Trees on open lawn only: never inside a footprint or on a road or path. */
-function plantTrees() {
+function plantTrees(model: CityModel) {
   const out: { x: number; z: number; s: number; color: string }[] = [];
-  const half = CITY_SPAN / 2;
+  const half = model.span / 2;
   const step = 2.4;
-  const grown = PARSED.buildings.map((b) => shrink(b.ring, 1.18));
+  const grown = model.parsed.buildings.map((b) => shrink(b.ring, 1.18));
   for (let gx = -half; gx <= half; gx += step) {
     for (let gz = -half; gz <= half; gz += step) {
       const r = hash(gx, gz);
@@ -488,7 +539,7 @@ function plantTrees() {
       const x = gx + (hash(gz, gx) - 0.5) * step;
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (grown.some((ring) => insideRing(x, z, ring))) continue;
-      const nearWay = PARSED.ways.some((way) =>
+      const nearWay = model.parsed.ways.some((way) =>
         way.points.some((p, i) => {
           const q = way.points[i + 1];
           return q ? distToSegment(x, z, p, q) < WAY_HALF_WIDTH[way.layer] + 0.7 : false;
@@ -508,8 +559,8 @@ function plantTrees() {
 }
 
 /** Hundreds of trees in two draw calls: one for trunks, one for canopies. */
-function Trees() {
-  const trees = useMemo(plantTrees, []);
+function Trees({ model }: { model: CityModel }) {
+  const trees = useMemo(() => plantTrees(model), [model]);
   const { trunks, canopies } = useMemo(() => {
     const trunk = new THREE.InstancedMesh(
       new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6),
@@ -560,8 +611,16 @@ function Trees() {
   );
 }
 
-export function City() {
+/**
+ * The glass city. With no map it shows the Wellesley showcase; given a
+ * loaded neighborhood (same FeatureCollection shape) it rebuilds from that.
+ */
+export function City({ geoJson }: { geoJson?: unknown }) {
   const materials = useGlassMaterials();
+  const model = useMemo(
+    () => (geoJson && geoJson !== basemap ? buildModel(geoJson) : WELLESLEY),
+    [geoJson],
+  );
   return (
     <group name="wellesley-reimagined">
       <mesh
@@ -574,11 +633,16 @@ export function City() {
         <planeGeometry args={[CITY_SPAN * 10, CITY_SPAN * 10]} />
         <meshStandardMaterial color={LAWN} roughness={0.95} />
       </mesh>
-      <Roads />
-      {PARSED.buildings.map((building) => (
-        <HoloBuilding key={building.id} building={building} materials={materials} />
+      <Roads model={model} />
+      {model.parsed.buildings.map((building) => (
+        <HoloBuilding
+          key={building.id}
+          building={building}
+          kind={model.kinds.get(building.id) ?? "yes"}
+          materials={materials}
+        />
       ))}
-      <Trees />
+      <Trees model={model} />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
   );
