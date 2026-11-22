@@ -1,12 +1,13 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { LOOK_SUN, lookSky } from "./look";
 
 /** Pale haze where the sky meets the ground. Fog uses the same color. */
 export const HORIZON_HAZE = "#cfe0ea";
 
 /** Same direction as the key light in TownScene, so shadows match the sun. */
-const SUN_DIRECTION = new THREE.Vector3(40, 52, 18).normalize();
+const SUN_DIRECTION = new THREE.Vector3(...(LOOK_SUN ?? [40, 52, 18])).normalize();
 
 const VERTEX = `
 varying vec3 vDir;
@@ -124,7 +125,7 @@ export function Sky({ reducedMotion = false, follow = false }: SkyProps) {
         fog={false}
         uniforms={uniforms}
         vertexShader={VERTEX}
-        fragmentShader={FRAGMENT}
+        fragmentShader={lookSky(FRAGMENT)}
       />
     </mesh>
   );
