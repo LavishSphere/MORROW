@@ -47,3 +47,12 @@ test("visitors jump ahead of pre-loading, which uses at most one download slot",
   assert.equal(new Set(MAJOR_CITIES).size, MAJOR_CITIES.length);
   assert.equal(MAJOR_CITIES[0], "Boston, MA");
 });
+
+test("a server that refuses or stays silent is skipped for a while, so uncached places fail fast", async () => {
+  const osm = await readFile("packages/api/src/routes/osm.ts", "utf8");
+  assert.match(osm, /const BENCH_MS = 10 \* 60 \* 1000;/);
+  assert.match(osm, /res\.status === 401 \|\| res\.status === 403 \|\| res\.status === 406/);
+  assert.match(osm, /if \(benched\(url\)\) continue;/);
+  assert.match(osm, /throw new Error\(tried\.join\("; "\)\)/);
+  assert.match(osm, /if \(err instanceof OverpassUnavailable\) await pause\(BENCH_MS\);/);
+});

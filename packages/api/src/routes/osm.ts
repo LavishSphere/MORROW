@@ -128,13 +128,27 @@ async function startsWithin(work: Promise<Response>, ms: number): Promise<Respon
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Servers that recently refused this server or stayed silent are skipped for
+ * a while, so a visitor's request for an uncached place fails in a moment
+ * (and their browser asks Overpass itself) instead of waiting out timeouts.
+ */
+const benchedUntil = new Map<string, number>();
+const BENCH_MS = 10 * 60 * 1000;
+const bench = (url: string) => benchedUntil.set(url, Date.now() + BENCH_MS);
+const benched = (url: string) => (benchedUntil.get(url) ?? 0) > Date.now();
+
+/** Thrown when every server is benched: nothing worth waiting for. */
+export class OverpassUnavailable extends Error {}
+
+/**
  * Ask Overpass. The main server (overpass-api.de) is the one that reliably
  * answers, often after queueing, so it gets three tries with a pause when it
  * says it is busy; the backups are asked last and skipped quickly if silent.
- * The body is checked to be complete JSON before it is kept.
+ * A server that refuses (401/403/406) or stays silent is benched for ten
+ * minutes. The body is checked to be complete JSON before it is kept.
  */
 async function askOverpass(query: string): Promise<Buffer> {
-  let last = "no server answered";
+  const tried: string[] = [];
   const [main, ...backups] = UPSTREAMS;
   const plan: { url: string; startMs: number }[] = [
     { url: main, startMs: 110_000 },
@@ -143,6 +157,7 @@ async function askOverpass(query: string): Promise<Buffer> {
     ...backups.map((url) => ({ url, startMs: 25_000 })),
   ];
   for (const [i, { url, startMs }] of plan.entries()) {
+    if (benched(url)) continue;
     const host = new URL(url).host;
     try {
       const res = await startsWithin(
@@ -159,9 +174,14 @@ async function askOverpass(query: string): Promise<Buffer> {
         startMs,
       );
       if (!res.ok) {
-        last = `${host} answered ${res.status}`;
+        tried.push(`${host} ${res.status}`);
         // A bad query fails the same way everywhere.
         if (res.status === 400) break;
+        // Refused outright: this server will not serve us for a while.
+        if (res.status === 401 || res.status === 403 || res.status === 406) {
+          bench(url);
+          continue;
+        }
         // Busy: Overpass frees a slot within seconds.
         if (url === main && (res.status === 429 || res.status === 504) && i < 2) await pause(8_000 * (i + 1));
         continue;
@@ -169,20 +189,23 @@ async function askOverpass(query: string): Promise<Buffer> {
       const text = await res.text();
       const body = JSON.parse(text) as { remark?: unknown; elements?: unknown };
       if (!Array.isArray(body.elements)) {
-        last = `${host} sent no elements`;
+        tried.push(`${host} sent no elements`);
         continue;
       }
       // A query cut short by the server's own time limit is not worth keeping.
       if (typeof body.remark === "string" && /runtime error|timed out|out of memory/i.test(body.remark)) {
-        last = `${host}: ${body.remark.slice(0, 120)}`;
+        tried.push(`${host}: ${body.remark.slice(0, 120)}`);
         continue;
       }
       return gzipSync(text);
     } catch (err) {
-      last = `${host}: ${err instanceof Error ? err.message : "failed"}`;
+      tried.push(`${host}: ${err instanceof Error ? err.message : "failed"}`);
+      // Silent backups are benched; the main server gets its next try.
+      if (url !== main) bench(url);
     }
   }
-  throw new Error(last);
+  if (!tried.length) throw new OverpassUnavailable("every Overpass server is refusing or silent right now");
+  throw new Error(tried.join("; "));
 }
 
 /** One download per query, however many visitors ask for it at once. */
@@ -290,6 +313,8 @@ export async function warmMajorCities(
         } catch (err) {
           failed += 1;
           log(`OSM pre-load: ${name} failed (${err instanceof Error ? err.message : "error"})`);
+          // Nothing will answer for a while: wait instead of failing every city.
+          if (err instanceof OverpassUnavailable) await pause(BENCH_MS);
         }
       }
     }
