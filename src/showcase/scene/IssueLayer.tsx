@@ -200,7 +200,8 @@ function headGeometry(shape: IssueShape): THREE.BufferGeometry {
     case "square":
       return new THREE.BoxGeometry(0.38, 0.38, 0.38);
     case "circle":
-      return new THREE.SphereGeometry(0.23, 16, 12);
+      // A flat coin, not a ball: a ball on a pole reads as a tree.
+      return new THREE.CylinderGeometry(0.25, 0.25, 0.12, 24);
   }
 }
 
