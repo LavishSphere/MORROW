@@ -99,7 +99,10 @@ test("a busy or slow Gemini moves on to the next model instead of hanging", asyn
   assert.match(gemini, /const CALL_TIMEOUT_MS = 12_000;/);
   assert.match(gemini, /withTimeout\(/);
   assert.match(gemini, /timed out/);
-  assert.match(gemini, /for \(const model of modelCandidates\(\)\)/);
+  // gemini-3.8-flash first, then every other model the key can see, inside one time budget.
+  assert.match(gemini, /requestDraft\(ai, facts, PRIMARY_MODEL, CALL_TIMEOUT_MS\)/);
+  assert.match(gemini, /for \(const model of modelCandidates\(geminiModel\(\), await availableModels\(ai\)\)\)/);
+  assert.match(gemini, /const TOTAL_BUDGET_MS = 48_000;/);
   assert.match(gemini, /maxOutputTokens: 2048/);
   const api = await readFile("src/data/api.ts", "utf8");
   assert.match(api, /AbortSignal\.timeout\(55_000\)/);
