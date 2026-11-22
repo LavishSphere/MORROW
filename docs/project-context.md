@@ -21,11 +21,11 @@ Win Better Worlds with a civic tool that is aesthetically unforgettable **and** 
 | Seat | Owner |
 |---|---|
 | AI, integrations, and data | Ashsmith Khayrul |
-| 3D Showcase | Unassigned |
+| 3D Showcase | Alexander Duan |
 | Accessible Interface | Caroline Hu |
 | Routing and Reliability | Sophia Zheng |
 
-No hardware seat. Ashsmith’s lane (data, Gemini, Mastra, Tiger Data, Vultr, proposal API) stays whole.
+No hardware seat. Ashsmith’s lane (data, Gemini, Tiger Data, proposal API, hosting, domain) stays whole.
 
 ## Non-negotiables
 
@@ -33,13 +33,13 @@ No hardware seat. Ashsmith’s lane (data, Gemini, Mastra, Tiger Data, Vultr, pr
 - Evidence status (`verified` | `community_reported` | `illustrative`) stays honest; illustrative Wellesley scenarios are labeled as simulation.
 - Public demo: no login or judge credentials.
 - Prefer one exceptional Wellesley loop over unfinished multi-city scope.
-- Cut order if behind: extra cities/animations → Vultr → Mastra → live Tiger Data; keep packaged dataset, route engine, proposal + Gemini-or-template.
+- Cut order if behind: extra cities/animations → live Tiger Data; keep packaged dataset, route engine, proposal + Gemini-or-template.
 
 ## Sponsor priority
 
 1. **P0** Gemini API (proposal drafting + template fallback)  
-2. **P1** Mastra, then Tiger Data/PostGIS  
-3. **P2** Vultr (only if reliable)
+2. **P1** Tiger Data/PostGIS  
+3. **P2** SpaceXSI (built with Cursor and Grok Bot) and GoDaddy Registry (plsfixthisshit.work)
 
 Better Worlds first place always beats sponsor prize chasing.
 
@@ -54,5 +54,4 @@ Better Worlds first place always beats sponsor prize chasing.
 
 ## Open decisions
 
-- Name for the remaining unassigned 3D Showcase seat  
 - Public demo is GitHub Pages at [plsfixthisshit.work](https://plsfixthisshit.work/) (Vite)
