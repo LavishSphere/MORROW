@@ -1,3 +1,4 @@
+import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
 
 export type OsmWay = {
@@ -18,10 +19,6 @@ export type LoadedNeighborhood = {
   /** Honest status. Never claims a barrier inventory. */
   note: string
 }
-
-const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
-/** Half-size of the loaded box in degrees: about 1.8 km across, a whole town center. */
-const HALF = 0.008
 
 /** Read way geometries from an Overpass JSON body. */
 export function waysFromOverpass(body: unknown): OsmWay[] {
@@ -57,34 +54,10 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   return ways
 }
 
-function neighborhoodQuery(place: UsPlace): string {
-  const south = place.lat - HALF
-  const north = place.lat + HALF
-  const west = place.lng - HALF
-  const east = place.lng + HALF
-  const box = `${south},${west},${north},${east}`
-  // Streets and buildings get separate quotas, so a dense downtown's
-  // buildings cannot crowd out its streets.
-  return `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 3000;`
-}
-
-async function fetchWays(place: UsPlace): Promise<OsmWay[]> {
-  const res = await fetch(OVERPASS, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ data: neighborhoodQuery(place) }),
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!res.ok) throw new Error(`Overpass ${res.status}`)
-  return waysFromOverpass(await res.json())
-}
-
 /**
- * Geocode a US place and pull the surrounding streets and buildings
- * from OpenStreetMap. This is a basemap, not a barrier list.
+ * Geocode a US place and build a whole procedural city around it.
+ * Wellesley itself stays the bundled map. This is not a survey of the
+ * named city's streets.
  */
 export async function loadUsNeighborhood(
   query: string,
@@ -94,21 +67,13 @@ export async function loadUsNeighborhood(
   if (!place) {
     throw new Error('No US place matched that name.')
   }
-  try {
-    const ways = await fetchWays(place)
-    const roads = ways.filter((way) => way.kind === 'road').length
-    const buildings = ways.length - roads
-    return {
-      place,
-      ways,
-      note: `${place.label}. OpenStreetMap returned ${roads} roads and ${buildings} buildings for this neighborhood. Not a barrier inventory.`,
-    }
-  } catch {
-    return {
-      place,
-      ways: [],
-      note: `${place.label}. Imagery is showing, but the OpenStreetMap street query failed. Not a barrier inventory.`,
-    }
+  const ways = generateCity(place)
+  const roads = ways.filter((way) => way.kind === 'road').length
+  const buildings = ways.length - roads
+  return {
+    place,
+    ways,
+    note: `${place.label}. Procedural city, ${roads} streets and ${buildings} buildings, centered on that place. Not a survey of its real streets. Not a barrier inventory.`,
   }
 }
 

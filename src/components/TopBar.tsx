@@ -28,7 +28,7 @@ export function TopBar({ reducedMotion, onReducedMotionChange, onPlace, placeLab
       </div>
 
       <div className="top-bar__controls">
-        <AddressJump />
+        <AddressJump onLoad={onPlace} />
         <PlaceSearch onLoad={onPlace} />
 
         <label className="motion-toggle">

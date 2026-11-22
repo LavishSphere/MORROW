@@ -14,7 +14,7 @@ type Props = {
   onLoad: (neighborhood: LoadedNeighborhood) => void
 }
 
-const HINT = 'Type a US city. Wellesley stays the checked-in scenario.'
+const HINT = 'Type a US city. A procedural city is built around it. Wellesley stays the checked-in scenario.'
 
 /** "Springfield, IL, USA" → "Springfield, IL" */
 const displayName = (label: string) => label.replace(/, USA$/, '')
@@ -71,7 +71,7 @@ export function PlaceSearch({ onLoad }: Props) {
     submitted.current = true
     setOpen(false)
     setBusy(true)
-    setStatus('Looking up that place and asking OpenStreetMap for the neighborhood.')
+    setStatus('Building a procedural city around that place.')
     try {
       const loaded = await loadUsNeighborhood(text, magicKey)
       onLoad(loaded)

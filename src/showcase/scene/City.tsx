@@ -318,6 +318,7 @@ class Occupancy {
   readonly cols: number;
   readonly rows: number;
   readonly data: Uint8Array;
+  readonly heights: Float32Array;
   readonly bounds: Bounds;
 
   constructor(bounds: Bounds) {
@@ -325,6 +326,7 @@ class Occupancy {
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / this.cell) + 1;
     this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / this.cell) + 1;
     this.data = new Uint8Array(this.cols * this.rows);
+    this.heights = new Float32Array(this.cols * this.rows);
   }
 
   private index(x: number, z: number) {
@@ -337,6 +339,48 @@ class Occupancy {
   private set(x: number, z: number) {
     const k = this.index(x, z);
     if (k >= 0) this.data[k] = 1;
+  }
+
+  markHeight(ring: Ring, height: number) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    for (let x = minX; x <= maxX; x += this.cell) {
+      for (let z = minZ; z <= maxZ; z += this.cell) {
+        if (!insideRing(x, z, ring)) continue;
+        const k = this.index(x, z);
+        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+      }
+    }
+  }
+
+  nearbyHeight(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    let best = 0;
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        const k = this.index(x + a * this.cell, z + b * this.cell);
+        if (k >= 0) best = Math.max(best, this.heights[k] ?? 0);
+      }
+    }
+    return best;
+  }
+
+  markDisk(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        if (a * a + b * b > steps * steps) continue;
+        this.set(x + a * this.cell, z + b * this.cell);
+      }
+    }
   }
 
   markRing(ring: Ring, margin: number) {
@@ -433,16 +477,18 @@ type Built = {
   lit: THREE.BufferGeometry;
   walks: Record<"sidewalk" | "footway" | "path", THREE.BufferGeometry>;
   trees: Placement[];
+  parks: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  cars: Placement[];
+  people: Placement[];
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
   signs: SignSpot[];
-  brick: THREE.BufferGeometry;
 };
 
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
-  const brick = new Bucket();
   const garden = new Bucket();
   const metal = new Bucket();
   const stone = new Bucket();
@@ -452,27 +498,48 @@ function buildCity(model: CityModel): Built {
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const kind = model.kinds.get(building.id) ?? "yes";
-    const floors = (FLOORS[kind] ?? 5) + Math.floor(idHash(building.id) * 4);
+    const seed = idHash(building.id);
+    const floors = (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
     const top = PODIUM_H + floors * FLOOR_H;
-    const tint = glass[Math.floor(idHash(building.id) * glass.length)] ?? glass[0]!;
+    const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
+    const style = Math.floor(idHash(`${building.id}m`) * 3);
 
     const podium = shrink(ring, 1.03);
     walls(stone, podium, 0, PODIUM_H);
     cap(stone, podium, PODIUM_H);
-    // Houses stay brick. Taller blocks keep the glass curtain wall.
-    if (floors < 7) walls(brick, ring, PODIUM_H, top);
-    else walls(tint, ring, PODIUM_H, top);
-    // Lower buildings carry roof gardens; towers finish in a glass crown.
-    if (floors >= 9) {
-      const crown = shrink(ring, 0.68);
-      const crownTop = top + (2 + Math.floor(idHash(building.id) * 2)) * FLOOR_H;
+    // Same glass city, three silhouettes so the skyline is not one box.
+    if (floors >= 8 && style === 2) {
+      const step1 = PODIUM_H + Math.max(2, Math.floor(floors * 0.42)) * FLOOR_H;
+      const step2 = PODIUM_H + Math.max(4, Math.floor(floors * 0.72)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, step1);
+      cap(metal, ring, step1);
+      const mid = shrink(ring, 0.74);
+      walls(tint, mid, step1, step2);
+      cap(metal, mid, step2);
+      const crown = shrink(ring, 0.46 + seed * 0.12);
+      const crownTop = top + (1 + Math.floor(seed * 3)) * FLOOR_H;
+      walls(tint, crown, step2, crownTop);
+      cap(metal, crown, crownTop);
+    } else if (floors >= 6 && style === 1) {
+      const waist = PODIUM_H + Math.max(2, Math.floor(floors * 0.58)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, waist);
+      cap(metal, ring, waist);
+      const upper = shrink(ring, 0.58 + seed * 0.18);
+      walls(tint, upper, waist, top);
+      cap(seed > 0.5 ? metal : garden, upper, top);
+    } else if (floors >= 9) {
+      walls(tint, ring, PODIUM_H, top);
+      const crown = shrink(ring, 0.52 + seed * 0.22);
+      const crownTop = top + (2 + Math.floor(seed * 3)) * FLOOR_H;
       cap(metal, ring, top);
       walls(tint, crown, top, crownTop);
       cap(metal, crown, crownTop);
     } else {
+      walls(tint, ring, PODIUM_H, top);
       cap(garden, ring, top);
     }
     occupancy.markRing(ring, 0.9);
+    occupancy.markHeight(ring, top);
   }
 
   const roads = new Bucket();
@@ -492,9 +559,60 @@ function buildCity(model: CityModel): Built {
     }
   }
 
-  // Trees on open lawn only.
-  const trees: Placement[] = [];
   const { minX, maxX, minZ, maxZ } = model.bounds;
+  const parks: Built["parks"] = [];
+  const ponds: Built["ponds"] = [];
+  const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
+  const parkTarget = Math.min(48, Math.max(10, Math.round(area / 7000)));
+  const pondTarget = Math.min(36, Math.max(8, Math.round(area / 10000)));
+  const spotStep = 7.5;
+  const ellipseBlocked = (x: number, z: number, rx: number, rz: number, rot: number, pad: number) => {
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    for (let u = -(rx + pad); u <= rx + pad; u += occupancy.cell) {
+      for (let v = -(rz + pad); v <= rz + pad; v += occupancy.cell) {
+        if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
+        if (occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos)) return true;
+      }
+    }
+    return false;
+  };
+  const hitsSpot = (
+    spots: { x: number; z: number; rx: number; rz: number }[],
+    x: number,
+    z: number,
+    reach: number,
+  ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
+  for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      if (hash(gx + 3, gz + 11) > 0.55) continue;
+      const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
+      const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
+      // Keep them in the city, in the gaps between buildings, not the empty outskirts.
+      if (occupancy.nearbyHeight(x, z, 16) < 1) continue;
+      const rot = hash(x + 4, z + 4) * Math.PI;
+      const wantPark = hash(x + 1, z + 9) > 0.42 && parks.length < parkTarget;
+      if (wantPark) {
+        const rx = 2.4 + hash(x, z) * 4.6;
+        const rz = rx * (0.52 + hash(z, x) * 0.36);
+        if (!hitsSpot(parks, x, z, Math.max(rx, rz) * 0.45) && !ellipseBlocked(x, z, rx, rz, rot, 0.7)) {
+          parks.push({ x, z, rx, rz, rot });
+        }
+      }
+      if (ponds.length < pondTarget && hash(z + 2, x + 6) > 0.28) {
+        const rx = 0.8 + hash(x + 5, z) * 2.2;
+        const rz = rx * (0.5 + hash(z + 3, x) * 0.38);
+        const pondRot = hash(x + 8, z + 2) * Math.PI;
+        if (!hitsSpot(ponds, x, z, Math.max(rx, rz)) && !ellipseBlocked(x, z, rx, rz, pondRot, 0.7)) {
+          occupancy.markDisk(x, z, Math.max(rx, rz) + 0.45);
+          ponds.push({ x, z, rx, rz, rot: pondRot });
+        }
+      }
+    }
+  }
+
+  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
+  const trees: Placement[] = [];
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
     for (let gz = minZ; gz <= maxZ; gz += step) {
@@ -504,16 +622,69 @@ function buildCity(model: CityModel): Built {
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (occupancy.taken(x, z)) continue;
       const palette = r > 0.9 ? AUTUMN : GREEN;
+      const roll = hash(x + 1, z + 3);
+      const near = occupancy.nearbyHeight(x, z, 8);
+      const target = near > 1 ? Math.min(near * (0.45 + roll * 0.4), 5.4) : 1.8 + roll * 2.2;
+      let s = Math.min(2.9, Math.max(0.65, target / 1.86));
+      const crownHitsRoad = (scale: number) => {
+        const reach = 0.62 * scale;
+        for (let i = 0; i < 6; i += 1) {
+          const t = (i / 6) * Math.PI * 2;
+          if (occupancy.taken(x + Math.cos(t) * reach, z + Math.sin(t) * reach)) return true;
+        }
+        return false;
+      };
+      while (s > 0.65 && crownHitsRoad(s)) s *= 0.8;
+      if (crownHitsRoad(s)) continue;
       trees.push({
         x,
         z,
-        s: 0.75 + hash(x, z) * 0.6,
+        s,
         color: palette[Math.floor(hash(z, x) * palette.length)] ?? GREEN[0],
       });
     }
   }
 
   const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
+  const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
+  const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
+  const cars: Placement[] = [];
+  for (const way of roadWays) {
+    const origin = way.points[0] ?? [0, 0];
+    const side = hash(origin[0], origin[1]) > 0.5 ? 0.28 : -0.28;
+    for (const spot of along(way.points, 8, side)) {
+      if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
+      cars.push({
+        ...spot,
+        color: CAR_COLORS[Math.floor(hash(spot.z, spot.x) * CAR_COLORS.length)] ?? CAR_COLORS[0],
+      });
+    }
+  }
+  const people: Placement[] = [];
+  for (const way of model.parsed.ways) {
+    if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
+    for (const spot of along(way.points, 4.2, 0)) {
+      if (people.length >= 460 || hash(spot.x + 2, spot.z) < 0.52) continue;
+      people.push({
+        ...spot,
+        color: SHIRTS[Math.floor(hash(spot.z + 1, spot.x) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
+  for (const park of parks) {
+    if (people.length >= 520 || hash(park.x, park.z) < 0.3) continue;
+    const extras = 1 + Math.floor(hash(park.z, park.x) * 3);
+    for (let i = 0; i < extras && people.length < 520; i += 1) {
+      const angle = hash(park.x + i, park.z) * Math.PI * 2;
+      const dist = (0.25 + hash(park.z + i, park.x) * 0.45) * Math.min(park.rx, park.rz);
+      people.push({
+        x: park.x + Math.cos(angle) * dist,
+        z: park.z + Math.sin(angle) * dist,
+        rot: angle,
+        color: SHIRTS[Math.floor(hash(park.x + i, park.z + 4) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
   const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
   const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
   const benches = model.parsed.ways
@@ -536,7 +707,6 @@ function buildCity(model: CityModel): Built {
     garden: garden.geometry(),
     metal: metal.geometry(),
     stone: stone.geometry(),
-    brick: brick.geometry(),
     roads: roads.geometry(),
     lines: lines.geometry(),
     lit: lit.geometry(),
@@ -546,6 +716,10 @@ function buildCity(model: CityModel): Built {
       path: walks.path.geometry(),
     },
     trees,
+    parks,
+    ponds,
+    cars,
+    people,
     lamps,
     hydrants,
     benches,
@@ -595,43 +769,9 @@ function mapFor(model: CityModel): CityMap {
 
 /* —— Materials and shared shapes —— */
 
-/** Brick courses and a few windows, tiled in world-unit UVs. */
-function brickMap() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return texture;
-  ctx.fillStyle = "#c46b52";
-  ctx.fillRect(0, 0, 128, 128);
-  ctx.fillStyle = "#ead7cb";
-  for (let row = 0; row < 8; row += 1) {
-    ctx.fillRect(0, row * 16, 128, 2);
-    const offset = row % 2 === 0 ? 0 : 32;
-    for (let x = offset; x < 128; x += 64) ctx.fillRect(x, row * 16, 2, 16);
-  }
-  ctx.fillStyle = "#d5e3ea";
-  for (const [x, y] of [
-    [20, 28],
-    [76, 28],
-    [20, 92],
-    [76, 92],
-  ] as const) {
-    ctx.fillRect(x, y, 22, 26);
-  }
-  texture.needsUpdate = true;
-  return texture;
-}
-
 function useMaterials() {
   const materials = useMemo(() => {
     const maps = worldCurtainWall(BAY, FLOOR_H);
-    const bricks = brickMap();
     const plain = (color: string, extra: THREE.MeshStandardMaterialParameters = {}) =>
       new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
     return {
@@ -653,7 +793,6 @@ function useMaterials() {
         metal: plain(ROOF_METAL, { metalness: 0.5, roughness: 0.35 }),
         garden: plain(ROOF_GARDEN, { roughness: 0.95 }),
         stone: plain(STONE, { roughness: 0.72 }),
-        brick: new THREE.MeshStandardMaterial({ map: bricks, roughness: 0.86 }),
         road: plain("#3b4448", { roughness: 0.85 }),
         line: new THREE.MeshStandardMaterial({
           color: SMART_LINE,
@@ -665,6 +804,12 @@ function useMaterials() {
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
+        park: plain("#3e7c4c", { roughness: 0.95 }),
+        water: new THREE.MeshStandardMaterial({
+          color: "#3f8fd4",
+          roughness: 0.08,
+          metalness: 0.55,
+        }),
       },
     };
   }, []);
@@ -672,7 +817,6 @@ function useMaterials() {
     () => () => {
       materials.maps.color.dispose();
       materials.maps.rough.dispose();
-      materials.surfaces.brick.map?.dispose();
       for (const m of materials.glass) m.dispose();
       for (const m of Object.values(materials.surfaces)) m.dispose();
     },
@@ -693,6 +837,10 @@ function useFurniture() {
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
         seat: at(new THREE.BoxGeometry(0.6, 0.035, 0.17), 0.17),
         back: at(new THREE.BoxGeometry(0.6, 0.17, 0.025), 0.27, -0.07),
+        car: at(new THREE.BoxGeometry(1.35, 0.36, 0.68), 0.28),
+        cabin: at(new THREE.BoxGeometry(0.62, 0.28, 0.58), 0.56, -0.06),
+        body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
+        head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
       },
       looks: {
         bark: new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
@@ -706,6 +854,9 @@ function useFurniture() {
         }),
         red: new THREE.MeshStandardMaterial({ color: "#e08978", roughness: 0.45 }),
         wood: new THREE.MeshStandardMaterial({ color: "#c9a77c", roughness: 0.7 }),
+        paint: new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.45 }),
+        shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
+        skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
       },
     };
   }, []);
@@ -763,6 +914,8 @@ function Instanced({
  */
 export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
   const { glass, surfaces } = useMaterials();
+  const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
+  useEffect(() => () => pondShape.dispose(), [pondShape]);
   const { shapes, looks } = useFurniture();
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
@@ -788,7 +941,6 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         built.garden,
         built.metal,
         built.stone,
-        built.brick,
         built.roads,
         built.lines,
         built.lit,
@@ -825,11 +977,39 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           raycast={() => null}
         />
       ))}
-      <mesh geometry={built.brick} material={surfaces.brick} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.stone} material={surfaces.stone} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
       <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />
 
+      {built.parks.map((park) => (
+        <mesh
+          key={`park-${park.x.toFixed(1)}-${park.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.park}
+          position={[park.x, 0.03, park.z]}
+          rotation={[-Math.PI / 2, park.rot, 0]}
+          scale={[park.rx, park.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.ponds.map((pond) => (
+        <mesh
+          key={`${pond.x.toFixed(1)}-${pond.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.water}
+          position={[pond.x, 0.045, pond.z]}
+          rotation={[-Math.PI / 2, pond.rot, 0]}
+          scale={[pond.rx, pond.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.cabin} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
       <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
       <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />

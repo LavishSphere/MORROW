@@ -98,5 +98,14 @@ export function worldCurtainWall(bay: number, floor: number) {
   return { color, rough };
 }
 
-/** A few cool glass tints, so the skyline is not one flat color. */
-export const GLASS_TINTS = ["#7fa9c2", "#8db5c9", "#6f9cb8", "#94bccb", "#86aec4"] as const;
+/** Distinct glass colors. Still glass, not masonry. */
+export const GLASS_TINTS = [
+  "#9ec4d6",
+  "#6fbfc4",
+  "#4f86b8",
+  "#d9c7a4",
+  "#7eae9a",
+  "#8aa0b5",
+  "#5b78b0",
+  "#c9dbe6",
+] as const;
