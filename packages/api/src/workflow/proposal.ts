@@ -52,6 +52,8 @@ const draftCarrierSchema = factsCarrierSchema.extend({
   aiGenerated: z.boolean(),
   warnings: z.array(z.string()),
   geminiAvailable: z.boolean(),
+  /** The Gemini model that wrote the draft, or null for the template. */
+  draftModel: z.string().nullable(),
 });
 
 const savedProposalSchema = z.object({
@@ -159,6 +161,7 @@ const generateDraft = createStep({
     const keyPresent = geminiConfigured();
     let draft: DraftProposal;
     let aiGenerated = false;
+    let draftModel: string | null = null;
 
     if (keyPresent) {
       const gemini = await draftWithGemini(inputData.facts);
@@ -166,6 +169,7 @@ const generateDraft = createStep({
         try {
           draft = parseDraftProposal(gemini.draft);
           aiGenerated = true;
+          draftModel = gemini.model;
         } catch {
           draft = buildTemplateDraft(inputData.facts);
           warnings.push(
@@ -176,7 +180,7 @@ const generateDraft = createStep({
         draft = buildTemplateDraft(inputData.facts);
         console.error("[@morrow/api] Gemini draft skipped:", gemini.reason);
         warnings.push(
-          "Gemini did not return a draft. This proposal uses the template.",
+          `Gemini did not return a draft (tried ${gemini.tried.length} model${gemini.tried.length === 1 ? "" : "s"}). This proposal uses the template.`,
         );
       }
     } else {
@@ -192,6 +196,7 @@ const generateDraft = createStep({
       aiGenerated,
       warnings,
       geminiAvailable: keyPresent,
+      draftModel,
     };
   },
 });
@@ -220,6 +225,7 @@ const returnProposal = createStep({
       warnings: inputData.warnings,
       geminiAvailable: inputData.geminiAvailable,
       apiAvailable: true,
+      draftModel: inputData.draftModel,
     });
     return {
       proposal,
