@@ -10,6 +10,7 @@ import {
   handleGetProposal,
 } from "./routes/proposals.ts";
 import { handleTransitVehicles } from "./routes/transit.ts";
+import { handleOsm } from "./routes/osm.ts";
 
 export type MorrowApiServer = ReturnType<typeof createServer>;
 
@@ -54,6 +55,11 @@ async function dispatch(
 
   if (req.method === "GET" && pathname === "/api/transit/vehicles") {
     await handleTransitVehicles(req, res, url);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/osm") {
+    await handleOsm(req, res);
     return;
   }
 

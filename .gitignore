@@ -13,3 +13,6 @@ npm-debug.log*
 .vite
 *.tsbuildinfo
 lychee/
+
+# API map cache (local runs)
+.osm-cache/

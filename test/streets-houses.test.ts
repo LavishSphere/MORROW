@@ -4,9 +4,11 @@ import { test } from "node:test";
 import { neighborhoodGeoJson, tileKey, waysFromOverpass } from "../src/data/overpass.ts";
 
 test("loaded cities use their real OpenStreetMap streets, with a labeled stand-in only as a fallback", async () => {
-  const loader = await readFile("src/data/overpass.ts", "utf8");
-  // Real streets first, then the wider coastline so a coastal city gets the ocean.
-  assert.match(loader, /await fetchArea\(place\.lng, place\.lat\)/);
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
+  // The place's own tile (cacheable by the API), with the wider coastline alongside so a coastal city gets the ocean.
+  assert.match(loader, /const key = tileKey\(place\.lng, place\.lat\)/);
+  assert.match(loader, /await fetchTile\(key\)/);
+  assert.match(loader, /tiles: \[key\]/);
   assert.match(loader, /fetchCoastline\(place\.lng, place\.lat\)/);
   // The procedural grid only when OpenStreetMap cannot be reached, and it says so.
   assert.match(loader, /procedural: true/);
@@ -46,7 +48,7 @@ test("nearby points share one download area", () => {
 test("walking near the edge of a loaded city loads the real area ahead", async () => {
   const hook = await readFile("src/data/useCityStreaming.ts", "utf8");
   const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
-  const loader = await readFile("src/data/overpass.ts", "utf8");
+  const loader = (await readFile("src/data/overpass.ts", "utf8")) + (await readFile("shared/osmQueries.ts", "utf8"));
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const store = await readFile("src/showcase/issueStore.ts", "utf8");
   assert.match(slot, /useCityStreaming\(neighborhood, onNeighborhood\)/);

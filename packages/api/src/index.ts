@@ -1,5 +1,6 @@
 import { geminiConfigured, geminiModel } from "./draft/gemini.ts";
 import { checkOpenRouter } from "./draft/openrouter.ts";
+import { warmMajorCities } from "./routes/osm.ts";
 import {
   databaseUrlConfigured,
   initTiger,
@@ -52,4 +53,8 @@ if (isMain) {
   );
   // Key accepted? Credit left? Logged here only, never sent to the browser.
   void checkOpenRouter().then((line) => console.log(`[@morrow/api] ${line}`));
+  // Major cities' map data, fetched once in the background so visitors load them from disk.
+  void warmMajorCities((line) => console.log(`[@morrow/api] ${line}`)).catch((err: unknown) =>
+    console.error("[@morrow/api] OSM pre-load stopped:", err instanceof Error ? err.message : err),
+  );
 }

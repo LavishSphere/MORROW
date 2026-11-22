@@ -61,6 +61,8 @@ const STONE = "#d9dcd8";
 const ROOF_METAL = "#dfe5e8";
 const ROOF_GARDEN = "#5f8f55";
 const LAWN = "#7d9a68";
+/** Beaches and sand from OpenStreetMap (natural=beach, natural=sand). */
+const SAND = "#ead7a6";
 const SMART_LINE = "#8ff3ff";
 const LOGO_BLUE = "#1488ff";
 const { green: GREEN, autumn: AUTUMN } = lookTrees(["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"], ["#b98c3a", "#c99a4c", "#b8692c"]);
@@ -1047,6 +1049,7 @@ type Built = {
   /** Tallest building top near the place's center, scene units. */
   skyline: number;
   water: THREE.BufferGeometry;
+  sand: THREE.BufferGeometry;
   streams: THREE.BufferGeometry;
   /** Road surface of the big bridges, drawn clear of the fog. */
   farDecks: THREE.BufferGeometry;
@@ -1640,6 +1643,14 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
     cap(water, body.ring, 0.025);
     occupancy.markRing(body.ring, 0.3);
   }
+  // Beaches and sand: a warm sand layer just above the lawn, with no trees,
+  // benches, or parks on it.
+  const sandy = new Bucket();
+  for (const ring of model.parsed.sand ?? []) {
+    if (ring.length < 3) continue;
+    cap(sandy, ring, 0.018);
+    occupancy.markPolygon([ring]);
+  }
   // The sea runs past the city edge on the water side only, so looking
   // outward shows ocean instead of stopping at the streets. Not a wall.
   const coastLines = model.parsed.coastlines.map((line) => line.points);
@@ -1993,6 +2004,7 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
     peoplePants,
     traffic,
     water: water.geometry(),
+    sand: sandy.geometry(),
     streams: streams.geometry(),
     farDecks: farDecks.geometry(),
     bridges: [...trim.values()].map(({ color, far, bucket }) => ({ color, far, geometry: bucket.geometry() })),
@@ -2118,6 +2130,7 @@ function useMaterials() {
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
         park: plain("#3e7c4c", { roughness: 0.95 }),
+        sand: plain(SAND, { roughness: 1 }),
         water: new THREE.MeshStandardMaterial({
           color: "#1a6e96",
           roughness: 0.35,
@@ -2744,6 +2757,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         built.metal,
         built.stone,
         built.water,
+        built.sand,
         built.streams,
         built.roads,
         built.lines,
@@ -2769,6 +2783,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
       <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
+      <mesh geometry={built.sand} material={surfaces.sand} receiveShadow raycast={() => null} />
       <mesh geometry={built.water} material={surfaces.water} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.streams} material={surfaces.stream} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />

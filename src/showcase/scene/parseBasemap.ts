@@ -11,7 +11,8 @@ export type BasemapLayer =
   | "sidewalk"
   | "water"
   | "waterway"
-  | "coastline";
+  | "coastline"
+  | "sand";
 
 export type BuildingFootprint = {
   id: string;
@@ -25,7 +26,7 @@ export type BuildingFootprint = {
 export type WayRibbon = {
   id: string;
   edgeId?: string;
-  layer: Exclude<BasemapLayer, "building" | "water" | "waterway" | "coastline">;
+  layer: Exclude<BasemapLayer, "building" | "water" | "waterway" | "coastline" | "sand">;
   name?: string;
   points: readonly (readonly [number, number])[];
   /** Scene units. Half of the resolved carriageway width, scaled into the miniature. */
@@ -79,6 +80,8 @@ export type ParsedBasemap = {
   water: WaterBody[];
   waterways: Waterway[];
   coastlines: Coastline[];
+  /** Beaches and sand, as closed rings in local [x, z]. */
+  sand?: (readonly (readonly [number, number])[])[];
   /** Rail track, platforms, and stations (features with layer rail, rail_platform, station). */
   rail: RailNetwork;
 };
@@ -143,7 +146,8 @@ function layerOf(properties: Record<string, unknown> | null): BasemapLayer | nul
     layer === "sidewalk" ||
     layer === "water" ||
     layer === "waterway" ||
-    layer === "coastline"
+    layer === "coastline" ||
+    layer === "sand"
   ) {
     return layer;
   }
@@ -169,6 +173,7 @@ export function parseBasemap(
   const water: WaterBody[] = [];
   const waterways: Waterway[] = [];
   const coastlines: Coastline[] = [];
+  const sand: (readonly (readonly [number, number])[])[] = [];
 
   for (const feature of geoJson.features) {
     if (typeof feature !== "object" || feature === null) continue;
@@ -199,6 +204,14 @@ export function parseBasemap(
         ring,
         height: buildingHeight(f.properties ?? null),
       });
+      continue;
+    }
+
+    if (layer === "sand" && f.geometry.type === "Polygon") {
+      const rings = f.geometry.coordinates as unknown[];
+      if (!Array.isArray(rings) || !Array.isArray(rings[0])) continue;
+      const ring = projectRing(rings[0] as unknown[], projector.project);
+      if (ring.length >= 3) sand.push(ring);
       continue;
     }
 
@@ -249,6 +262,7 @@ export function parseBasemap(
       layer !== "water" &&
       layer !== "waterway" &&
       layer !== "coastline" &&
+      layer !== "sand" &&
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
     ) {
@@ -295,5 +309,5 @@ export function parseBasemap(
   ) {
     return null;
   }
-  return { buildings, ways, water, waterways, coastlines, rail };
+  return { buildings, ways, water, waterways, coastlines, rail, ...(sand.length ? { sand } : {}) };
 }
