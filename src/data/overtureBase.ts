@@ -11,7 +11,7 @@ import { parquetReadObjects } from "hyparquet";
 import { compressors } from "hyparquet-compressors";
 import { filesFor, groupOverlaps, intersects, openParquet, type NeighborhoodBox } from "./overtureBuildings.ts";
 import type { OsmWay } from "./overpass.ts";
-import { linesOf, outerRingsOf } from "./overtureGeometry.ts";
+import { linesOf, outerRingsOf, type Line } from "./overtureGeometry.ts";
 import { piersFromRow, type PierDeck } from "./overturePiers.ts";
 
 export { linesOf, outerRingsOf };

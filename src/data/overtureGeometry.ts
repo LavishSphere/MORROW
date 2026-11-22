@@ -1,6 +1,6 @@
 /** GeoJSON geometry helpers for Overture rows (hyparquet decodes GeoParquet to GeoJSON). */
 
-type Line = [number, number][];
+export type Line = [number, number][];
 
 function point(value: unknown): [number, number] | null {
   if (!Array.isArray(value) || typeof value[0] !== "number" || typeof value[1] !== "number") return null;
