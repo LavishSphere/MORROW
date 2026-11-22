@@ -1531,8 +1531,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   useEffect(() => publishMap(mapFor(cityModel)), [cityModel]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {
-    const issueSource = geoJson ?? town;
-    const issues = detectIssues(issueSource).map((issue) => {
+    const source = geoJson ?? town;
+    const issues = detectIssues(source).map((issue) => {
       const [x, z] = cityModel.project(issue.point[0], issue.point[1]);
       const path = issue.line.map(([lon, lat]) => {
         const [px, pz] = cityModel.project(lon, lat);
@@ -1540,7 +1540,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       });
       return { ...issue, x, z, path };
     });
-    publishIssues(issues, issueSource, !geoJson);
+    publishIssues(issues, source, !geoJson);
   }, [cityModel, geoJson]);
   useEffect(
     () => () => {
