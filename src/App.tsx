@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
+import { FlowNudge } from './components/FlowNudge'
 import { ImprovePage } from './components/ImprovePage'
 import { ModeToolbar } from './components/ModeToolbar'
 import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { useChromeInsets } from './components/useChromeInsets'
+import { useFlowNudge } from './components/useFlowNudge'
 import { useIssueState } from './showcase/issueStore'
 import type { LoadedNeighborhood } from './data/overpass'
 import type { AppMode } from './types'
@@ -26,6 +28,8 @@ export default function App() {
     if (next !== 'explore') setPanelMode(next)
   }
   const panelOpen = mode !== 'explore'
+  // "Next: Improve" and so on, pointing along Explore → Improve → Compare → Propose.
+  const nudge = useFlowNudge(mode)
   // Clicking an issue marker in the city opens it in Improve.
   const { openImprove } = useIssueState()
   useEffect(() => {
@@ -56,7 +60,7 @@ export default function App() {
   return (
     <div
       ref={shellRef}
-      className={`app-shell app-shell--city${panelOpen ? ' has-panel' : ''}${reducedMotion ? ' is-reduced-motion' : ''}`}
+      className={`app-shell app-shell--city${panelOpen ? ' has-panel' : ''}${nudge.step ? ' has-nudge' : ''}${reducedMotion ? ' is-reduced-motion' : ''}`}
     >
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes
@@ -90,6 +94,7 @@ export default function App() {
           {panelMode === 'compare' && <CompareSheet />}
           {panelMode === 'propose' && <ProposeSheet />}
         </OverlayPanel>
+        <FlowNudge step={nudge.step} onGo={changeMode} onClose={nudge.dismiss} />
       </main>
 
       <div id="mode-toolbar">
