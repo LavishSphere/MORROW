@@ -294,8 +294,14 @@ export function colourForRef(ref: string | null | undefined, network?: string | 
   return null;
 }
 
-/** Colours and refs from the route relations a way belongs to (Overpass "railref" rows). */
-export type RailRef = { colours: string[]; refs: string[]; networks: string[] };
+/** One route relation a track way belongs to. */
+export type RouteRelation = { colour: string | null; ref: string | null; network: string | null };
+
+/**
+ * The route relations a way belongs to (Overpass "railref" rows), plus the
+ * distinct colours, refs, and networks among them.
+ */
+export type RailRef = { relations: RouteRelation[]; colours: string[]; refs: string[]; networks: string[] };
 
 function splitList(value: unknown): string[] {
   if (typeof value !== "string") return [];
@@ -305,7 +311,10 @@ function splitList(value: unknown): string[] {
     .filter(Boolean);
 }
 
-/** Collect "railref" rows into a lookup by way id. */
+/**
+ * Collect "railref" rows into a lookup by way id. Each row is one route
+ * relation; a row whose values are ';'-joined sets still works.
+ */
 export function railRefsFrom(elements: readonly unknown[]): Map<number, RailRef> {
   const refs = new Map<number, RailRef>();
   for (const element of elements) {
@@ -314,29 +323,56 @@ export function railRefsFrom(elements: readonly unknown[]): Map<number, RailRef>
     if (row.type !== "railref") continue;
     const wayId = Number(row.tags?.way);
     if (!Number.isFinite(wayId)) continue;
-    const prev = refs.get(wayId) ?? { colours: [], refs: [], networks: [] };
+    const colours = splitList(row.tags?.colour);
+    const names = splitList(row.tags?.ref);
+    const networks = splitList(row.tags?.network);
+    if (colours.length + names.length + networks.length === 0) continue;
+    const prev = refs.get(wayId) ?? { relations: [], colours: [], refs: [], networks: [] };
     const add = (list: string[], values: string[]) => {
       for (const v of values) if (!list.includes(v)) list.push(v);
     };
-    add(prev.colours, splitList(row.tags?.colour));
-    add(prev.refs, splitList(row.tags?.ref));
-    add(prev.networks, splitList(row.tags?.network));
+    add(prev.colours, colours);
+    add(prev.refs, names);
+    add(prev.networks, networks);
+    if (colours.length <= 1 && names.length <= 1 && networks.length <= 1) {
+      prev.relations.push({ colour: colours[0] ?? null, ref: names[0] ?? null, network: networks[0] ?? null });
+    } else {
+      // A joined set: values no longer line up, so each colour counts once.
+      for (const colour of colours) prev.relations.push({ colour, ref: null, network: null });
+      if (colours.length === 0) {
+        for (const ref of names) prev.relations.push({ colour: null, ref, network: networks[0] ?? null });
+      }
+    }
     refs.set(wayId, prev);
   }
   return refs;
 }
 
 /**
- * One colour for a rail way: its own colour tag, then its route relations'
- * colour, then the ref/name fallback table. Null means neutral track.
+ * One colour for a rail way: its own colour tag, then the colour most of
+ * its route relations share (intercity Amtrak routes do not count, so a
+ * shared corridor takes the local line's colour), then the ref/name
+ * fallback table. Null means neutral track.
  */
 export function lineColour(tags: Record<string, unknown>, ref?: RailRef | null, name?: string | null): string | null {
   const own = normalizeColour(tags.colour);
   if (own) return own;
-  const colours = (ref?.colours ?? []).map(normalizeColour).filter((c): c is string => Boolean(c));
-  if (colours.length > 0) return colours[0]!;
-  const network = ref?.networks[0] ?? (typeof tags.network === "string" ? tags.network : null);
-  for (const candidate of [...(ref?.refs ?? []), typeof tags.ref === "string" ? tags.ref : null, name ?? null]) {
+  const counts = new Map<string, number>();
+  let intercity = false;
+  for (const relation of ref?.relations ?? []) {
+    if (systemOf(relation.network) === "amtrak" || systemOf(relation.ref) === "amtrak") {
+      intercity = true;
+      continue;
+    }
+    const colour = normalizeColour(relation.colour) ?? colourForRef(relation.ref, relation.network);
+    if (colour && colour !== NEUTRAL_TRACK) counts.set(colour, (counts.get(colour) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [colour, count] of counts) if (!best || count > counts.get(best)!) best = colour;
+  if (best) return best;
+  if (intercity) return null;
+  const network = typeof tags.network === "string" ? tags.network : null;
+  for (const candidate of [typeof tags.ref === "string" ? tags.ref : null, name ?? null]) {
     const colour = colourForRef(candidate, network);
     if (colour) return colour === NEUTRAL_TRACK ? null : colour;
   }
@@ -478,16 +514,24 @@ export function parseRail(features: readonly unknown[], project: (lon: number, l
       });
     }
   }
-  // Stations wear the colours of the lines passing close by.
+  // A line's colour written two ways ("green" and #00843D) becomes one:
+  // the colour more ways use.
+  const tally = new Map<string, number>();
+  for (const line of lines) if (line.colour) tally.set(line.colour, (tally.get(line.colour) ?? 0) + 1);
+  const ranked = [...tally.keys()].sort((a, b) => tally.get(b)! - tally.get(a)!);
+  const canonical = (colour: string) => ranked.find((c) => similarColour(c, colour)) ?? colour;
+  for (const line of lines) if (line.colour) line.colour = canonical(line.colour);
+  // Stations wear the colours of the lines passing close by, then their own tag's.
   for (const station of stations) {
     if (station.entrance) continue;
+    const own = station.colours.map(canonical);
+    const chips: string[] = [];
     for (const line of lines) {
-      if (!line.colour || line.minor || station.colours.includes(line.colour)) continue;
-      if (nearestOnPolyline(station.x, station.z, line.points).distance < STATION_REACH) {
-        station.colours.push(line.colour);
-      }
+      if (!line.colour || line.minor || chips.includes(line.colour)) continue;
+      if (nearestOnPolyline(station.x, station.z, line.points).distance < STATION_REACH) chips.push(line.colour);
     }
-    station.colours = station.colours.slice(0, 5);
+    for (const colour of own) if (!chips.some((c) => similarColour(c, colour))) chips.push(colour);
+    station.colours = chips.slice(0, 5);
   }
   return { lines, platforms, stations };
 }

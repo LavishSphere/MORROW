@@ -336,10 +336,10 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
 
 /**
  * Track, platforms, and station nodes, plus one "railref" row per track way
- * carrying its route relations' colour, ref, and network.
+ * and route relation, carrying that relation's colour, ref, and network.
  */
 function railQuery(box: string) {
-  return `way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge|funicular)$"](${box})->.rail;.rail out tags geom 600;way["railway"="platform"](${box});out tags geom 150;node["railway"~"^(station|halt|tram_stop|subway_entrance)$"](${box});out body 250;foreach.rail->.w(rel(bw.w)["route"~"^(subway|light_rail|train|tram|monorail)$"]->.rr;make railref way=w.u(id()),colour=rr.set(t["colour"]),ref=rr.set(t["ref"]),network=rr.set(t["network"]);out;);`
+  return `way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge|funicular)$"](${box})->.rail;.rail out tags geom 600;way["railway"="platform"](${box});out tags geom 150;node["railway"~"^(station|halt|tram_stop|subway_entrance)$"](${box});out body 250;foreach.rail->.w(rel(bw.w)["route"~"^(subway|light_rail|train|tram|monorail)$"]->.rr;foreach.rr->.r(make railref way=w.u(id()),colour=r.u(t["colour"]),ref=r.u(t["ref"]),network=r.u(t["network"]);out;););`
 }
 
 /**

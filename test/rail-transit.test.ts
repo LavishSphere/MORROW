@@ -31,7 +31,8 @@ test("rail ways pick up their route relation's colour and ref", () => {
       { type: "way", id: 11, tags: { railway: "rail", name: "Worcester Main Line" }, geometry: line([-71.1, 42.34], [-71.09, 42.345]) },
       { type: "way", id: 12, tags: { railway: "rail", service: "yard" }, geometry: line([-71.1, 42.34], [-71.1, 42.341]) },
       { type: "railref", id: 1, tags: { way: "10", colour: "#DA291C", ref: "Red", network: "MBTA" } },
-      { type: "railref", id: 2, tags: { way: "11", colour: "", ref: "CR-Worcester;Lake Shore Limited", network: "MBTA;Amtrak" } },
+      { type: "railref", id: 2, tags: { way: "11", colour: "", ref: "CR-Worcester", network: "MBTA" } },
+      { type: "railref", id: 3, tags: { way: "11", colour: "#333399", ref: "Lake Shore Limited", network: "Amtrak" } },
     ],
   });
   assert.deepEqual(
@@ -55,10 +56,22 @@ test("railref rows merge by way id and the fallback table covers many systems", 
     { type: "railref", tags: { way: "5", colour: "#00843D", ref: "Green-C" } },
     { type: "way", id: 5 },
   ]);
-  assert.deepEqual(refs.get(5), { colours: ["#00843D"], refs: ["Green-B", "Green-C"], networks: [] });
+  assert.deepEqual(refs.get(5)?.refs, ["Green-B", "Green-C"]);
+  assert.deepEqual(refs.get(5)?.colours, ["#00843D"]);
+  assert.equal(refs.get(5)?.relations.length, 2);
   assert.equal(lineColour({}, refs.get(5)), "#00843d");
   // The way's own colour wins.
   assert.equal(lineColour({ colour: "#123456" }, refs.get(5)), "#123456");
+  // The colour most relations share wins; a lone regional service does not.
+  const shared = railRefsFrom([
+    { type: "railref", tags: { way: "6", colour: "#78BC42", ref: "CapeFlyer", network: "CCRTA" } },
+    { type: "railref", tags: { way: "6", colour: "#80276C", ref: "CR-Kingston", network: "MBTA" } },
+    { type: "railref", tags: { way: "6", colour: "#80276C", ref: "CR-Greenbush", network: "MBTA" } },
+  ]);
+  assert.equal(lineColour({}, shared.get(6)), "#80276c");
+  // Old-style joined rows still give a colour.
+  const joined = railRefsFrom([{ type: "railref", tags: { way: "7", colour: "#DA291C;#DA291C", ref: "Red;Mattapan" } }]);
+  assert.equal(lineColour({}, joined.get(7)), "#da291c");
 
   assert.equal(colourForRef("Green-D"), "#00843d");
   assert.equal(colourForRef("Red", "MBTA"), "#da291c");
@@ -75,7 +88,10 @@ test("railref rows merge by way id and the fallback table covers many systems", 
   assert.equal(colourForRef("A"), null);
   assert.equal(colourForRef("Purple Line"), "#7b3f98");
   // Amtrak is neutral track.
-  assert.equal(lineColour({ ref: "Northeast Regional" }, { colours: [], refs: ["Acela"], networks: ["Amtrak"] }), null);
+  assert.equal(
+    lineColour({ ref: "Northeast Regional" }, { relations: [{ colour: "#333399", ref: "Acela", network: "Amtrak" }], colours: [], refs: [], networks: [] }),
+    null,
+  );
   assert.equal(normalizeColour("red"), "#d52b1e");
   assert.equal(normalizeColour("#ABC"), "#aabbcc");
   assert.equal(normalizeColour("DA291C"), "#da291c");
@@ -160,11 +176,33 @@ test("the scene network carries tunnels, bridges, minor track, and station colou
     ],
   );
   const downtown = net.stations.find((s) => s.name === "Downtown")!;
+  assert.equal(downtown.wheelchair, "yes");
   // The red tunnel passes 0.5 units away; the siding does not lend its colour.
   assert.deepEqual(downtown.colours, ["#da291c"]);
   assert.equal(net.stations.find((s) => s.id === "5")?.entrance, true);
   assert.equal(net.platforms[0]?.area, true);
   assert.equal(net.platforms[0]?.points.length, 3);
+});
+
+test("one line mapped with a name and a hex colour draws in one colour", () => {
+  const project = (lon: number, lat: number): Pt => [lon * 1000, -lat * 1000];
+  const feature = (id: number, x: number, colour: string) => ({
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: [[x, 0], [x, 0.01]] },
+    properties: { layer: "rail", osmId: id, railway: "subway", colour },
+  });
+  const net = parseRail(
+    [
+      feature(1, 0, "#00843D"),
+      feature(2, 0.001, "#00843D"),
+      feature(3, 0.002, "green"),
+      { type: "Feature", geometry: { type: "Point", coordinates: [0.1, 0.005] }, properties: { layer: "station", osmId: 9, railway: "station", colour: "green;blue" } },
+    ],
+    project,
+  );
+  assert.deepEqual(net.lines.map((l) => l.colour), ["#00843d", "#00843d", "#00843d"]);
+  // Far from any line: the station's own tag colours, matched to the line's colour.
+  assert.deepEqual(net.stations[0]?.colours, ["#00843d", "#1f5fbf"]);
 });
 
 test("a point snaps to the nearest polyline of its colour", () => {
@@ -188,7 +226,7 @@ test("the loader asks Overpass for track, platforms, stations, and route colours
   const loader = await readFile("src/data/overpass.ts", "utf8");
   assert.match(loader, /way\["railway"~"\^\(rail\|subway\|light_rail\|tram\|monorail\|narrow_gauge\|funicular\)\$"\]/);
   assert.match(loader, /node\["railway"~"\^\(station\|halt\|tram_stop\|subway_entrance\)\$"\]/);
-  assert.match(loader, /make railref way=w\.u\(id\(\)\),colour=rr\.set\(t\["colour"\]\)/);
+  assert.match(loader, /make railref way=w\.u\(id\(\)\),colour=r\.u\(t\["colour"\]\)/);
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   assert.match(city, /<RailLayer\s+network=\{cityModel\.parsed\.rail\}/);
   assert.match(city, /if \(!track\.underground\) occupancy\.markLine\(track\.points, RAIL_CLEARANCE\)/);
