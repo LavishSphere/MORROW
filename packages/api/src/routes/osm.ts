@@ -82,15 +82,37 @@ async function writeCached(key: string, gz: Buffer) {
 }
 
 let busy = 0;
-const waiting: (() => void)[] = [];
-async function slot<T>(work: () => Promise<T>): Promise<T> {
-  if (busy >= UPSTREAM_SLOTS) await new Promise<void>((resolve) => waiting.push(resolve));
+let busyBackground = 0;
+const waitingLive: (() => void)[] = [];
+const waitingBackground: (() => void)[] = [];
+
+/**
+ * Visitors first: a visitor's download takes any free slot and jumps the
+ * queue. Pre-loading uses at most one slot, and only while no visitor waits,
+ * so it never slows down someone loading a city.
+ */
+function canStart(background: boolean) {
+  if (busy >= UPSTREAM_SLOTS) return false;
+  return !background || (busyBackground < 1 && waitingLive.length === 0);
+}
+
+function wakeNext() {
+  if (waitingLive.length && canStart(false)) waitingLive.shift()?.();
+  else if (waitingBackground.length && canStart(true)) waitingBackground.shift()?.();
+}
+
+async function slot<T>(work: () => Promise<T>, background: boolean): Promise<T> {
+  while (!canStart(background)) {
+    await new Promise<void>((resolve) => (background ? waitingBackground : waitingLive).push(resolve));
+  }
   busy += 1;
+  if (background) busyBackground += 1;
   try {
     return await work();
   } finally {
     busy -= 1;
-    waiting.shift()?.();
+    if (background) busyBackground -= 1;
+    wakeNext();
   }
 }
 
@@ -138,13 +160,13 @@ async function askOverpass(query: string): Promise<Buffer> {
 const inflight = new Map<string, Promise<Buffer>>();
 
 /** The gzipped JSON answer for a query, from disk or from Overpass. */
-export async function osmAnswer(query: string): Promise<{ gz: Buffer; hit: boolean }> {
+export async function osmAnswer(query: string, background = false): Promise<{ gz: Buffer; hit: boolean }> {
   const key = keyFor(query);
   const cached = await readCached(key);
   if (cached) return { gz: cached, hit: true };
   let pending = inflight.get(key);
   if (!pending) {
-    pending = slot(() => askOverpass(query))
+    pending = slot(() => askOverpass(query), background)
       .then(async (gz) => {
         await writeCached(key, gz).catch((err: unknown) =>
           console.error("[@morrow/api] OSM cache write failed:", err instanceof Error ? err.message : err),
@@ -210,13 +232,16 @@ async function geocode(name: string): Promise<[number, number] | null> {
  * around each. Runs in the background, one download at a time, and skips
  * whatever is already cached. MORROW_PREWARM=0 turns it off.
  */
-export async function warmMajorCities(log: (line: string) => void): Promise<void> {
+export async function warmMajorCities(
+  log: (line: string) => void,
+  cities: readonly string[] = MAJOR_CITIES,
+): Promise<void> {
   if (process.env.MORROW_PREWARM?.trim() === "0") {
     log("OSM pre-load: off (MORROW_PREWARM=0)");
     return;
   }
   const places: [string, number, number][] = [];
-  for (const name of MAJOR_CITIES) {
+  for (const name of cities) {
     const at = await geocode(name);
     if (at) places.push([name, at[0], at[1]]);
   }
@@ -231,7 +256,7 @@ export async function warmMajorCities(log: (line: string) => void): Promise<void
     for (const [name, lng, lat] of places) {
       for (const query of queries(lng, lat)) {
         try {
-          const { hit } = await osmAnswer(query);
+          const { hit } = await osmAnswer(query, true);
           if (!hit) fetched += 1;
         } catch (err) {
           failed += 1;
