@@ -320,7 +320,7 @@ function cap(bucket: Bucket, ring: Ring, y: number) {
  * If the download stopped partway along a shore, a narrow strip on the water
  * side is drawn instead: a hint of the shoreline, never a flood.
  */
-function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number) {
+function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number): Ring[][] {
   const span = Math.max(80, bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
   // Try a box well past the city edge, then one just around it.
   for (const pad of [span * 1.5, span * 0.08]) {
@@ -333,9 +333,10 @@ function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number) {
     const { polygons, complete } = oceanPolygons(lines, rect);
     if (!complete) continue;
     for (const polygon of polygons) fill(bucket, polygon.outer, polygon.holes, y);
-    return;
+    return polygons.map((polygon) => [polygon.outer, ...polygon.holes]);
   }
   for (const coast of stitchCoast(lines)) shoreBand(bucket, coast, SHORE_FALLBACK, y);
+  return [];
 }
 
 /** About 40 m of water along a shore whose other pieces were not downloaded. */
@@ -561,6 +562,30 @@ class Occupancy {
     }
   }
 
+  /**
+   * Mark everything inside a polygon with holes (even-odd), row by row.
+   * Fast for the big ocean shapes, which can have thousands of points.
+   */
+  markPolygon(rings: readonly Ring[]) {
+    for (let r = 0; r < this.rows; r += 1) {
+      const z = this.bounds.minZ + (r + 0.5) * this.cell;
+      const xs: number[] = [];
+      for (const ring of rings) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+          const [xi, zi] = ring[i]!;
+          const [xj, zj] = ring[j]!;
+          if (zi > z !== zj > z) xs.push(xi + ((z - zi) * (xj - xi)) / (zj - zi));
+        }
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const c0 = Math.max(0, Math.floor((xs[k]! - this.bounds.minX) / this.cell));
+        const c1 = Math.min(this.cols - 1, Math.floor((xs[k + 1]! - this.bounds.minX) / this.cell));
+        for (let c = c0; c <= c1; c += 1) this.data[r * this.cols + c] = 1;
+      }
+    }
+  }
+
   taken(x: number, z: number) {
     const k = this.index(x, z);
     return k < 0 || this.data[k] === 1;
@@ -674,6 +699,17 @@ type Built = {
   streams: THREE.BufferGeometry;
 };
 
+/* —— Houses: siding walls and a pitched gable roof —— */
+
+/** OpenStreetMap building types drawn as houses rather than glass. */
+const HOUSE_KINDS = new Set(["house", "detached", "semidetached_house", "bungalow", "terrace", "residential"]);
+/**
+ * Untyped buildings ("yes") smaller than this footprint (about 250 m², in
+ * scene units²) are almost always homes or garages, so they get houses too.
+ */
+const SMALL_UNTYPED = 250 * 0.14 * 0.14;
+/** A recorded height above this (metres) is an apartment block, not a house. */
+const HOUSE_MAX_METRES = 13;
 const SIDING = ["#f2efe8", "#e8dcc4", "#c9d4dc", "#d9c4a6"] as const;
 const SHINGLE = ["#4a4f55", "#6b4f3f", "#3f4a5a"] as const;
 
@@ -695,6 +731,79 @@ function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
   ny /= len;
   nz /= len;
   bucket.push([...a, ...b, ...c], [nx, ny, nz], [0, 0, 1, 0, 0, 1]);
+}
+
+/**
+ * A house on a real footprint: siding walls, and a gable roof whose ridge
+ * runs along the footprint's longest side. Returns the roof peak height.
+ */
+function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: number, stories: number) {
+  const wallTop = 0.08 + stories * 0.62;
+  walls(siding, ring, 0, wallTop);
+
+  // Orient a box to the longest wall so the ridge follows the house.
+  let longest = 0;
+  let angle = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len > longest) {
+      longest = len;
+      angle = Math.atan2(bz - az, bx - ax);
+    }
+  }
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  let umin = Infinity;
+  let umax = -Infinity;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  for (const [x, z] of ring) {
+    const u = x * cos + z * sin;
+    const v = -x * sin + z * cos;
+    umin = Math.min(umin, u);
+    umax = Math.max(umax, u);
+    vmin = Math.min(vmin, v);
+    vmax = Math.max(vmax, v);
+  }
+  const eave = 0.12;
+  umin -= eave;
+  umax += eave;
+  vmin -= eave;
+  vmax += eave;
+  const vmid = (vmin + vmax) / 2;
+  const rise = Math.min(1.1, ((vmax - vmin) / 2) * 0.8);
+  const at = (u: number, v: number, y: number): Point3 => [u * cos - v * sin, y, u * sin + v * cos];
+  const A = at(umin, vmin, wallTop);
+  const B = at(umax, vmin, wallTop);
+  const C = at(umax, vmax, wallTop);
+  const D = at(umin, vmax, wallTop);
+  const R1 = at(umin, vmid, wallTop + rise);
+  const R2 = at(umax, vmid, wallTop + rise);
+  tri(roof, A, B, R2);
+  tri(roof, A, R2, R1);
+  tri(roof, D, R1, R2);
+  tri(roof, D, R2, C);
+  // Gable ends in the siding color.
+  tri(siding, A, R1, D);
+  tri(siding, B, C, R2);
+
+  if (seed > 0.5) {
+    const cu = umin + (umax - umin) * 0.75;
+    const cv = vmin + (vmax - vmin) * 0.3;
+    const half = 0.11;
+    const box: Ring = [
+      [cu - half, cv - half],
+      [cu + half, cv - half],
+      [cu + half, cv + half],
+      [cu - half, cv + half],
+    ].map(([u, v]) => [u * cos - v * sin, u * sin + v * cos] as const);
+    const chimneyTop = wallTop + rise + 0.25;
+    walls(chimney, box, wallTop, chimneyTop);
+    cap(chimney, box, chimneyTop);
+  }
+  return wallTop + rise;
 }
 
 /* —— Real 3D shapes from OpenStreetMap (Simple 3D Buildings) —— */
@@ -935,6 +1044,24 @@ function buildCity(model: CityModel): Built {
       occupancy.markHeight(ring, peak);
       continue;
     }
+    // Homes are houses: siding and a pitched roof, at the recorded story count when there is one.
+    const kind = model.kinds.get(building.id) ?? "yes";
+    const heightKnown = own.height_kind !== "default" && realHeights(own) !== null;
+    const homeShaped = HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED);
+    if (homeShaped && (!heightKnown || real.top <= HOUSE_MAX_METRES)) {
+      const seed = idHash(building.id);
+      const stories = heightKnown
+        ? Math.min(3, Math.max(1, Math.round((real.top - 2) / METRES_PER_LEVEL)))
+        : seed > 0.55
+          ? 2
+          : 1;
+      const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
+      const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
+      const peak = house(wall, roof, stone, ring, seed, stories);
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
     // Glass extrusion of the footprint. No extra floors, and no roof unless roof:shape was set above.
     const top = Math.max(PODIUM_H + 0.08, real.top * REAL_TO_SCENE);
     const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
@@ -958,7 +1085,8 @@ function buildCity(model: CityModel): Built {
   // The sea runs past the city edge on the water side only, so looking
   // outward shows ocean instead of stopping at the streets. Not a wall.
   const coastLines = model.parsed.coastlines.map((line) => line.points);
-  ocean(water, coastLines, model.bounds, 0.02);
+  // No trees, benches, or parks on the sea: mark its whole area, islands left open.
+  for (const rings of ocean(water, coastLines, model.bounds, 0.02)) occupancy.markPolygon(rings);
   for (const coast of coastLines) occupancy.markLine(coast, 1.2);
   const streams = new Bucket();
   for (const brook of model.parsed.waterways) {

@@ -106,14 +106,13 @@ test("Overture footprints replace type-based heights and only keep a recorded ro
   assert.equal(building?.properties.building, "office");
 });
 
-test("the glass city extrudes Overture footprints and does not invent a type height", async () => {
+test("the glass city extrudes Overture footprints and does not invent a type height for non-homes", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const canvas = await readFile("src/components/CanvasSlot.tsx", "utf8");
   assert.match(city, /fetchOvertureBuildings/);
   assert.match(city, /withOvertureBuildings/);
   assert.match(city, /2026-11-18\.0|OVERTURE_RELEASE/);
   assert.equal(city.includes("FLOORS[kind]"), false);
-  assert.equal(city.includes("function house("), false);
   assert.match(city, /walls\(tint, ring, PODIUM_H, top\)/);
   assert.match(city, /roof:shape/);
   assert.match(canvas, /ShowcaseCanvas/);

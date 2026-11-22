@@ -61,9 +61,12 @@ test("walking near the edge of a loaded city loads the real area ahead", async (
   assert.match(store, /const keep = \(set: ReadonlySet<string>\)/);
 });
 
-test("buildings are extruded footprints, with a roof only when roof:shape is present", async () => {
+test("homes are houses; other buildings are extruded footprints with a roof only when roof:shape is present", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  assert.equal(city.includes("function house("), false);
+  assert.match(city, /function house\(/);
+  assert.match(city, /HOUSE_KINDS\.has\(kind\)/);
+  // A recorded height taller than a house keeps the building out of the house path.
+  assert.match(city, /real\.top <= HOUSE_MAX_METRES/);
   assert.equal(city.includes("FLOORS[kind]"), false);
   assert.match(city, /const shape = String\(own\["roof:shape"\]/);
   assert.match(city, /walls\(tint, ring, PODIUM_H, top\)/);
