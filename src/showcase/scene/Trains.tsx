@@ -24,6 +24,8 @@ const CAR_WIDTH = 0.36;
 const CAR_HEIGHT = 0.36;
 /** Underground trains float just over the dashed tunnel line, as a ghost. */
 const GHOST_Y = 0.1;
+/** With reduced motion, standing trains are redrawn once the view center moves this far. */
+const STILL_STEP = 4;
 
 type Props = {
   lines: readonly TrackLine[];
@@ -114,11 +116,27 @@ export function Trains({ lines, routes, sim, project, live, liveAt, pollMs, redu
     [],
   );
 
+  // With reduced motion nothing moves: redraw only when the trains or the
+  // view center (which decides the nearby simulated trains) change.
+  const still = useRef({ motions: null as Map<string, Motion> | null, simulated: null as readonly SimTrain[] | null, x: NaN, z: NaN });
+
   useFrame(({ clock }) => {
     const top = surface.current;
     const glass = windows.current;
     const under = ghost.current;
     if (!top || !glass || !under) return;
+    if (reducedMotion) {
+      const memo = still.current;
+      const at = controls?.target;
+      const moved = !at || !(Math.hypot(at.x - memo.x, at.z - memo.z) < STILL_STEP);
+      if (memo.motions === motions.current && memo.simulated === simulated && !moved) return;
+      memo.motions = motions.current;
+      memo.simulated = simulated;
+      memo.x = at?.x ?? NaN;
+      memo.z = at?.z ?? NaN;
+    } else {
+      still.current.motions = null;
+    }
     const now = performance.now();
     let above = 0;
     let below = 0;
