@@ -8,7 +8,8 @@ import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "..
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
-import { oceanPolygons, stitchCoast } from "./coastline.ts";
+import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
+import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
 import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
 import { GLASS_TINTS, worldCurtainWall } from "./glass";
@@ -71,6 +72,8 @@ type CityModel = {
   tags: Map<string, Record<string, unknown>>;
   /** building:part pieces: the real 3D shape of detailed landmarks. */
   parts: Part[];
+  /** man_made=bridge outlines: structure and colour for the roads on them. */
+  bridgeOutlines: BridgeOutline[];
 };
 
 type Part = { id: string; ring: Ring; tags: Record<string, unknown> };
@@ -156,6 +159,7 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   const kinds = new Map<string, string>();
   const tags = new Map<string, Record<string, unknown>>();
   const parts: Part[] = [];
+  const bridgeOutlines: BridgeOutline[] = [];
   if (isFeatureCollection(geoJson)) {
     for (const feature of geoJson.features) {
       const props = (feature as { properties?: Record<string, unknown> }).properties;
@@ -176,6 +180,22 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
         const last = ring[ring.length - 1];
         if (first && last && first[0] === last[0] && first[1] === last[1]) ring.pop();
         if (ring.length >= 3) parts.push({ id: String(props.osmId), ring, tags: props });
+      } else if (props?.layer === "bridge") {
+        const coords = (feature as { geometry?: { coordinates?: unknown } }).geometry?.coordinates;
+        const outer = Array.isArray(coords) ? (coords[0] as unknown) : null;
+        if (!Array.isArray(outer)) continue;
+        const ring = outer
+          .filter((pt): pt is [number, number] => Array.isArray(pt) && typeof pt[0] === "number" && typeof pt[1] === "number")
+          .map((pt) => projector.project(pt[0], pt[1]));
+        const text = (value: unknown) => (typeof value === "string" ? value : null);
+        if (ring.length >= 3) {
+          bridgeOutlines.push({
+            id: String(props.osmId),
+            ring,
+            structure: text(props["bridge:structure"]),
+            colour: text(props.colour),
+          });
+        }
       }
     }
   }
@@ -200,6 +220,7 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     bounds,
     tags,
     parts,
+    bridgeOutlines,
     project: projector.project,
     unproject: (x: number, z: number) => {
       const [lon0, lat0] = bbox.center;
@@ -340,24 +361,30 @@ function cap(bucket: Bucket, ring: Ring, y: number) {
  * If the download stopped partway along a shore, a narrow strip on the water
  * side is drawn instead: a hint of the shoreline, never a flood.
  */
-function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number): Ring[][] {
+function ocean(bucket: Bucket, lines: Ring[], bounds: Bounds, y: number, reach: Bounds | null = null): OceanPolygon[] {
   const span = Math.max(80, bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
-  // Try a box well past the city edge, then one just around it.
-  for (const pad of [span * 1.5, span * 0.08]) {
-    const rect = {
-      minX: bounds.minX - pad,
-      maxX: bounds.maxX + pad,
-      minZ: bounds.minZ - pad,
-      maxZ: bounds.maxZ + pad,
-    };
-    const { polygons, complete } = oceanPolygons(lines, rect);
-    if (!complete) continue;
-    for (const polygon of polygons) fill(bucket, polygon.outer, polygon.holes, y);
-    return polygons.map((polygon) => [polygon.outer, ...polygon.holes]);
+  // Bridges far out over the bay get the sea under them when the shore allows.
+  for (const far of reach ? [reach, null] : [null]) {
+    // Try a box well past the city edge, then one just around it.
+    for (const pad of [span * 1.5, span * 0.08]) {
+      const rect = {
+        minX: Math.min(bounds.minX - pad, far ? far.minX - BRIDGE_SEA : Infinity),
+        maxX: Math.max(bounds.maxX + pad, far ? far.maxX + BRIDGE_SEA : -Infinity),
+        minZ: Math.min(bounds.minZ - pad, far ? far.minZ - BRIDGE_SEA : Infinity),
+        maxZ: Math.max(bounds.maxZ + pad, far ? far.maxZ + BRIDGE_SEA : -Infinity),
+      };
+      const { polygons, complete } = oceanPolygons(lines, rect);
+      if (!complete) continue;
+      for (const polygon of polygons) fill(bucket, polygon.outer, polygon.holes, y);
+      return polygons;
+    }
   }
   for (const coast of stitchCoast(lines)) shoreBand(bucket, coast, SHORE_FALLBACK, y);
   return [];
 }
+
+/** Sea past the ends of a bridge, in scene units (about 140 m). */
+const BRIDGE_SEA = 20;
 
 /** About 40 m of water along a shore whose other pieces were not downloaded. */
 const SHORE_FALLBACK = 6;
@@ -418,14 +445,30 @@ function shoreBand(bucket: Bucket, points: Ring, width: number, y: number) {
   }
 }
 
-/** A ribbon along a polyline with mitered joins, so bends are one surface. */
-function strip(bucket: Bucket, points: Ring, halfWidth: number, y: number) {
-  const clean = points.filter(
-    (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1]![0], p[1] - points[i - 1]![1]) > 1e-4,
-  );
-  if (clean.length < 2) return;
+/**
+ * How far a ribbon side may reach from (x, z) along (dx, dz), up to
+ * `reach`: Infinity when nothing is in the way.
+ */
+type SideLimit = (x: number, z: number, dx: number, dz: number, reach: number) => number;
+
+/** Roads stop this far short of a facade (about 1 m). */
+const ROAD_GAP = 0.15;
+
+/**
+ * Left and right edges of a ribbon with mitered joins. `limit` pulls either
+ * side in (never below half its width). `keep` maps each edge point back to
+ * its input point, after repeated points are dropped.
+ */
+function ribbonEdges(points: Ring, halfWidth: number, limit?: SideLimit) {
+  const keep: number[] = [];
+  points.forEach((p, i) => {
+    const last = keep.length > 0 ? points[keep[keep.length - 1]!]! : null;
+    if (!last || Math.hypot(p[0] - last[0], p[1] - last[1]) > 1e-4) keep.push(i);
+  });
+  const clean = keep.map((i) => points[i]!);
   const left: [number, number][] = [];
   const right: [number, number][] = [];
+  if (clean.length < 2) return { keep, left, right };
   for (let i = 0; i < clean.length; i += 1) {
     const prev = clean[Math.max(0, i - 1)]!;
     const next = clean[Math.min(clean.length - 1, i + 1)]!;
@@ -441,14 +484,212 @@ function strip(bucket: Bucket, points: Ring, halfWidth: number, y: number) {
     const mLen = Math.hypot(mx, mz) || 1;
     mx /= mLen;
     mz /= mLen;
-    // Stretch at the bend so the edge stays parallel; cap sharp corners.
-    const w = halfWidth * Math.min(2.5, 1 / Math.max(0.2, mx * n1x + mz * n1z));
-    left.push([here[0] + mx * w, here[1] + mz * w]);
-    right.push([here[0] - mx * w, here[1] - mz * w]);
+    // Stretch at the bend so the edge stays parallel; cap sharp corners
+    // low, so a hairpin does not throw a spike into the buildings.
+    const w = halfWidth * Math.min(1.5, 1 / Math.max(0.2, mx * n1x + mz * n1z));
+    const side = (dx: number, dz: number) =>
+      limit ? Math.max(w * 0.5, Math.min(w, limit(here[0], here[1], dx, dz, w + ROAD_GAP) - ROAD_GAP)) : w;
+    const wl = side(mx, mz);
+    const wr = side(-mx, -mz);
+    left.push([here[0] + mx * wl, here[1] + mz * wl]);
+    right.push([here[0] - mx * wr, here[1] - mz * wr]);
   }
-  for (let i = 0; i < clean.length - 1; i += 1) {
+  return { keep, left, right };
+}
+
+/** A ribbon along a polyline with mitered joins, so bends are one surface. */
+function strip(bucket: Bucket, points: Ring, halfWidth: number, y: number, limit?: SideLimit) {
+  const { left, right } = ribbonEdges(points, halfWidth, limit);
+  for (let i = 0; i < left.length - 1; i += 1) {
     bucket.up(left[i]!, left[i + 1]!, right[i]!, y);
     bucket.up(right[i]!, left[i + 1]!, right[i + 1]!, y);
+  }
+}
+
+/** A ribbon whose height follows `ys` (one per point): a bridge deck or a ramp. */
+function strip3(bucket: Bucket, points: Ring, halfWidth: number, ys: readonly number[]) {
+  const { keep, left, right } = ribbonEdges(points, halfWidth);
+  for (let i = 0; i < left.length - 1; i += 1) {
+    const y0 = ys[keep[i]!] ?? 0;
+    const y1 = ys[keep[i + 1]!] ?? 0;
+    const l0: Point3 = [left[i]![0], y0, left[i]![1]];
+    const l1: Point3 = [left[i + 1]![0], y1, left[i + 1]![1]];
+    const r0: Point3 = [right[i]![0], y0, right[i]![1]];
+    const r1: Point3 = [right[i + 1]![0], y1, right[i + 1]![1]];
+    upTri(bucket, l0, l1, r0);
+    upTri(bucket, r0, l1, r1);
+  }
+}
+
+/** Railing height above a deck (about 0.7 m). */
+const RAIL_H = 0.14;
+
+/**
+ * The sides of a lifted deck: a fascia down to its underside (or to the
+ * ground on a low ramp), a low railing on top, and the soffit underneath.
+ */
+function deckSides(bucket: Bucket, points: Ring, halfWidth: number, ys: readonly number[], depth: number) {
+  const { keep, left, right } = ribbonEdges(points, halfWidth);
+  for (let i = 0; i < left.length - 1; i += 1) {
+    const y0 = ys[keep[i]!] ?? 0;
+    const y1 = ys[keep[i + 1]!] ?? 0;
+    if (y0 < 0.02 && y1 < 0.02) continue;
+    const b0 = Math.max(0, y0 - depth);
+    const b1 = Math.max(0, y1 - depth);
+    for (const edge of [left, right]) {
+      const [ax, az] = edge[i]!;
+      const [bx, bz] = edge[i + 1]!;
+      tri(bucket, [ax, b0, az], [bx, b1, bz], [bx, y1 + RAIL_H, bz]);
+      tri(bucket, [ax, b0, az], [bx, y1 + RAIL_H, bz], [ax, y0 + RAIL_H, az]);
+    }
+    if (b0 > 0 || b1 > 0) {
+      const l0: Point3 = [left[i]![0], b0, left[i]![1]];
+      const l1: Point3 = [left[i + 1]![0], b1, left[i + 1]![1]];
+      const r0: Point3 = [right[i]![0], b0, right[i]![1]];
+      const r1: Point3 = [right[i + 1]![0], b1, right[i + 1]![1]];
+      tri(bucket, l0, r0, l1);
+      tri(bucket, r0, r1, l1);
+    }
+  }
+}
+
+/** One flat-shaded triangle turned to face up. */
+function upTri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
+  const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+  if (ny < 0) tri(bucket, a, c, b);
+  else tri(bucket, a, b, c);
+}
+
+/**
+ * A box standing on the ground, turned to heading `rot` (as `along` gives).
+ * `across` and `alongHalf` are half sizes. Bridge piers, tower legs, beams.
+ */
+function box(bucket: Bucket, x: number, z: number, rot: number, across: number, alongHalf: number, y0: number, y1: number) {
+  const ux = Math.sin(rot);
+  const uz = Math.cos(rot);
+  const corner = (a: number, b: number, y: number): Point3 => [x + uz * a + ux * b, y, z - ux * a + uz * b];
+  const ring: [number, number][] = [
+    [-across, -alongHalf],
+    [across, -alongHalf],
+    [across, alongHalf],
+    [-across, alongHalf],
+  ];
+  for (let i = 0; i < 4; i += 1) {
+    const [a1, b1] = ring[i]!;
+    const [a2, b2] = ring[(i + 1) % 4]!;
+    tri(bucket, corner(a1, b1, y0), corner(a2, b2, y0), corner(a2, b2, y1));
+    tri(bucket, corner(a1, b1, y0), corner(a2, b2, y1), corner(a1, b1, y1));
+  }
+  tri(bucket, corner(-across, -alongHalf, y1), corner(across, -alongHalf, y1), corner(across, alongHalf, y1));
+  tri(bucket, corner(-across, -alongHalf, y1), corner(across, alongHalf, y1), corner(-across, alongHalf, y1));
+}
+
+/** A square rod from a to b: one piece of a cable or a hanger. */
+function rod(bucket: Bucket, a: Pt3, b: Pt3, r: number) {
+  const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  if (d.lengthSq() < 1e-10) return;
+  d.normalize();
+  const u = new THREE.Vector3(Math.abs(d.y) > 0.9 ? 1 : 0, Math.abs(d.y) > 0.9 ? 0 : 1, 0).cross(d).normalize();
+  const w = d.clone().cross(u).normalize();
+  const offsets = [u, w, u.clone().negate(), w.clone().negate()].map((v) => v.multiplyScalar(r));
+  for (let i = 0; i < 4; i += 1) {
+    const p = offsets[i]!;
+    const q = offsets[(i + 1) % 4]!;
+    const a1: Point3 = [a[0] + p.x, a[1] + p.y, a[2] + p.z];
+    const a2: Point3 = [a[0] + q.x, a[1] + q.y, a[2] + q.z];
+    const b1: Point3 = [b[0] + p.x, b[1] + p.y, b[2] + p.z];
+    const b2: Point3 = [b[0] + q.x, b[1] + q.y, b[2] + q.z];
+    tri(bucket, a1, a2, b2);
+    tri(bucket, a1, b2, b1);
+  }
+}
+
+/**
+ * Building edges in a coarse grid, so a road side can stop short of the
+ * facade it would otherwise run into.
+ */
+class EdgeIndex {
+  private readonly cell = 3;
+  private readonly cells = new Map<number, number[]>();
+  private readonly segs: number[] = [];
+
+  private key(cx: number, cz: number) {
+    return (cx + 50_000) * 100_000 + (cz + 50_000);
+  }
+
+  addRing(ring: Ring) {
+    for (let i = 0; i < ring.length; i += 1) {
+      const [ax, az] = ring[i]!;
+      const [bx, bz] = ring[(i + 1) % ring.length]!;
+      const id = this.segs.length / 4;
+      this.segs.push(ax, az, bx, bz);
+      for (let cx = Math.floor(Math.min(ax, bx) / this.cell); cx <= Math.floor(Math.max(ax, bx) / this.cell); cx += 1) {
+        for (let cz = Math.floor(Math.min(az, bz) / this.cell); cz <= Math.floor(Math.max(az, bz) / this.cell); cz += 1) {
+          const k = this.key(cx, cz);
+          const list = this.cells.get(k);
+          if (list) list.push(id);
+          else this.cells.set(k, [id]);
+        }
+      }
+    }
+  }
+
+  /** Distance from (x, z) along unit (dx, dz) to the nearest edge within `reach`, else Infinity. */
+  readonly hit: SideLimit = (x, z, dx, dz, reach) => {
+    const ex = x + dx * reach;
+    const ez = z + dz * reach;
+    let best = Infinity;
+    for (let cx = Math.floor(Math.min(x, ex) / this.cell); cx <= Math.floor(Math.max(x, ex) / this.cell); cx += 1) {
+      for (let cz = Math.floor(Math.min(z, ez) / this.cell); cz <= Math.floor(Math.max(z, ez) / this.cell); cz += 1) {
+        for (const id of this.cells.get(this.key(cx, cz)) ?? []) {
+          const ax = this.segs[id * 4]!;
+          const az = this.segs[id * 4 + 1]!;
+          const sx = this.segs[id * 4 + 2]! - ax;
+          const sz = this.segs[id * 4 + 3]! - az;
+          const den = dx * sz - dz * sx;
+          if (Math.abs(den) < 1e-9) continue;
+          const qx = ax - x;
+          const qz = az - z;
+          const t = (qx * sz - qz * sx) / den;
+          const u = (qx * dz - qz * dx) / den;
+          if (t >= 0 && t <= reach && u >= 0 && u <= 1) best = Math.min(best, t);
+        }
+      }
+    }
+    return best;
+  };
+
+  /**
+   * Extra points along each straight stretch that passes a building, so the
+   * road can narrow around a corner between its mapped points.
+   */
+  fit(points: Ring, halfWidth: number): Ring {
+    const reach = halfWidth + ROAD_GAP;
+    const out: (readonly [number, number])[] = [];
+    for (let i = 0; i < points.length; i += 1) {
+      const b = points[i]!;
+      if (i > 0) {
+        const a = points[i - 1]!;
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const n = Math.floor(len / 1.5);
+        if (n > 0) {
+          const nx = -(b[1] - a[1]) / len;
+          const nz = (b[0] - a[0]) / len;
+          const extra: [number, number][] = [];
+          let blocked = false;
+          for (let k = 1; k <= n; k += 1) {
+            const f = k / (n + 1);
+            const x = a[0] + (b[0] - a[0]) * f;
+            const z = a[1] + (b[1] - a[1]) * f;
+            extra.push([x, z]);
+            blocked ||= this.hit(x, z, nx, nz, reach) < reach || this.hit(x, z, -nx, -nz, reach) < reach;
+          }
+          if (blocked) out.push(...extra);
+        }
+      }
+      out.push(b);
+    }
+    return out;
   }
 }
 
@@ -631,9 +872,13 @@ const WAY_HALF_WIDTH: Record<WayRibbon["layer"], number> = {
 
 const HIGHLIGHT = new Set<string>(INTERVENTION_EDGE_IDS);
 
-/** Points every `spacing` units along a polyline, with heading and side offset. */
-function along(points: Ring, spacing: number, offset: number) {
-  const out: { x: number; z: number; rot: number }[] = [];
+/**
+ * Points every `spacing` units along a polyline, with heading and side
+ * offset. With `ys` (one height per point, as on a bridge deck) each spot
+ * also gets its height.
+ */
+function along(points: Ring, spacing: number, offset: number, ys?: readonly number[]) {
+  const out: { x: number; z: number; rot: number; y?: number }[] = [];
   let carry = spacing / 2;
   for (let i = 0; i < points.length - 1; i += 1) {
     const [ax, az] = points[i]!;
@@ -650,6 +895,7 @@ function along(points: Ring, spacing: number, offset: number) {
         x: ax + (dx / len) * t + nx * offset,
         z: az + (dz / len) * t + nz * offset,
         rot: Math.atan2(dx, dz),
+        ...(ys ? { y: (ys[i] ?? 0) + ((ys[i + 1] ?? 0) - (ys[i] ?? 0)) * (t / len) } : {}),
       });
       t += spacing;
     }
@@ -689,7 +935,8 @@ function stepAlong(spot: Placement, dist: number): Placement {
 
 /* —— Build everything once per map —— */
 
-type Placement = { x: number; z: number; rot?: number; s?: number; color?: string };
+/** `y` lifts a spot off the ground (cars and lamps on a bridge deck). */
+type Placement = { x: number; z: number; y?: number; rot?: number; s?: number; color?: string };
 
 type Built = {
   glass: THREE.BufferGeometry[];
@@ -723,6 +970,10 @@ type Built = {
   signs: SignSpot[];
   water: THREE.BufferGeometry;
   streams: THREE.BufferGeometry;
+  /** Road surface of the big bridges, drawn clear of the fog. */
+  farDecks: THREE.BufferGeometry;
+  /** Bridge fascias, railings, piers, towers, and cables by colour. */
+  bridges: { color: string; far: boolean; geometry: THREE.BufferGeometry }[];
 };
 
 /* —— Houses: siding walls and a pitched gable roof —— */
@@ -1040,6 +1291,118 @@ class RingIndex<T extends { ring: Ring }> {
   }
 }
 
+/** Concrete grey for bridges with no mapped colour. */
+const BRIDGE_CONCRETE = "#c3c8cb";
+
+/** A mapped colour ("orange", "#f04a00") as hex, or the bridge default. */
+function paint(raw: string | null) {
+  if (!raw) return BRIDGE_CONCRETE;
+  const color = new THREE.Color(BRIDGE_CONCRETE);
+  try {
+    color.setStyle(raw.trim());
+  } catch {
+    // Unknown colour name: keep the default.
+  }
+  return `#${color.getHexString()}`;
+}
+
+/** Box around every bridge way, so the sea can be traced out under them. */
+function bridgeReach(ways: readonly WayRibbon[]): Bounds | null {
+  let reach: Bounds | null = null;
+  for (const way of ways) {
+    if (!way.bridge) continue;
+    for (const [x, z] of way.points) {
+      reach = reach ?? { minX: x, maxX: x, minZ: z, maxZ: z };
+      reach.minX = Math.min(reach.minX, x);
+      reach.maxX = Math.max(reach.maxX, x);
+      reach.minZ = Math.min(reach.minZ, z);
+      reach.maxZ = Math.max(reach.maxZ, z);
+    }
+  }
+  return reach;
+}
+
+type Boxed<T> = { item: T; minX: number; maxX: number; minZ: number; maxZ: number };
+
+function boxed<T>(item: T, points: Ring, pad = 0): Boxed<T> {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [x, z] of points) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+  return { item, minX: minX - pad, maxX: maxX + pad, minZ: minZ - pad, maxZ: maxZ + pad };
+}
+
+function inBox(b: Boxed<unknown>, x: number, z: number) {
+  return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
+}
+
+function nearLine(x: number, z: number, points: Ring, margin: number) {
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const len2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
+    if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) return true;
+  }
+  return false;
+}
+
+/** Mapped water under (x, z): a lake, the traced sea, or a river's width. */
+function wetTest(parsed: ParsedBasemap, sea: OceanPolygon[]) {
+  const lakes = parsed.water.map((body) => boxed(body.ring, body.ring));
+  const seas = sea.map((polygon) => boxed(polygon, polygon.outer));
+  const rivers = parsed.waterways.map((brook) => {
+    const half = brook.wide ? RIVER_HALF : STREAM_HALF;
+    return { ...boxed(brook.points, brook.points, half), half };
+  });
+  return (x: number, z: number) =>
+    lakes.some((lake) => inBox(lake, x, z) && insideRing(x, z, lake.item)) ||
+    seas.some(
+      (part) =>
+        inBox(part, x, z) &&
+        insideRing(x, z, part.item.outer) &&
+        !part.item.holes.some((hole) => insideRing(x, z, hole)),
+    ) ||
+    rivers.some((river) => inBox(river, x, z) && nearLine(x, z, river.item, river.half));
+}
+
+function segmentsCross(a: readonly [number, number], b: readonly [number, number], c: readonly [number, number], d: readonly [number, number]) {
+  const rx = b[0] - a[0];
+  const rz = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sz = d[1] - c[1];
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-9) return false;
+  const t = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / den;
+  const u = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / den;
+  return t > 1e-3 && t < 1 - 1e-3 && u > 1e-3 && u < 1 - 1e-3;
+}
+
+/** Does a bridge cross a street on the ground? Then it clears traffic below. */
+function roadCrossing(ways: readonly WayRibbon[]) {
+  const streets = ways.filter((way) => way.layer === "road" && !way.bridge).map((way) => boxed(way.points, way.points));
+  return (points: readonly (readonly [number, number])[]) => {
+    const run = boxed(points, points);
+    for (const street of streets) {
+      if (street.maxX < run.minX || street.minX > run.maxX || street.maxZ < run.minZ || street.minZ > run.maxZ) continue;
+      for (let i = 0; i < points.length - 1; i += 1) {
+        for (let j = 0; j < street.item.length - 1; j += 1) {
+          if (segmentsCross(points[i]!, points[i + 1]!, street.item[j]!, street.item[j + 1]!)) return true;
+        }
+      }
+    }
+    return false;
+  };
+}
+
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
   const siding = SIDING.map(() => new Bucket());
@@ -1162,7 +1525,8 @@ function buildCity(model: CityModel): Built {
     // Glass extrusion of the footprint. No extra floors, and no roof unless roof:shape was set above.
     const top = Math.max(PODIUM_H + 0.08, real.top * REAL_TO_SCENE);
     const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
-    const podium = shrink(ring, 1.03);
+    // The stone base sits just inside the facade, never out over the street.
+    const podium = shrink(ring, 0.99);
     walls(stone, podium, 0, PODIUM_H);
     cap(stone, podium, PODIUM_H);
     walls(tint, ring, PODIUM_H, top);
@@ -1182,8 +1546,9 @@ function buildCity(model: CityModel): Built {
   // The sea runs past the city edge on the water side only, so looking
   // outward shows ocean instead of stopping at the streets. Not a wall.
   const coastLines = model.parsed.coastlines.map((line) => line.points);
+  const sea = ocean(water, coastLines, model.bounds, 0.02, bridgeReach(model.parsed.ways));
   // No trees, benches, or parks on the sea: mark its whole area, islands left open.
-  for (const rings of ocean(water, coastLines, model.bounds, 0.02)) occupancy.markPolygon(rings);
+  for (const polygon of sea) occupancy.markPolygon([polygon.outer, ...polygon.holes]);
   for (const coast of coastLines) occupancy.markLine(coast, 1.2);
   const streams = new Bucket();
   for (const brook of model.parsed.waterways) {
@@ -1192,17 +1557,90 @@ function buildCity(model: CityModel): Built {
     occupancy.markLine(brook.points, half + 0.12);
   }
 
+  // Bridges: decks lifted over the water and streets below, with ramps,
+  // piers, and the towers and cables of the big spans.
+  const plan = planBridges(
+    model.parsed.ways.map((way) => ({
+      id: way.id,
+      points: way.points,
+      kind: way.layer,
+      name: way.name ?? null,
+      ref: way.ref ?? null,
+      bridge: Boolean(way.bridge),
+      layer: way.deckLayer ?? 0,
+      structure: way.structure ?? null,
+      colour: way.colour ?? null,
+      halfWidth: way.halfWidth,
+    })),
+    model.bridgeOutlines,
+    { wet: wetTest(model.parsed, sea), crossesRoad: roadCrossing(model.parsed.ways) },
+  );
+  const farDecks = new Bucket();
+  const trim = new Map<string, { color: string; far: boolean; bucket: Bucket }>();
+  const trimBucket = (colour: string | null, far: boolean) => {
+    const color = paint(colour);
+    const key = `${color}|${far}`;
+    let entry = trim.get(key);
+    if (!entry) {
+      entry = { color, far, bucket: new Bucket() };
+      trim.set(key, entry);
+    }
+    return entry.bucket;
+  };
+  for (const pier of plan.piers) {
+    box(trimBucket(pier.colour, pier.landmark), pier.x, pier.z, pier.rot, pier.halfWidth, 0.2, 0, pier.top);
+  }
+  for (const tower of plan.towers) {
+    const bucket = trimBucket(tower.colour, true);
+    if (tower.anchorage) {
+      box(bucket, tower.x, tower.z, tower.rot, tower.halfSpan + 0.4, 2.5, 0, tower.top);
+      continue;
+    }
+    const across = Math.cos(tower.rot);
+    const acrossZ = -Math.sin(tower.rot);
+    for (const side of [-1, 1]) {
+      const x = tower.x + across * tower.halfSpan * side;
+      const z = tower.z + acrossZ * tower.halfSpan * side;
+      box(bucket, x, z, tower.rot, tower.leg / 2, tower.leg * 0.8, 0, tower.top);
+    }
+    // Portals: under the deck, partway up, and at the top.
+    const beams = [tower.deck - 1, tower.deck + (tower.top - tower.deck) * 0.55, tower.top - tower.leg * 0.6];
+    for (const y of beams) {
+      if (y <= tower.leg) continue;
+      box(bucket, tower.x, tower.z, tower.rot, tower.halfSpan, tower.leg * 0.45, y - tower.leg * 0.35, y + tower.leg * 0.35);
+    }
+  }
+  for (const cable of plan.cables) {
+    const bucket = trimBucket(cable.colour, true);
+    for (let i = 0; i < cable.points.length - 1; i += 1) rod(bucket, cable.points[i]!, cable.points[i + 1]!, cable.radius);
+  }
+
+  // Roads stop short of the buildings beside them.
+  const edges = new EdgeIndex();
+  for (const building of model.parsed.buildings) edges.addRing(building.ring);
+
   const roads = new Bucket();
   const lines = new Bucket();
   const lit = new Bucket();
   const walks = { sidewalk: new Bucket(), footway: new Bucket(), path: new Bucket() };
   for (const way of model.parsed.ways) {
     const half = way.halfWidth;
+    const deck = plan.decks.get(way.id);
     occupancy.markLine(way.points, half + 0.6);
-    if (way.edgeId && HIGHLIGHT.has(way.edgeId)) {
+    if (deck) {
+      const lift = way.layer === "road" ? 0.05 : 0.035;
+      const ys = deck.ys.map((y) => y + lift);
+      if (way.layer === "road") {
+        strip3(deck.landmark ? farDecks : roads, deck.points, half, ys);
+        strip3(lines, deck.points, 0.035, ys.map((y) => y + 0.02));
+      } else {
+        strip3(walks[way.layer], deck.points, half, ys);
+      }
+      deckSides(trimBucket(deck.colour, deck.landmark), deck.points, half, ys, deck.depth);
+    } else if (way.edgeId && HIGHLIGHT.has(way.edgeId)) {
       strip(lit, way.points, half, 0.045);
     } else if (way.layer === "road") {
-      strip(roads, way.points, half, 0.05);
+      strip(roads, edges.fit(way.points, half), half, 0.05, edges.hit);
       strip(lines, way.points, 0.035, 0.07);
     } else {
       strip(walks[way.layer], way.points, half, 0.035);
@@ -1296,7 +1734,9 @@ function buildCity(model: CityModel): Built {
     }
   }
 
-  const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
+  // Hydrants, bins, and signs stand on the ground; cars and lamps also ride the decks.
+  const roadWays = model.parsed.ways.filter((way) => way.layer === "road" && !plan.decks.has(way.id));
+  const allRoads = model.parsed.ways.filter((way) => way.layer === "road");
   const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
   const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
   const SKINS = ["#f1c9a5", "#e0ac83", "#c68a5e", "#a0673f", "#7a4a2a", "#5b3a24"];
@@ -1310,7 +1750,8 @@ function buildCity(model: CityModel): Built {
   // traffic there), and on streets wide enough that the moving lane clears them.
   const cars: Placement[] = [];
   for (const way of model.parsed.ways) {
-    if (way.indoor) continue;
+    // Parked cars stay on the ground: none on bridge decks.
+    if (way.indoor || way.bridge) continue;
     const service = way.highway === "service";
     if (!service && way.layer !== "road") continue;
     const curb = Math.max(0, way.halfWidth - 0.2);
@@ -1364,8 +1805,15 @@ function buildCity(model: CityModel): Built {
   }
   const peopleSkin = people.map((p) => ({ ...p, color: SKINS[Math.floor(hash(p.x + 3, p.z) * SKINS.length)] ?? SKINS[0] }));
   const peoplePants = people.map((p) => ({ ...p, color: PANTS[Math.floor(hash(p.x, p.z + 9) * PANTS.length)] ?? PANTS[0] }));
-  const traffic = buildTrafficLanes(model.parsed.ways, footprints);
-  const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
+  // Moving traffic keeps to the ground for now; decks are drawn without it.
+  const traffic = buildTrafficLanes(model.parsed.ways.filter((way) => !way.bridge), footprints);
+  const lamps = allRoads.flatMap((way) => {
+    const deck = plan.decks.get(way.id);
+    // On a deck the lamps stand just inside the railing.
+    return deck
+      ? along(deck.points, 7, Math.max(0.1, way.halfWidth - 0.1), deck.ys)
+      : along(way.points, 7, WAY_HALF_WIDTH.road + 0.35);
+  });
   const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
   const benches = model.parsed.ways
     .filter((way) => way.layer === "footway")
@@ -1422,6 +1870,8 @@ function buildCity(model: CityModel): Built {
     traffic,
     water: water.geometry(),
     streams: streams.geometry(),
+    farDecks: farDecks.geometry(),
+    bridges: [...trim.values()].map(({ color, far, bucket }) => ({ color, far, geometry: bucket.geometry() })),
     lamps,
     hydrants,
     benches,
@@ -1526,6 +1976,8 @@ function useMaterials() {
         garden: plain(ROOF_GARDEN, { roughness: 0.95 }),
         stone: plain(STONE, { roughness: 0.72 }),
         road: plain("#3b4448", { roughness: 0.85 }),
+        // The big bridges stay clear of the city's haze, so they read from downtown.
+        farDeck: plain("#3b4448", { roughness: 0.85, fog: false }),
         line: new THREE.MeshStandardMaterial({
           color: SMART_LINE,
           emissive: SMART_LINE,
@@ -1819,7 +2271,7 @@ function Instanced({
     items.forEach((item, i) => {
       q.setFromAxisAngle(upAxis, item.rot ?? 0);
       const s = item.s ?? 1;
-      matrix.compose(new THREE.Vector3(item.x, 0, item.z), q, new THREE.Vector3(s, s, s));
+      matrix.compose(new THREE.Vector3(item.x, item.y ?? 0, item.z), q, new THREE.Vector3(s, s, s));
       m.setMatrixAt(i, matrix);
       if (colored && item.color) m.setColorAt(i, color.set(item.color));
     });
@@ -1973,6 +2425,26 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     },
     [masonryLooks],
   );
+  const bridgeLooks = useMemo(
+    () =>
+      built.bridges.map(
+        ({ color, far }) =>
+          new THREE.MeshStandardMaterial({
+            color,
+            roughness: 0.55,
+            metalness: 0.25,
+            side: THREE.DoubleSide,
+            fog: !far,
+          }),
+      ),
+    [built],
+  );
+  useEffect(
+    () => () => {
+      for (const material of bridgeLooks) material.dispose();
+    },
+    [bridgeLooks],
+  );
 
   useEffect(() => publishMap(mapFor(cityModel)), [cityModel]);
   // Accessibility issues from the map's own OpenStreetMap tags.
@@ -2003,6 +2475,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         built.roads,
         built.lines,
         built.lit,
+        built.farDecks,
+        ...built.bridges.map((b) => b.geometry),
         ...Object.values(built.walks),
       ]) {
         g.dispose();
@@ -2025,6 +2499,17 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.water} material={surfaces.water} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.streams} material={surfaces.stream} renderOrder={2} receiveShadow raycast={() => null} />
       <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />
+      <mesh geometry={built.farDecks} material={surfaces.farDeck} receiveShadow raycast={() => null} />
+      {built.bridges.map(({ color, far, geometry }, i) => (
+        <mesh
+          key={`bridge-${color}-${far}`}
+          geometry={geometry}
+          material={bridgeLooks[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
       <mesh geometry={built.lines} material={surfaces.line} raycast={() => null} />
       <mesh geometry={built.lit} material={surfaces.lit} raycast={() => null} />
 

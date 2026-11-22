@@ -7,8 +7,11 @@ export type OsmWay = {
   /** Set when the shape came from a multipolygon relation, whose ids can repeat way ids. */
   osmType?: 'relation'
   name: string | null
-  /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
-  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline'
+  /**
+   * 'part' is an OSM building:part: one 3D piece of a detailed building.
+   * 'bridge' is a man_made=bridge outline: the structure under its roads.
+   */
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -84,6 +87,11 @@ const HALF = 0.0065
  * About 12 km across.
  */
 const COAST_HALF = 0.055
+/**
+ * Landmark bridges are searched wider still, about 20 km across, so the
+ * Golden Gate and the Bay Bridge stand on the skyline from downtown.
+ */
+const LANDMARK_HALF = 0.09
 /** Accessibility tags kept from OpenStreetMap for issue detection. */
 const KEEP_TAGS = [
   'footway',
@@ -114,6 +122,11 @@ const KEEP_TAGS = [
   'building:colour',
   'building:material',
   'roof:colour',
+  // Bridges and tunnels: which ways leave the ground, and how.
+  'bridge',
+  'bridge:structure',
+  'colour',
+  'ref',
 ]
 
 /** OSM reference for a loaded shape: the way id, or `r<id>` for a relation. */
@@ -123,6 +136,22 @@ export function osmRef(way: Pick<OsmWay, 'id' | 'osmType'>): number | string {
 
 function wayKey(way: OsmWay) {
   return `${way.kind}:${osmRef(way)}`
+}
+
+/** Never drawn on the ground: indoor, unbuilt, or not a street at all. */
+const OFF_STREET = new Set(['corridor', 'proposed', 'construction', 'platform', 'elevator'])
+
+/**
+ * Highways that run underground or indoors (tunnels, covered ways, layer
+ * below zero) would be drawn through the buildings above them.
+ */
+function underground(tags: Record<string, unknown> | undefined) {
+  if (!tags) return false
+  const tunnel = tags.tunnel
+  if (typeof tunnel === 'string' && tunnel !== 'no') return true
+  if (tags.covered === 'yes' || tags.indoor === 'yes') return true
+  const layer = Number(tags.layer)
+  return Number.isFinite(layer) && layer < 0
 }
 
 /** Areas snap to a grid, so nearby requests share one download. */
@@ -251,6 +280,9 @@ function keptTags(raw: Record<string, unknown> | undefined) {
     const value = raw?.[key]
     if (typeof value === 'string') tags[key] = value
   }
+  // The OSM layer (below ground when negative) travels as layer:osm, so it
+  // never overwrites the scene's own layer (road, building, …).
+  if (typeof raw?.layer === 'string') tags['layer:osm'] = raw.layer
   return tags
 }
 
@@ -288,6 +320,27 @@ function relationBuilding(row: OverpassElement): OsmWay[] {
   }))
 }
 
+/** A man_made=bridge relation: its outer ways stitched into deck outlines. */
+function relationBridge(row: OverpassElement): OsmWay[] {
+  if (typeof row.id !== 'number' || !Array.isArray(row.members)) return []
+  if (row.tags?.man_made !== 'bridge') return []
+  const lines: [number, number][][] = []
+  for (const member of row.members) {
+    if (!member || member.role === 'inner') continue
+    const line = asLonLatLine(member.geometry)
+    if (line.length >= 2) lines.push(line)
+  }
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = keptTags(row.tags)
+  return stitchRings(lines).map((points) => ({
+    id: row.id as number,
+    name,
+    kind: 'bridge' as const,
+    ...(Object.keys(tags).length > 0 ? { tags } : {}),
+    points,
+  }))
+}
+
 /** Read way geometries from an Overpass JSON body. */
 export function waysFromOverpass(body: unknown): OsmWay[] {
   if (!body || typeof body !== 'object') return []
@@ -299,7 +352,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     const row = element as OverpassElement
     if (row.type === 'relation') {
       const shapes = relationBuilding(row)
-      ways.push(...(shapes.length > 0 ? shapes : relationWater(row)))
+      ways.push(...(shapes.length > 0 ? shapes : relationWater(row)), ...relationBridge(row))
       continue
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -318,13 +371,17 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
     const riverbank = waterway === 'riverbank'
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+    if (highway && (OFF_STREET.has(String(row.tags?.highway)) || underground(row.tags))) continue
+    const outline = row.tags?.man_made === 'bridge' && isClosedRing(points)
     const kind = part
       ? 'part'
       : building
         ? 'building'
         : highway
           ? 'road'
-          : coastline
+          : outline
+            ? 'bridge'
+            : coastline
             ? 'coastline'
             : natural || water || (riverbank && isClosedRing(points))
               ? 'water'
@@ -333,9 +390,6 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
                 : null
     if (!kind) continue
     const tags = keptTags(row.tags)
-    // The OSM layer (below ground when negative) travels under its own key:
-    // "layer" on a feature names the basemap layer.
-    if (kind === 'road' && typeof row.tags?.layer === 'string') tags['layer:osm'] = row.tags.layer
     const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
     ways.push({
       id: row.id,
@@ -413,7 +467,7 @@ export async function fetchArea(lng: number, lat: number, signal?: AbortSignal):
   // Streets, buildings, landmark pieces, and water get separate quotas.
   // Some landmarks (SF City Hall) map their outline and lower floors as
   // relations, so building relations are asked for too.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;relation["building:part"](${box});out tags geom 400;relation["building"](${box});out tags geom 600;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;relation["building:part"](${box});out tags geom 400;relation["building"](${box});out tags geom 600;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;way["man_made"="bridge"](${box});out tags geom 80;relation["man_made"="bridge"](${box});out tags geom 20;`
   return interpret(query, signal)
 }
 
@@ -421,6 +475,21 @@ export async function fetchArea(lng: number, lat: number, signal?: AbortSignal):
 export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
   const [lng, lat] = tileCenter(key)
   return fetchArea(lng, lat, signal)
+}
+
+/**
+ * The big bridges around a place, wider than any street tile: long
+ * motorway, trunk, and primary bridge ways plus large bridge outlines.
+ * Failure returns nothing so the city still loads.
+ */
+export async function fetchLandmarkBridges(lng: number, lat: number): Promise<OsmWay[]> {
+  const box = `${lat - LANDMARK_HALF},${lng - LANDMARK_HALF},${lat + LANDMARK_HALF},${lng + LANDMARK_HALF}`
+  const query = `[out:json][timeout:40];way["highway"~"^(motorway|trunk|primary)$"]["bridge"]["bridge"!="no"](${box})(if:length()>200);out tags geom 300;way["man_made"="bridge"](${box})(if:length()>600);out tags geom 60;relation["man_made"="bridge"](${box});out tags geom 30;`
+  try {
+    return (await interpret(query)).filter((way) => way.kind === 'bridge' || (way.kind === 'road' && way.tags?.bridge))
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -466,7 +535,11 @@ export async function loadUsNeighborhood(
   }
   try {
     const streets = await fetchArea(place.lng, place.lat)
-    const ways = withCoast(streets, await fetchCoastline(place.lng, place.lat))
+    const [coast, landmarks] = await Promise.all([
+      fetchCoastline(place.lng, place.lat),
+      fetchLandmarkBridges(place.lng, place.lat),
+    ])
+    const ways = withCoast(withCoast(streets, coast), landmarks)
     if (ways.length > 0) {
       // A quick preview centered on the place. Its grid tile is still
       // downloaded in the background, so tiles stay aligned to the grid.
@@ -537,6 +610,15 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: way.points },
         properties: { osmId: way.id, layer: 'waterway', name: way.name, waterway: way.waterway },
+      })
+      continue
+    }
+    if (way.kind === 'bridge') {
+      if (way.points.length < 3) continue
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [way.points] },
+        properties: { ...way.tags, osmId: way.id, layer: 'bridge', name: way.name },
       })
       continue
     }

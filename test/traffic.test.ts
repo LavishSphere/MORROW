@@ -52,13 +52,14 @@ test("OSM oneway and roundabouts read as a direction", () => {
   assert.equal(onewayOf(null), 0);
 });
 
-test("Overpass keeps oneway, junction, and the indoor tags on the road", () => {
+test("Overpass keeps oneway, junction, and the level tags on the road", () => {
   const [way] = waysFromOverpass({
     elements: [
       {
         type: "way",
         id: 1,
-        tags: { highway: "footway", oneway: "yes", junction: "roundabout", tunnel: "yes", layer: "-1", level: "0" },
+        // Tunnels are dropped before this point (they'd be drawn through buildings), so an upper-level way stands in.
+        tags: { highway: "footway", oneway: "yes", junction: "roundabout", layer: "1", level: "1" },
         geometry: [
           { lat: 37.79, lon: -122.4 },
           { lat: 37.791, lon: -122.4 },
@@ -68,8 +69,8 @@ test("Overpass keeps oneway, junction, and the indoor tags on the road", () => {
   });
   assert.equal(way?.tags?.oneway, "yes");
   assert.equal(way?.tags?.junction, "roundabout");
-  assert.equal(way?.tags?.tunnel, "yes");
-  assert.equal(way?.tags?.["layer:osm"], "-1");
+  assert.equal(way?.tags?.level, "1");
+  assert.equal(way?.tags?.["layer:osm"], "1");
   assert.equal(way?.tags?.layer, undefined);
 });
 

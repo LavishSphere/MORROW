@@ -2,8 +2,19 @@
  * Carriageway width for an OSM centerline.
  * Tagged meters, else lanes times METERS_PER_LANE, else a highway-class prior.
  * METERS_PER_LANE is an assumption, not a survey and not an HPMS lane width.
+ * Urban lanes run about 3.0 to 3.3 m; wider ribbons ran into the buildings.
  */
-export const METERS_PER_LANE = 3.5
+export const METERS_PER_LANE = 3.2
+
+/**
+ * A tagged width this far past the lanes is curb to curb plus sidewalks
+ * (or a typo), not the carriageway: lanes × METERS_PER_LANE + SLACK.
+ */
+const TAGGED_LANE_SLACK_METERS = 5
+/** Without lanes, a tagged width over this multiple of the class prior is not trusted. */
+const TAGGED_PRIOR_LIMIT = 1.6
+/** One direction of a divided road with no lane count: part of the two-way prior. */
+const ONEWAY_SHARE = 0.6
 
 export type WidthKind = 'tagged' | 'lanes' | 'prior'
 
@@ -102,12 +113,25 @@ function laneTotal(tags: Record<string, unknown>): number | null {
   return total > 0 ? total : null
 }
 
+function isOneway(tags: Record<string, unknown>) {
+  const oneway = text(tags.oneway)?.toLowerCase()
+  return oneway === 'yes' || oneway === '1' || oneway === 'true' || oneway === '-1'
+}
+
 export function resolveRoadWidth(tags: Record<string, unknown> | null | undefined): ResolvedRoadWidth {
   const source = tags ?? {}
   const highway = highwayClass(source)
   const lanes = laneTotal(source)
   const taggedWidthMeters = parseWidthMeters(source.width)
-  if (taggedWidthMeters != null) {
+  const known = highway ? HIGHWAY_WIDTH_PRIOR_METERS[highway] : undefined
+  const twoWayPrior = typeof known === 'number' ? known : DEFAULT_PRIOR_METERS
+  const prior = isOneway(source) ? twoWayPrior * ONEWAY_SHARE : twoWayPrior
+  const plausible =
+    taggedWidthMeters != null &&
+    (lanes != null
+      ? taggedWidthMeters <= lanes * METERS_PER_LANE + TAGGED_LANE_SLACK_METERS
+      : taggedWidthMeters <= prior * TAGGED_PRIOR_LIMIT)
+  if (taggedWidthMeters != null && plausible) {
     return {
       widthMeters: taggedWidthMeters,
       widthKind: 'tagged',
@@ -124,17 +148,15 @@ export function resolveRoadWidth(tags: Record<string, unknown> | null | undefine
       metersPerLane: METERS_PER_LANE,
       highway,
       lanes,
-      taggedWidthMeters: null,
+      taggedWidthMeters,
     }
   }
-  const known = highway ? HIGHWAY_WIDTH_PRIOR_METERS[highway] : undefined
-  const widthMeters = typeof known === 'number' ? known : DEFAULT_PRIOR_METERS
   return {
-    widthMeters,
+    widthMeters: prior,
     widthKind: 'prior',
     metersPerLane: null,
     highway,
     lanes: null,
-    taggedWidthMeters: null,
+    taggedWidthMeters,
   }
 }
