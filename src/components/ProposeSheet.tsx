@@ -11,7 +11,7 @@ import {
   useStreetImprovements,
 } from '../city/streetImprovements'
 import { generateProposal } from '../data/api'
-import { useCityState } from '../showcase/cityStore'
+import { useCitySelector } from '../showcase/cityStore'
 import { chosenFacts, useIssueState } from '../showcase/issueStore'
 import type { DraftProposal, GenerateProposalResponse } from '../types'
 import { ProposalEditor } from './ProposalEditor'
@@ -35,7 +35,8 @@ export function ProposeSheet() {
   const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
   const [draft, setDraft] = useState<DraftProposal | null>(null)
   const { chosen, serverKnown } = useIssueState()
-  const { placeLabel, town } = useCityState()
+  const placeLabel = useCitySelector((state) => state.placeLabel)
+  const town = useCitySelector((state) => state.town)
   const count = chosen.size
 
   useEffect(() => {

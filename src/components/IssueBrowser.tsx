@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ISSUE_KIND_LABEL, type IssueKind } from '../../shared/issues.ts'
-import { useCityState } from '../showcase/cityStore'
+import { useCitySelector } from '../showcase/cityStore'
 import {
   measureFor,
   selectIssue,
@@ -17,6 +17,8 @@ import { IssueGlyph } from './IssueGlyph'
 const KINDS = Object.keys(ISSUE_KIND_LABEL) as IssueKind[]
 /** How many nearby issues to list. */
 const LIST_SIZE = 12
+/** The nearest-first list re-sorts when the view moves this far (scene units, ~20 m). */
+const NEAR_STEP = 3
 
 /**
  * Improve: browse the accessibility issues found in the map, nearest first,
@@ -24,7 +26,12 @@ const LIST_SIZE = 12
  */
 export function IssueBrowser() {
   const { issues, fixed, chosen, selectedId, peek } = useIssueState()
-  const { pose } = useCityState()
+  // Where the camera looks, to the nearest few metres: the list re-sorts
+  // as you move, not on every camera frame.
+  const pose = {
+    x: useCitySelector((state) => Math.round(state.pose.x / NEAR_STEP) * NEAR_STEP),
+    z: useCitySelector((state) => Math.round(state.pose.z / NEAR_STEP) * NEAR_STEP),
+  }
   const [kind, setKind] = useState<IssueKind | 'all'>('all')
 
   const counts = useMemo(() => {

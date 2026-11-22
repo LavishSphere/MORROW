@@ -102,8 +102,27 @@ export function getCityState() {
   return state;
 }
 
+/** Every change, the camera pose included: re-renders a few times a second while moving. */
 export function useCityState() {
   return useSyncExternalStore(subscribe, getCityState, getCityState);
+}
+
+/**
+ * One piece of the state. The component re-renders only when that piece
+ * changes, so overlays that never read the pose stay still while the
+ * camera moves. `select` must return a stored value or a primitive.
+ */
+export function useCitySelector<T>(select: (state: State) => T): T {
+  const get = () => select(state);
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+/** Listen for any change outside React; returns the unsubscribe. */
+export function subscribeCity(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function publishMap(map: CityMap) {

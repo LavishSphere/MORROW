@@ -1,11 +1,11 @@
 import { Html } from "@react-three/drei";
-import { useCityState } from "../cityStore";
+import { useCitySelector } from "../cityStore";
 
 const LOGO_BLUE = "#1488ff";
 
 /** A pin over the address the resident jumped to, with its label. */
 export function AddressPin() {
-  const { pin } = useCityState();
+  const pin = useCitySelector((state) => state.pin);
   if (!pin) return null;
   return (
     <group position={[pin.x, 0, pin.z]} name="address-pin">
