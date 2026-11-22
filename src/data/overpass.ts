@@ -52,16 +52,21 @@ export type LoadedNeighborhood = {
   tiles?: string[]
 }
 
-const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
 /**
  * Public Overpass servers, tried in order. One may refuse some clients
- * (403) or be busy (429, 5xx); the next one is tried instead.
+ * (403) or be busy (429, 5xx); the next one is tried instead. The French
+ * server answers only white-listed clients and sends no CORS header, so a
+ * browser reaches it last.
  */
 export const OVERPASS_ENDPOINTS = [
-  OVERPASS,
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
 ] as const
+/** Wait before asking every server a second time for a new place. */
+const RETRY_AFTER_MS = 4000
+/** Only a first try that failed this fast is worth a second. */
+const RETRY_WITHIN_MS = 20000
 /** The server that last answered, so later tiles go straight to it. */
 let workingEndpoint: string | null = null
 
@@ -605,7 +610,15 @@ export async function loadUsNeighborhood(
     throw new Error('No US place matched that name.')
   }
   try {
-    const streets = await fetchArea(place.lng, place.lat)
+    // Busy servers (429, 502) often answer a few seconds later: when every
+    // server said no quickly, ask once more before settling for the
+    // stand-in. After slow timeouts, do not make the resident wait again.
+    const asked = Date.now()
+    const streets = await fetchArea(place.lng, place.lat).catch(async (error: unknown) => {
+      if (Date.now() - asked > RETRY_WITHIN_MS) throw error
+      await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS))
+      return fetchArea(place.lng, place.lat)
+    })
     const [coast, landmarks] = await Promise.all([
       fetchCoastline(place.lng, place.lat),
       fetchLandmarkBridges(place.lng, place.lat),
