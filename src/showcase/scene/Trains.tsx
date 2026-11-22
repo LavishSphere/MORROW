@@ -1,7 +1,8 @@
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
-import { polylineLength } from "../../data/rail.ts";
+import { polylineLength, similarColour } from "../../data/rail.ts";
+import { consistFront, segmentAt, simPosition, type RailRoute, type SimTrain } from "../../data/railRoutes.ts";
 import type { LiveVehicle } from "../../data/transitLive.ts";
 import {
   alongAt,
@@ -15,8 +16,10 @@ import {
 } from "../../data/trains.ts";
 import { bridgeLift, RAIL_Y } from "./railGeometry";
 
-/** Most cars drawn at once. */
-const MAX_CARS = 240;
+/** Most cars drawn at once, per mesh: live and simulated together. */
+const MAX_CARS = 480;
+/** Simulated trains move only within this distance of the view center. */
+const NEAR = 110;
 const CAR_WIDTH = 0.36;
 const CAR_HEIGHT = 0.36;
 /** Underground trains float just over the dashed tunnel line, as a ghost. */
@@ -25,6 +28,9 @@ const GHOST_Y = 0.1;
 type Props = {
   lines: readonly TrackLine[];
   project: (lon: number, lat: number) => readonly [number, number];
+  /** Stitched routes and the simulated trains that run on them. */
+  routes: readonly RailRoute[];
+  sim: readonly SimTrain[];
   live: readonly LiveVehicle[];
   /** When the live vehicles arrived (ms); a new value starts new glides. */
   liveAt: number;
@@ -53,9 +59,13 @@ function CarMesh({
 /**
  * Train cars in line colours. Surface trains run on the track; underground
  * trains are a translucent ghost over the tunnel line. Live vehicles glide
- * from one reported spot to the next over a poll interval.
+ * from one reported spot to the next over a poll interval. Everywhere
+ * else, and on lines a live feed does not cover, simulated trains run a
+ * seeded timetable; they move only near the view, and stand still with
+ * reduced motion.
  */
-export function Trains({ lines, project, live, liveAt, pollMs, reducedMotion }: Props) {
+export function Trains({ lines, routes, sim, project, live, liveAt, pollMs, reducedMotion }: Props) {
+  const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3 } | null;
   const parts = useMemo(() => {
     const body = new THREE.BoxGeometry(CAR_LENGTH, CAR_HEIGHT, CAR_WIDTH).translate(0, CAR_HEIGHT / 2 + 0.02, 0);
     const windows = new THREE.BoxGeometry(CAR_LENGTH * 0.9, 0.08, CAR_WIDTH + 0.012).translate(0, CAR_HEIGHT * 0.7, 0);
@@ -79,6 +89,14 @@ export function Trains({ lines, project, live, liveAt, pollMs, reducedMotion }: 
   const lengths = useMemo(() => lines.map((line) => polylineLength(line.points)), [lines]);
 
   const targets = useMemo(() => placeLiveVehicles(live, lines, project), [live, lines, project]);
+  // Live vehicles replace simulated trains on the lines they cover.
+  const simulated = useMemo(() => {
+    const liveColours = [...new Set(targets.map((t) => t.colour))];
+    return sim.filter((train) => {
+      const route = routes[train.route];
+      return route && !liveColours.some((colour) => similarColour(colour, route.colour));
+    });
+  }, [sim, routes, targets]);
   const motions = useRef<Map<string, Motion>>(new Map());
   useEffect(() => {
     motions.current = retarget(motions.current, targets, performance.now(), pollMs, reducedMotion);
@@ -96,7 +114,7 @@ export function Trains({ lines, project, live, liveAt, pollMs, reducedMotion }: 
     [],
   );
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const top = surface.current;
     const glass = windows.current;
     const under = ghost.current;
@@ -105,28 +123,52 @@ export function Trains({ lines, project, live, liveAt, pollMs, reducedMotion }: 
     let above = 0;
     let below = 0;
     const { matrix, q, p, one, up, colour } = scratch;
+    /** One car: on the track, or a ghost over the tunnel line. */
+    const draw = (x: number, z: number, dx: number, dz: number, underground: boolean, lift: number) => {
+      q.setFromAxisAngle(up, Math.atan2(-dz, dx));
+      if (underground) {
+        if (below >= MAX_CARS) return;
+        matrix.compose(p.set(x, GHOST_Y, z), q, one);
+        under.setMatrixAt(below, matrix);
+        under.setColorAt(below, colour);
+        below += 1;
+      } else {
+        if (above >= MAX_CARS) return;
+        matrix.compose(p.set(x, lift + RAIL_Y, z), q, one);
+        top.setMatrixAt(above, matrix);
+        top.setColorAt(above, colour);
+        glass.setMatrixAt(above, matrix);
+        above += 1;
+      }
+    };
     for (const motion of motions.current.values()) {
       const line = lines[motion.line];
       if (!line) continue;
       const along = alongAt(motion, now);
       colour.set(motion.colour);
       for (const car of consistPoses(line.points, along, motion.dir, consistSize(line.railway))) {
-        q.setFromAxisAngle(up, Math.atan2(-car.dz, car.dx));
-        if (line.underground) {
-          if (below >= MAX_CARS) continue;
-          matrix.compose(p.set(car.x, GHOST_Y, car.z), q, one);
-          under.setMatrixAt(below, matrix);
-          under.setColorAt(below, colour);
-          below += 1;
-        } else {
-          if (above >= MAX_CARS) continue;
-          const lift = line.bridge ? bridgeLift(car.along, lengths[motion.line] ?? 0) : 0;
-          matrix.compose(p.set(car.x, lift + RAIL_Y, car.z), q, one);
-          top.setMatrixAt(above, matrix);
-          top.setColorAt(above, colour);
-          glass.setMatrixAt(above, matrix);
-          above += 1;
-        }
+        const lift = line.bridge ? bridgeLift(car.along, lengths[motion.line] ?? 0) : 0;
+        draw(car.x, car.z, car.dx, car.dz, line.underground, lift);
+      }
+    }
+    const target = controls?.target;
+    const t = reducedMotion ? 0 : clock.elapsedTime;
+    for (const train of simulated) {
+      const route = routes[train.route];
+      if (!route || !target) continue;
+      const { bbox } = route;
+      if (target.x < bbox.minX - NEAR || target.x > bbox.maxX + NEAR || target.z < bbox.minZ - NEAR || target.z > bbox.maxZ + NEAR) continue;
+      const { along, dir } = simPosition(route, train, t);
+      const front = consistFront(along, dir, route.length, train.cars);
+      const cars = consistPoses(route.points, front, dir, train.cars);
+      const lead = cars[0];
+      if (!lead || Math.hypot(lead.x - target.x, lead.z - target.z) > NEAR) continue;
+      colour.set(route.colour);
+      for (const car of cars) {
+        const segment = segmentAt(route, car.along);
+        const line = segment ? lines[segment.line] : undefined;
+        const lift = line?.bridge && segment ? bridgeLift(car.along - segment.start, segment.end - segment.start) : 0;
+        draw(car.x, car.z, car.dx, car.dz, line?.underground ?? false, lift);
       }
     }
     top.count = above;

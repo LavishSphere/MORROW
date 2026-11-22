@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { RailNetwork, Station } from "../../data/rail.ts";
 import type { TrackLine } from "../../data/trains.ts";
 import { useLiveTransit } from "../../data/useLiveTransit.ts";
+import { planSimulation, stitchRoutes, withStops } from "../../data/railRoutes.ts";
 import { buildRailGeometry, disposeRail } from "./railGeometry";
 import { Trains } from "./Trains";
 
@@ -285,6 +286,9 @@ export function RailLayer({
   // Passenger lines the trains run on: not yards or sidings.
   const tracks = useMemo<TrackLine[]>(() => network.lines.filter((line) => !line.minor), [network]);
   const live = useLiveTransit(geoBounds, origin, tracks.length > 0);
+  // Every city: stitched routes with seeded simulated trains.
+  const routes = useMemo(() => withStops(stitchRoutes(tracks), network.stations), [tracks, network]);
+  const sim = useMemo(() => planSimulation(routes), [routes]);
 
   if (network.lines.length === 0 && network.stations.length === 0) return null;
   return (
@@ -305,6 +309,8 @@ export function RailLayer({
       <StationLabels stations={network.stations} mark={mark} />
       <Trains
         lines={tracks}
+        routes={routes}
+        sim={sim}
         project={project}
         live={live.vehicles}
         liveAt={live.at}
