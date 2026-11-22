@@ -1828,12 +1828,18 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
 
   yield;
   // Real trees first: every tree mapped in OpenStreetMap stands where it is
-  // mapped (street trees line the sidewalks), unless it would land on water
-  // or a road. The random fill below then keeps clear of them.
+  // mapped. Street trees stand in the sidewalk strip with crowns over the
+  // road, as they do in life, so only a trunk inside a building or in the
+  // water is skipped. The random fill below then keeps clear of them.
   const trees: Placement[] = [];
-  for (const tree of model.parsed.trees ?? []) {
+  const realTrees = model.parsed.trees ?? [];
+  const inBuilding = realTrees.length
+    ? new FootprintGrid([...model.parsed.buildings.map((b) => b.ring), ...model.parts.map((part) => part.ring)])
+    : null;
+  const inWater = realTrees.length ? wetTest(model.parsed, sea) : null;
+  for (const tree of realTrees) {
     if (tree.x < minX - 4 || tree.x > maxX + 4 || tree.z < minZ - 4 || tree.z > maxZ + 4) continue;
-    if (occupancy.taken(tree.x, tree.z)) continue;
+    if (inBuilding?.inside(tree.x, tree.z) || inWater?.(tree.x, tree.z)) continue;
     const roll = hash(tree.x + 3, tree.z + 1);
     trees.push({
       x: tree.x,

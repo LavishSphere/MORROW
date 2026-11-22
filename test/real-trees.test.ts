@@ -36,6 +36,7 @@ test("mapped trees and tree rows come from OpenStreetMap and stand where they ar
   assert.equal(layer[0]?.geometry.type, "MultiPoint");
   assert.equal(layer[0]?.properties.leaf, "needleleaved");
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  assert.match(city, /for \(const tree of model\.parsed\.trees \?\? \[\]\)/);
+  assert.match(city, /for \(const tree of realTrees\)/);
+  assert.match(city, /inBuilding\?\.inside\(tree\.x, tree\.z\) \|\| inWater\?\.\(tree\.x, tree\.z\)/);
   assert.match(city, /occupancy\.markDisk\(tree\.x, tree\.z, 0\.9\)/);
 });
