@@ -3,7 +3,7 @@ import { ISSUE_KIND_LABEL, type IssueKind, type IssueMeasure } from '../../share
 import { useCityState } from '../showcase/cityStore'
 import { measureFor, selectIssue, setShowBefore, useIssueState } from '../showcase/issueStore'
 import { buildingsNear, NEAR_METERS, PEOPLE_METHOD, peopleIn, placesNear } from '../showcase/people'
-import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
+import { IssueGlyph } from './IssueGlyph'
 
 /** Who each kind of fix helps, from standard accessibility guidance. */
 const WHO_BENEFITS: Record<IssueKind, string[]> = {
@@ -137,7 +137,7 @@ export function IssueComparisons() {
         {rows.map(({ issue, measure, near }) => (
           <li key={issue.id} className="issue-compare__item">
             <p className="issue-card__kind">
-              <span className="issue-dot" style={{ background: ISSUE_COLOR[issue.kind] }} />
+              <IssueGlyph kind={issue.kind} />
               {ISSUE_KIND_LABEL[issue.kind]} · {issue.where}
             </p>
             <dl className="issue-compare__pair">

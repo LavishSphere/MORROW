@@ -1,15 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CanvasSlot } from './components/CanvasSlot'
 import { CompareSheet } from './components/CompareSheet'
+import { FlowNudge } from './components/FlowNudge'
 import { ImprovePage } from './components/ImprovePage'
 import { ModeToolbar } from './components/ModeToolbar'
 import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { useChromeInsets } from './components/useChromeInsets'
+import { useFlowNudge } from './components/useFlowNudge'
 import { useIssueState } from './showcase/issueStore'
 import type { LoadedNeighborhood } from './data/overpass'
 import type { AppMode } from './types'
+
+/** Remembered "Reduced motion" choice. Motion is on unless the viewer turned it off. */
+const REDUCED_MOTION_KEY = 'morrow:reduced-motion'
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('explore')
@@ -23,6 +28,8 @@ export default function App() {
     if (next !== 'explore') setPanelMode(next)
   }
   const panelOpen = mode !== 'explore'
+  // "Next: Improve" and so on, pointing along Explore → Improve → Compare → Propose.
+  const nudge = useFlowNudge(mode)
   // Clicking an issue marker in the city opens it in Improve.
   const { openImprove } = useIssueState()
   useEffect(() => {
@@ -31,23 +38,29 @@ export default function App() {
     setPanelMode('improve')
   }, [openImprove])
   const [neighborhood, setNeighborhood] = useState<LoadedNeighborhood | null>(null)
-  const [reducedMotion, setReducedMotion] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Motion is on by default. The "Reduced motion" toggle turns it off, and
+  // that choice is remembered on this browser.
+  const [reducedMotion, setReducedMotionState] = useState(() => {
+    try {
+      return window.localStorage.getItem(REDUCED_MOTION_KEY) === '1'
+    } catch {
+      return false
+    }
   })
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReducedMotion(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+  const setReducedMotion = useCallback((on: boolean) => {
+    setReducedMotionState(on)
+    try {
+      window.localStorage.setItem(REDUCED_MOTION_KEY, on ? '1' : '0')
+    } catch {
+      // Storage blocked: the choice lasts for this visit only.
+    }
   }, [])
 
 
   return (
     <div
       ref={shellRef}
-      className={`app-shell app-shell--city${panelOpen ? ' has-panel' : ''}${reducedMotion ? ' is-reduced-motion' : ''}`}
+      className={`app-shell app-shell--city${panelOpen ? ' has-panel' : ''}${nudge.step ? ' has-nudge' : ''}${reducedMotion ? ' is-reduced-motion' : ''}`}
     >
       <a className="skip-link" href="#mode-toolbar">
         Skip to modes
@@ -81,6 +94,7 @@ export default function App() {
           {panelMode === 'compare' && <CompareSheet />}
           {panelMode === 'propose' && <ProposeSheet />}
         </OverlayPanel>
+        <FlowNudge step={nudge.step} onGo={changeMode} onClose={nudge.dismiss} />
       </main>
 
       <div id="mode-toolbar">

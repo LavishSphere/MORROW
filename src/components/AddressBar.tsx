@@ -169,6 +169,12 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
 
   const showList = open && suggestions.length > 0
 
+  // Closing the note hands focus back to the field, not to the page.
+  const closeStatus = () => {
+    setStatus('')
+    document.getElementById(inputId)?.focus()
+  }
+
   return (
     <form className="place-search" role="search" onSubmit={onSubmit}>
       <label className="sr-only" htmlFor={inputId}>
@@ -226,9 +232,26 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
           {busy ? 'Finding' : 'Go'}
         </button>
       </div>
-      <p className={`place-search__status${status && !showList ? ' is-shown' : ''}`} role="status">
-        {status}
-      </p>
+      {/* The place note ("… OpenStreetMap: N streets …"). × closes it; the
+          next place loaded sets a new note and it shows again. */}
+      <div className={`place-search__status${status && !showList ? ' is-shown' : ''}`}>
+        <p className="place-search__status-text" role="status">
+          {status}
+        </p>
+        {status && (
+          <button
+            type="button"
+            className="place-search__status-close"
+            aria-label="Close place details"
+            onClick={closeStatus}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') closeStatus()
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
     </form>
   )
 }

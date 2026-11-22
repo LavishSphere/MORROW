@@ -1,12 +1,18 @@
 import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
 import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
+import { lineColour, railRefsFrom, railTags, railWayKind, STATION_NODE_TYPES, type RailRef } from './rail.ts'
 
 export type OsmWay = {
   id: number
+  /** Set when the shape came from a multipolygon relation, whose ids can repeat way ids. */
+  osmType?: 'relation'
   name: string | null
-  /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
-  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline'
+  /**
+   * 'part' is an OSM building:part: one 3D piece of a detailed building.
+   * 'bridge' is a man_made=bridge outline: the structure under its roads.
+   */
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge' | 'rail' | 'platform' | 'station'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -29,6 +35,10 @@ export type OsmWay = {
   widthKind?: WidthKind | null
   /** Meters-per-lane assumption. Set only when widthKind is lanes. */
   metersPerLane?: number | null
+  /** Rail line colour from the way or its route relations; null is neutral track. */
+  lineColour?: string | null
+  /** Route refs the way carries (Red, Green-B, CR-Worcester…), joined with ';'. */
+  lineRef?: string | null
 }
 
 export type LoadedNeighborhood = {
@@ -43,6 +53,37 @@ export type LoadedNeighborhood = {
 }
 
 const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
+/**
+ * Public Overpass servers, tried in order. One may refuse some clients
+ * (403) or be busy (429, 5xx); the next one is tried instead.
+ */
+export const OVERPASS_ENDPOINTS = [
+  OVERPASS,
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+] as const
+/** The server that last answered, so later tiles go straight to it. */
+let workingEndpoint: string | null = null
+
+/** Servers to try, the one that last worked first. */
+export function endpointOrder(preferred: string | null): string[] {
+  const rest = OVERPASS_ENDPOINTS.filter((url) => url !== preferred)
+  return preferred && OVERPASS_ENDPOINTS.some((url) => url === preferred) ? [preferred, ...rest] : rest
+}
+
+/** Refused, rate limited, or failing: worth asking the next server. */
+export function tryNextEndpoint(status: number): boolean {
+  return status === 403 || status === 429 || status >= 500
+}
+
+/** Forget the remembered server (a new session, or a test). */
+export function resetOverpassEndpoint() {
+  workingEndpoint = null
+}
+
+export function currentOverpassEndpoint() {
+  return workingEndpoint
+}
 /** Half-size of one downloaded area in degrees: about 1.4 km across. */
 const HALF = 0.0065
 /**
@@ -51,6 +92,11 @@ const HALF = 0.0065
  * About 12 km across.
  */
 const COAST_HALF = 0.055
+/**
+ * Landmark bridges are searched wider still, about 20 km across, so the
+ * Golden Gate and the Bay Bridge stand on the skyline from downtown.
+ */
+const LANDMARK_HALF = 0.09
 /** Accessibility tags kept from OpenStreetMap for issue detection. */
 const KEEP_TAGS = [
   'footway',
@@ -64,6 +110,13 @@ const KEEP_TAGS = [
   'lanes:forward',
   'lanes:backward',
   'width',
+  // Traffic direction, and the places nobody is drawn walking (indoors, under cover, underground).
+  'oneway',
+  'junction',
+  'indoor',
+  'tunnel',
+  'covered',
+  'level',
   // Real 3D shape, where mappers recorded it (Simple 3D Buildings).
   'height',
   'min_height',
@@ -74,12 +127,55 @@ const KEEP_TAGS = [
   'building:colour',
   'building:material',
   'roof:colour',
+  // Bridges and tunnels: which ways leave the ground, and how.
+  'bridge',
+  'bridge:structure',
+  'colour',
+  'ref',
 ]
+
+/** OSM reference for a loaded shape: the way id, or `r<id>` for a relation. */
+export function osmRef(way: Pick<OsmWay, 'id' | 'osmType'>): number | string {
+  return way.osmType === 'relation' ? `r${way.id}` : way.id
+}
+
+function wayKey(way: OsmWay) {
+  return `${way.kind}:${osmRef(way)}`
+}
+
+/** Never drawn on the ground: indoor, unbuilt, or not a street at all. */
+const OFF_STREET = new Set(['corridor', 'proposed', 'construction', 'platform', 'elevator'])
+
+/**
+ * Highways that run underground or indoors (tunnels, covered ways, layer
+ * below zero) would be drawn through the buildings above them.
+ */
+function underground(tags: Record<string, unknown> | undefined) {
+  if (!tags) return false
+  const tunnel = tags.tunnel
+  if (typeof tunnel === 'string' && tunnel !== 'no') return true
+  if (tags.covered === 'yes' || tags.indoor === 'yes') return true
+  const layer = Number(tags.layer)
+  return Number.isFinite(layer) && layer < 0
+}
 
 /** Areas snap to a grid, so nearby requests share one download. */
 export function tileKey(lng: number, lat: number) {
   return `${Math.round(lng / (HALF * 2))}:${Math.round(lat / (HALF * 2))}`
 }
+
+/**
+ * Center of a grid tile, as [longitude, latitude]. Downloading the box
+ * around this point covers exactly that tile, so neighbors meet edge to
+ * edge with no gap and no overlap.
+ */
+export function tileCenter(key: string): [number, number] {
+  const [x, y] = key.split(':').map(Number)
+  return [(x ?? 0) * HALF * 2, (y ?? 0) * HALF * 2]
+}
+
+/** Half-size of one tile in degrees, for tests and the loader. */
+export const TILE_HALF = HALF
 
 function closeEnough(a: [number, number], b: [number, number]) {
   return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6
@@ -163,6 +259,7 @@ function relationWater(row: OverpassElement): OsmWay[] {
   if (coast && !wet) {
     return lines.map((points) => ({
       id: row.id as number,
+      osmType: 'relation' as const,
       name,
       kind: 'coastline' as const,
       water: null,
@@ -173,10 +270,78 @@ function relationWater(row: OverpassElement): OsmWay[] {
   const rings = stitchRings(lines)
   return rings.map((points) => ({
     id: row.id as number,
+    osmType: 'relation' as const,
     name,
     kind: 'water' as const,
     water,
     waterway,
+    points,
+  }))
+}
+
+function keptTags(raw: Record<string, unknown> | undefined) {
+  const tags: Record<string, string> = {}
+  for (const key of KEEP_TAGS) {
+    const value = raw?.[key]
+    if (typeof value === 'string') tags[key] = value
+  }
+  // The OSM layer (below ground when negative) travels as layer:osm, so it
+  // never overwrites the scene's own layer (road, building, …).
+  if (typeof raw?.layer === 'string') tags['layer:osm'] = raw.layer
+  return tags
+}
+
+/**
+ * Buildings and building parts mapped as multipolygon relations (SF City
+ * Hall's outline and its ground floors are). Their member ways carry no
+ * tags, so the relation is the only place the shape and height live. Outer
+ * members are stitched into closed rings, one shape per ring. Inner rings
+ * (courtyards) are left out: the city extrudes plain outlines.
+ */
+function relationBuilding(row: OverpassElement): OsmWay[] {
+  if (typeof row.id !== 'number' || !Array.isArray(row.members)) return []
+  const part = typeof row.tags?.['building:part'] === 'string'
+  const building = !part && typeof row.tags?.building === 'string'
+  if (!part && !building) return []
+  const lines: [number, number][][] = []
+  for (const member of row.members) {
+    if (!member || member.role === 'inner') continue
+    const line = asLonLatLine(member.geometry)
+    if (line.length >= 2) lines.push(line)
+  }
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = keptTags(row.tags)
+  return stitchRings(lines).map((points) => ({
+    id: row.id as number,
+    osmType: 'relation' as const,
+    name,
+    kind: part ? ('part' as const) : ('building' as const),
+    highway: null,
+    building: building ? String(row.tags?.building) : null,
+    water: null,
+    waterway: null,
+    ...(Object.keys(tags).length > 0 ? { tags } : {}),
+    points,
+  }))
+}
+
+/** A man_made=bridge relation: its outer ways stitched into deck outlines. */
+function relationBridge(row: OverpassElement): OsmWay[] {
+  if (typeof row.id !== 'number' || !Array.isArray(row.members)) return []
+  if (row.tags?.man_made !== 'bridge') return []
+  const lines: [number, number][][] = []
+  for (const member of row.members) {
+    if (!member || member.role === 'inner') continue
+    const line = asLonLatLine(member.geometry)
+    if (line.length >= 2) lines.push(line)
+  }
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = keptTags(row.tags)
+  return stitchRings(lines).map((points) => ({
+    id: row.id as number,
+    name,
+    kind: 'bridge' as const,
+    ...(Object.keys(tags).length > 0 ? { tags } : {}),
     points,
   }))
 }
@@ -187,11 +352,23 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   const elements = (body as { elements?: unknown }).elements
   if (!Array.isArray(elements)) return []
   const ways: OsmWay[] = []
+  // Route relations' colour and ref, per rail way id.
+  const railRefs = railRefsFrom(elements)
+  const seenRail = new Set<string>()
   for (const element of elements) {
     if (!element || typeof element !== 'object') continue
     const row = element as OverpassElement
     if (row.type === 'relation') {
-      ways.push(...relationWater(row))
+      const shapes = relationBuilding(row)
+      ways.push(...(shapes.length > 0 ? shapes : relationWater(row)), ...relationBridge(row))
+      continue
+    }
+    if (row.type === 'node') {
+      const station = stationNode(row)
+      if (station && !seenRail.has(`station:${station.id}`)) {
+        seenRail.add(`station:${station.id}`)
+        ways.push(station)
+      }
       continue
     }
     if (typeof row.id !== 'number' || !Array.isArray(row.geometry)) continue
@@ -201,6 +378,17 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       points.push([point.lon, point.lat])
     }
     if (points.length < 2) continue
+    // Track and platforms. A platform canopy mapped as a building stays a building.
+    const shell = typeof row.tags?.building === 'string' || typeof row.tags?.['building:part'] === 'string'
+    const railKind = shell ? null : railWayKind(row.tags)
+    // highway=platform is a platform edge, not a street.
+    if (row.tags?.highway === 'platform' && !shell && railKind !== 'platform') continue
+    if (railKind && (railKind === 'platform' || typeof row.tags?.highway !== 'string')) {
+      if (seenRail.has(`${railKind}:${row.id}`)) continue
+      seenRail.add(`${railKind}:${row.id}`)
+      ways.push(railWay(row, railKind, points, railRefs.get(row.id)))
+      continue
+    }
     const part = typeof row.tags?.['building:part'] === 'string'
     const building = !part && typeof row.tags?.building === 'string'
     const highway = typeof row.tags?.highway === 'string'
@@ -210,13 +398,17 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
     const riverbank = waterway === 'riverbank'
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+    if (highway && (OFF_STREET.has(String(row.tags?.highway)) || underground(row.tags))) continue
+    const outline = row.tags?.man_made === 'bridge' && isClosedRing(points)
     const kind = part
       ? 'part'
       : building
         ? 'building'
         : highway
           ? 'road'
-          : coastline
+          : outline
+            ? 'bridge'
+            : coastline
             ? 'coastline'
             : natural || water || (riverbank && isClosedRing(points))
               ? 'water'
@@ -224,11 +416,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
                 ? 'waterway'
                 : null
     if (!kind) continue
-    const tags: Record<string, string> = {}
-    for (const key of KEEP_TAGS) {
-      const value = row.tags?.[key]
-      if (typeof value === 'string') tags[key] = value
-    }
+    const tags = keptTags(row.tags)
     const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
     ways.push({
       id: row.id,
@@ -250,26 +438,129 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   return ways
 }
 
-async function interpret(query: string): Promise<OsmWay[]> {
-  const res = await fetch(OVERPASS, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ data: query }),
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!res.ok) throw new Error(`Overpass ${res.status}`)
-  return waysFromOverpass(await res.json())
+/** The request timeout, plus the caller's own cancel when there is one. */
+function requestSignal(signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(60000)
+  if (!signal) return timeout
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+}
+
+/**
+ * POST one query, trying each server in turn until one answers. Requests
+ * stay one at a time: the next server is asked only after the last one
+ * failed. A cancel from the caller stops at once.
+ */
+export async function postOverpass(
+  query: string,
+  signal?: AbortSignal,
+  send: typeof fetch = fetch,
+): Promise<unknown> {
+  let lastError: unknown = new Error('Overpass unreachable')
+  for (const url of endpointOrder(workingEndpoint)) {
+    signal?.throwIfAborted()
+    let res: Response
+    try {
+      res = await send(url, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: requestSignal(signal),
+      })
+    } catch (error) {
+      signal?.throwIfAborted()
+      lastError = error
+      continue
+    }
+    if (res.ok) {
+      workingEndpoint = url
+      return res.json()
+    }
+    lastError = new Error(`Overpass ${res.status}`)
+    if (!tryNextEndpoint(res.status)) break
+  }
+  throw lastError
+}
+
+async function interpret(query: string, signal?: AbortSignal): Promise<OsmWay[]> {
+  return waysFromOverpass(await postOverpass(query, signal))
+
+}
+
+/** A rail track or platform way, with its line colour from route relations. */
+function railWay(
+  row: OverpassElement,
+  kind: 'rail' | 'platform',
+  points: [number, number][],
+  ref: RailRef | undefined,
+): OsmWay {
+  const name = typeof row.tags?.name === 'string' ? row.tags.name : null
+  const tags = railTags(row.tags)
+  const refs = ref?.refs.length ? ref.refs.join(';') : (tags.ref ?? null)
+  return {
+    id: row.id as number,
+    name,
+    kind,
+    tags,
+    points,
+    lineColour: kind === 'rail' ? lineColour(tags, ref, name) : null,
+    lineRef: refs,
+  }
+}
+
+/** Stations, stops, and subway entrances are OSM nodes. */
+function stationNode(row: OverpassElement & { lat?: unknown; lon?: unknown }): OsmWay | null {
+  const railway = row.tags?.railway
+  if (typeof row.id !== 'number' || typeof row.lat !== 'number' || typeof row.lon !== 'number') return null
+  if (typeof railway !== 'string' || !(STATION_NODE_TYPES as readonly string[]).includes(railway)) return null
+  return {
+    id: row.id,
+    name: typeof row.tags?.name === 'string' ? row.tags.name : null,
+    kind: 'station',
+    tags: railTags(row.tags),
+    points: [[row.lon, row.lat]],
+  }
 }
 
 /** Real streets and buildings in one area around a point, from OpenStreetMap. */
-export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
+export async function fetchArea(lng: number, lat: number, signal?: AbortSignal): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
   // Streets, buildings, landmark pieces, and water get separate quotas.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
-  return interpret(query)
+  // Some landmarks (SF City Hall) map their outline and lower floors as
+  // relations, so building relations are asked for too.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;relation["building:part"](${box});out tags geom 400;relation["building"](${box});out tags geom 600;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;way["man_made"="bridge"](${box});out tags geom 80;relation["man_made"="bridge"](${box});out tags geom 20;${railQuery(box)}`
+  return interpret(query, signal)
+}
+
+/** One grid tile, downloaded around its snapped center. */
+export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
+  const [lng, lat] = tileCenter(key)
+  return fetchArea(lng, lat, signal)
+}
+
+/**
+ * The big bridges around a place, wider than any street tile: long
+ * motorway, trunk, and primary bridge ways plus large bridge outlines.
+ * Failure returns nothing so the city still loads.
+ */
+export async function fetchLandmarkBridges(lng: number, lat: number): Promise<OsmWay[]> {
+  const box = `${lat - LANDMARK_HALF},${lng - LANDMARK_HALF},${lat + LANDMARK_HALF},${lng + LANDMARK_HALF}`
+  const query = `[out:json][timeout:40];way["highway"~"^(motorway|trunk|primary)$"]["bridge"]["bridge"!="no"](${box})(if:length()>200);out tags geom 300;way["man_made"="bridge"](${box})(if:length()>600);out tags geom 60;relation["man_made"="bridge"](${box});out tags geom 30;`
+  try {
+    return (await interpret(query)).filter((way) => way.kind === 'bridge' || (way.kind === 'road' && way.tags?.bridge))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Track, platforms, and station nodes, plus one "railref" row per track way
+ * and route relation, carrying that relation's colour, ref, and network.
+ */
+function railQuery(box: string) {
+  return `way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge|funicular)$"](${box})->.rail;.rail out tags geom 600;way["railway"="platform"](${box});out tags geom 150;node["railway"~"^(station|halt|tram_stop|subway_entrance)$"](${box});out body 250;foreach.rail->.w(rel(bw.w)["route"~"^(subway|light_rail|train|tram|monorail)$"]->.rr;foreach.rr->.r(make railref way=w.u(id()),colour=r.u(t["colour"]),ref=r.u(t["ref"]),network=r.u(t["network"]);out;););`
 }
 
 /**
@@ -288,8 +579,8 @@ export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]
 }
 
 function withCoast(ways: OsmWay[], coast: OsmWay[]) {
-  const seen = new Set(ways.map((way) => `${way.kind}:${way.id}`))
-  return [...ways, ...coast.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
+  const seen = new Set(ways.map(wayKey))
+  return [...ways, ...coast.filter((way) => !seen.has(wayKey(way)))]
 }
 
 function describe(place: UsPlace, ways: OsmWay[]) {
@@ -315,9 +606,15 @@ export async function loadUsNeighborhood(
   }
   try {
     const streets = await fetchArea(place.lng, place.lat)
-    const ways = withCoast(streets, await fetchCoastline(place.lng, place.lat))
+    const [coast, landmarks] = await Promise.all([
+      fetchCoastline(place.lng, place.lat),
+      fetchLandmarkBridges(place.lng, place.lat),
+    ])
+    const ways = withCoast(withCoast(streets, coast), landmarks)
     if (ways.length > 0) {
-      return { place, ways, note: describe(place, ways), tiles: [tileKey(place.lng, place.lat)] }
+      // A quick preview centered on the place. Its grid tile is still
+      // downloaded in the background, so tiles stay aligned to the grid.
+      return { place, ways, note: describe(place, ways), tiles: [] }
     }
   } catch {
     // Fall through to the labeled stand-in below.
@@ -332,21 +629,60 @@ export async function loadUsNeighborhood(
 }
 
 /**
- * Walked near the edge: download the real area around (lng, lat) and add
- * it to the neighborhood. Ways already loaded are kept once.
+ * Add downloaded tiles to the neighborhood. Ways already loaded (the
+ * preview overlaps its grid tiles) are kept once.
  */
-export async function extendNeighborhood(
+export function mergeAreas(
   neighborhood: LoadedNeighborhood,
-  lng: number,
-  lat: number,
-): Promise<LoadedNeighborhood> {
-  const key = tileKey(lng, lat)
+  fresh: OsmWay[],
+  keys: string[],
+): LoadedNeighborhood {
   const tiles = neighborhood.tiles ?? []
-  if (neighborhood.procedural || tiles.includes(key)) return neighborhood
-  const fresh = await fetchArea(lng, lat)
-  const seen = new Set(neighborhood.ways.map((way) => `${way.kind}:${way.id}`))
-  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
-  return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
+  if (neighborhood.procedural) return neighborhood
+  const seen = new Set(neighborhood.ways.map(wayKey))
+  const added = fresh.filter((way) => !seen.has(wayKey(way)))
+  const ways = [...neighborhood.ways]
+  for (const way of added) {
+    const id = wayKey(way)
+    // Tiles in one batch share the ways that cross their edge.
+    if (seen.has(id)) continue
+    seen.add(id)
+    ways.push(way)
+  }
+  const newKeys = keys.filter((key) => !tiles.includes(key))
+  return { ...neighborhood, ways, tiles: [...tiles, ...newKeys], note: describe(neighborhood.place, ways) }
+}
+
+/** Rail track, platforms, and stations as basemap features. */
+function railFeature(way: OsmWay) {
+  const base = { ...way.tags, osmId: way.id, name: way.name }
+  if (way.kind === 'station') {
+    return {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: way.points[0] },
+      properties: { ...base, layer: 'station' },
+    }
+  }
+  if (way.kind === 'platform') {
+    const closed = way.points.length >= 4 && isClosedRing(way.points)
+    return {
+      type: 'Feature',
+      geometry: closed
+        ? { type: 'Polygon', coordinates: [way.points] }
+        : { type: 'LineString', coordinates: way.points },
+      properties: { ...base, layer: 'rail_platform' },
+    }
+  }
+  return {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: way.points },
+    properties: {
+      ...base,
+      layer: 'rail',
+      colour: way.lineColour ?? null,
+      ref: way.lineRef ?? way.tags?.ref ?? null,
+    },
+  }
 }
 
 const FOOT = new Set(['footway', 'pedestrian', 'steps', 'corridor', 'living_street'])
@@ -380,12 +716,25 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
       })
       continue
     }
+    if (way.kind === 'bridge') {
+      if (way.points.length < 3) continue
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [way.points] },
+        properties: { ...way.tags, osmId: way.id, layer: 'bridge', name: way.name },
+      })
+      continue
+    }
     if (way.kind === 'coastline') {
       features.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: way.points },
         properties: { osmId: way.id, layer: 'coastline', name: way.name },
       })
+      continue
+    }
+    if (way.kind === 'rail' || way.kind === 'platform' || way.kind === 'station') {
+      features.push(railFeature(way))
       continue
     }
     if (way.kind === 'building' || way.kind === 'part') {
@@ -398,7 +747,8 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
         properties: {
-          osmId: way.id,
+          // Relations keep their `r` so they never share a key with a way of the same number.
+          osmId: osmRef(way),
           layer: way.kind === 'part' ? 'building_part' : 'building',
           name: way.name,
           building: way.building ?? 'yes',

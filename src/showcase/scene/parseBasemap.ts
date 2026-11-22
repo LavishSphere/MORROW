@@ -1,5 +1,7 @@
 import { resolveRoadWidth, type WidthKind } from "../../data/roadWidth.ts";
+import { parseRail, type RailNetwork } from "../../data/rail.ts";
 import { isFeatureCollection, type SceneProjector } from "../geo";
+import { isIndoor, onewayOf } from "./trafficLanes.ts";
 
 export type BasemapLayer =
   | "building"
@@ -35,6 +37,18 @@ export type WayRibbon = {
   metersPerLane: number | null;
   highway: string | null;
   lanes: number | null;
+  /** 1 one-way in the drawn direction (or a roundabout), -1 against it, 0 two-way. */
+  oneway: 1 | -1 | 0;
+  /** Indoor, covered, a tunnel, or on another level: no one is drawn moving here. */
+  indoor: boolean;
+  /** OSM bridge tag is set (not "no"): the way is an elevated deck. */
+  bridge?: boolean;
+  /** OSM layer tag (kept as "layer:osm"), 0 when absent: how decks stack. */
+  deckLayer?: number;
+  /** bridge:structure, ref, and colour, for the big bridges. */
+  structure?: string | null;
+  ref?: string | null;
+  colour?: string | null;
 };
 
 /** A mapped lake or pond. The shoreline is the map, not a defect. */
@@ -65,7 +79,11 @@ export type ParsedBasemap = {
   water: WaterBody[];
   waterways: Waterway[];
   coastlines: Coastline[];
+  /** Rail track, platforms, and stations (features with layer rail, rail_platform, station). */
+  rail: RailNetwork;
 };
+
+export type { RailLine, RailPlatform, Station, RailNetwork } from "../../data/rail.ts";
 
 const BUILDING_HEIGHTS: Record<string, number> = {
   dormitory: 2.4,
@@ -234,9 +252,15 @@ export function parseBasemap(
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
     ) {
+      // A platform edge mapped as highway=platform is not a street.
+      if (f.properties?.highway === "platform") continue;
       const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
       if (points.length < 2) continue;
+      const props = f.properties ?? {};
+      // Tunnels run under the buildings; they are not drawn on the ground.
+      if (typeof props.tunnel === "string" && props.tunnel !== "no") continue;
       const width = resolveRoadWidth(f.properties ?? null);
+      const text = (value: unknown) => (typeof value === "string" && value ? value : null);
       ways.push({
         id,
         edgeId,
@@ -249,18 +273,27 @@ export function parseBasemap(
         metersPerLane: width.metersPerLane,
         highway: width.highway,
         lanes: width.lanes,
+        oneway: onewayOf(f.properties),
+        indoor: isIndoor(f.properties),
+        bridge: typeof props.bridge === "string" && props.bridge !== "no",
+        deckLayer: Number(props["layer:osm"] ?? 0) || 0,
+        structure: text(props["bridge:structure"]),
+        ref: text(props.ref),
+        colour: text(props.colour),
       });
     }
   }
 
+  const rail = parseRail(geoJson.features, projector.project);
   if (
     buildings.length === 0 &&
     ways.length === 0 &&
     water.length === 0 &&
     waterways.length === 0 &&
-    coastlines.length === 0
+    coastlines.length === 0 &&
+    rail.lines.length === 0
   ) {
     return null;
   }
-  return { buildings, ways, water, waterways, coastlines };
+  return { buildings, ways, water, waterways, coastlines, rail };
 }

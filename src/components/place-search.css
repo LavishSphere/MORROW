@@ -117,9 +117,12 @@
   position: absolute;
   top: calc(100% + 0.4rem);
   left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
   width: max(100%, 20rem);
   margin: 0;
-  padding: 0.45rem 0.7rem;
+  padding: 0.45rem 0.35rem 0.45rem 0.7rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   background: rgba(12, 20, 17, 0.8);
@@ -140,4 +143,29 @@
   transition:
     opacity 200ms ease,
     visibility 0s;
+}
+
+.place-search__status-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.place-search__status-close {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: -0.2rem 0 -0.2rem 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(247, 250, 248, 0.7);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.place-search__status-close:hover {
+  color: #f7faf8;
+  background: rgba(255, 255, 255, 0.1);
 }

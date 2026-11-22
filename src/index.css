@@ -1605,6 +1605,156 @@ code {
     visibility 0s linear 380ms;
 }
 
+/* —— Next-step nudge: bottom centre, just above the mode bar ——
+   Clear of the minimap (right), the controls (left) and, when a mode
+   page is open, beside the panel instead of over it. */
+.app-shell--city {
+  --nudge-space: 3.6rem;
+  --minimap-space: 12rem;
+}
+
+.flow-nudge {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: calc(var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem));
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: max-content;
+  max-width: min(24rem, calc(100% - 2 * var(--overlay-left, 1.15rem)));
+  margin: 0;
+  padding: 0.5rem 0.45rem 0.5rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(12, 20, 17, 0.72);
+  color: #f7faf8;
+  font-size: 0.8rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+  transform: translateX(-50%);
+  animation: flow-nudge-in 360ms var(--overlay-ease, ease) both;
+}
+
+@keyframes flow-nudge-in {
+  from {
+    opacity: 0;
+    translate: 0 0.5rem;
+  }
+}
+
+.flow-nudge__text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.flow-nudge__title {
+  font-weight: 700;
+}
+
+.flow-nudge__hint {
+  color: rgba(247, 250, 248, 0.72);
+}
+
+.flow-nudge__go {
+  flex: none;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 10px;
+  background: #f7faf8;
+  color: #14211c;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.flow-nudge__go:hover {
+  background: #ffffff;
+}
+
+.flow-nudge__close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -0.3rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(247, 250, 248, 0.7);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.flow-nudge__close:hover {
+  color: #f7faf8;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* A mode page is open: sit to its right, left of the minimap. */
+.app-shell--city.has-panel .flow-nudge {
+  left: calc(
+    var(--overlay-left, 1.15rem) + 27rem + var(--overlay-gap, 0.85rem)
+  );
+  max-width: min(
+    22rem,
+    calc(
+      100% - 27rem - var(--minimap-space) - 2 * var(--overlay-left, 1.15rem) -
+        2 * var(--overlay-gap, 0.85rem)
+    )
+  );
+  transform: none;
+}
+
+/* Too narrow to sit beside things: one full-width row above the mode bar,
+   and the minimap, controls and panel step up to make room. */
+@media (max-width: 1100px) {
+  .app-shell--city .flow-nudge,
+  .app-shell--city.has-panel .flow-nudge {
+    left: var(--overlay-left, 1.15rem);
+    right: var(--overlay-left, 1.15rem);
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .flow-nudge__text {
+    display: block;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .app-shell--city.has-nudge .minimap,
+  .app-shell--city.has-nudge .move-hints {
+    bottom: calc(
+      var(--chrome-bottom, 5.2rem) + var(--overlay-gap, 0.85rem) +
+        var(--nudge-space)
+    );
+  }
+
+  .app-shell--city.has-nudge .overlay-panel {
+    max-height: calc(
+      100% - var(--chrome-top, 4.6rem) - var(--chrome-bottom, 5.2rem) -
+        2 * var(--overlay-gap) - var(--nudge-space)
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-nudge {
+    animation: none;
+  }
+}
+
 /* —— Minimap: bottom-right, just above the mode bar —— */
 .minimap {
   position: absolute;
@@ -1745,6 +1895,218 @@ code {
   border-radius: 50%;
 }
 
+/* The shape of the issue's pin on the map, in its colour (set via `color`). */
+.issue-glyph {
+  display: inline-block;
+  flex: none;
+  width: 0.62rem;
+  height: 0.62rem;
+  background: currentColor;
+}
+
+.issue-glyph--circle {
+  border-radius: 50%;
+}
+
+.issue-glyph--square {
+  border-radius: 2px;
+}
+
+.issue-glyph--diamond {
+  transform: rotate(45deg) scale(0.86);
+  border-radius: 1px;
+}
+
+.issue-glyph--triangle {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+/* —— Issues on the map: pin labels, cluster counts, map key —— */
+.issue-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(12, 20, 17, 0.84);
+  color: #f7faf8;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  user-select: none;
+  animation: street-sign-in 260ms ease both;
+}
+
+.issue-tag.is-fixed {
+  border-color: rgba(46, 204, 113, 0.6);
+}
+
+.issue-tag.is-hovered {
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.issue-tag--selected {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.35rem 0.65rem;
+  border-color: rgba(20, 136, 255, 0.7);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.issue-tag__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.issue-tag__status {
+  color: rgba(247, 250, 248, 0.75);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.issue-pin-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #ff5d73;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  user-select: none;
+}
+
+.issue-pin-count.is-fixed {
+  background: #2ecc71;
+}
+
+.issue-pin-count.is-hovered {
+  transform: scale(1.15);
+}
+
+.is-reduced-motion .issue-tag {
+  animation: none;
+}
+
+/* Map key: top-right, in the overlay band below the top bar. */
+.issue-legend {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--chrome-top, 4.6rem) + var(--overlay-gap, 0.85rem));
+  right: var(--overlay-left, 1.15rem);
+  margin: 0;
+  padding: 0.6rem 0.8rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(12, 20, 17, 0.62);
+  color: #f7faf8;
+  font-size: 0.78rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+}
+
+.issue-legend--pill {
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.issue-legend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.issue-legend__title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 250, 248, 0.7);
+}
+
+.issue-legend__close {
+  border: 0;
+  background: transparent;
+  color: rgba(247, 250, 248, 0.7);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.issue-legend__list {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issue-legend__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.issue-legend__count {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  color: rgba(247, 250, 248, 0.65);
+  font-variant-numeric: tabular-nums;
+}
+
+.issue-legend__lines {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.issue-legend__line {
+  flex: none;
+  width: 1.1rem;
+  height: 0.22rem;
+  border-radius: 2px;
+}
+
+.issue-legend__line.is-dashed {
+  background: repeating-linear-gradient(90deg, currentColor 0 0.3rem, transparent 0.3rem 0.48rem);
+}
+
+.issue-legend__line.is-proposed {
+  height: 0.5rem;
+  border: 2px solid #1488ff;
+  background: rgba(238, 242, 244, 0.85);
+  box-shadow: 0 0 6px rgba(20, 136, 255, 0.8);
+}
+
+.issue-legend__hint {
+  margin: 0.45rem 0 0;
+  color: rgba(247, 250, 248, 0.65);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 720px) {
+  .app-shell--city.has-panel .issue-legend {
+    display: none;
+  }
+}
+
 .issue-list__head {
   margin: 0.4rem 0 0;
   color: var(--ink-soft);
@@ -1847,6 +2209,34 @@ code {
 
 .issue-card__fix {
   color: var(--ink-soft);
+}
+
+.issue-card__peek {
+  margin: 0.15rem 0 0.45rem;
+}
+
+.issue-card__map-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.5rem;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.issue-card__swatch {
+  flex: none;
+  width: 1.1rem;
+  height: 0.24rem;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.issue-card__map-hint.is-after .issue-card__swatch {
+  height: 0.5rem;
+  border: 2px solid currentColor;
+  background: rgba(238, 242, 244, 0.9);
 }
 
 .issue-card__metrics {
@@ -2495,4 +2885,70 @@ code {
 .proposal-issues__show:hover {
   border-color: #1488ff;
   color: #1488ff;
+}
+
+/* —— Rail stations: name plate with line-colour chips —— */
+.rail-station {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(20, 26, 32, 0.9);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  user-select: none;
+  animation: street-sign-in 360ms ease both;
+}
+
+.rail-station__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 2px solid #1f1f1f;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.rail-station__chip {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+}
+
+.rail-station__access {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* —— Live transit: a small line above the minimap while a feed is on —— */
+.minimap__live {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 168px;
+  margin: 0 0.15rem 0.35rem;
+  color: rgba(247, 250, 248, 0.82);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.minimap__live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #2ecc71;
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.25);
 }

@@ -1,0 +1,213 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "bearing": 160,
+        "current_status": "STOPPED_AT",
+        "direction_id": 0,
+        "label": "1521",
+        "latitude": 42.2932,
+        "longitude": -71.06586,
+        "updated_at": "2026-11-22T00:15:40-05:00"
+      },
+      "id": "R-548CC844",
+      "relationships": {
+        "route": {
+          "data": {
+            "id": "Red",
+            "type": "route"
+          }
+        },
+        "stop": {
+          "data": {
+            "id": "70091",
+            "type": "stop"
+          }
+        },
+        "trip": {
+          "data": {
+            "id": "81012787",
+            "type": "trip"
+          }
+        }
+      },
+      "type": "vehicle"
+    },
+    {
+      "attributes": {
+        "bearing": 205,
+        "current_status": "INCOMING_AT",
+        "direction_id": 0,
+        "label": "1440",
+        "latitude": 42.35058,
+        "longitude": -71.06324,
+        "updated_at": "2026-11-22T00:15:53-05:00"
+      },
+      "id": "O-548CC848",
+      "relationships": {
+        "route": {
+          "data": {
+            "id": "Orange",
+            "type": "route"
+          }
+        },
+        "stop": {
+          "data": {
+            "id": "70016",
+            "type": "stop"
+          }
+        },
+        "trip": {
+          "data": {
+            "id": "79807946",
+            "type": "trip"
+          }
+        }
+      },
+      "type": "vehicle"
+    },
+    {
+      "attributes": {
+        "bearing": 75,
+        "current_status": "STOPPED_AT",
+        "direction_id": 0,
+        "label": "3651-3811",
+        "latitude": 42.341,
+        "longitude": -71.16742,
+        "updated_at": "2026-11-22T00:06:21-05:00"
+      },
+      "id": "G-10128",
+      "relationships": {
+        "route": {
+          "data": {
+            "id": "Green-B",
+            "type": "route"
+          }
+        },
+        "stop": {
+          "data": {
+            "id": "70107",
+            "type": "stop"
+          }
+        },
+        "trip": {
+          "data": {
+            "id": "77655892",
+            "type": "trip"
+          }
+        }
+      },
+      "type": "vehicle"
+    },
+    {
+      "attributes": {
+        "bearing": null,
+        "current_status": "IN_TRANSIT_TO",
+        "direction_id": 0,
+        "label": "1811",
+        "latitude": 42.26262283325195,
+        "longitude": -71.49113464355469,
+        "updated_at": "2026-11-22T00:16:05-05:00"
+      },
+      "id": "1811",
+      "relationships": {
+        "route": {
+          "data": {
+            "id": "CR-Worcester",
+            "type": "route"
+          }
+        },
+        "stop": {
+          "data": {
+            "id": "WML-0274-01",
+            "type": "stop"
+          }
+        },
+        "trip": {
+          "data": {
+            "id": "JFKAdded-889234-5519",
+            "type": "trip"
+          }
+        }
+      },
+      "type": "vehicle"
+    }
+  ],
+  "included": [
+    {
+      "attributes": {
+        "color": "80276C",
+        "long_name": "Framingham/Worcester Line",
+        "short_name": "",
+        "type": 2
+      },
+      "id": "CR-Worcester",
+      "relationships": {
+        "line": {
+          "data": {
+            "id": "line-Worcester",
+            "type": "line"
+          }
+        }
+      },
+      "type": "route"
+    },
+    {
+      "attributes": {
+        "color": "00843D",
+        "long_name": "Green Line B",
+        "short_name": "B",
+        "type": 0
+      },
+      "id": "Green-B",
+      "relationships": {
+        "line": {
+          "data": {
+            "id": "line-Green",
+            "type": "line"
+          }
+        }
+      },
+      "type": "route"
+    },
+    {
+      "attributes": {
+        "color": "ED8B00",
+        "long_name": "Orange Line",
+        "short_name": "",
+        "type": 1
+      },
+      "id": "Orange",
+      "relationships": {
+        "line": {
+          "data": {
+            "id": "line-Orange",
+            "type": "line"
+          }
+        }
+      },
+      "type": "route"
+    },
+    {
+      "attributes": {
+        "color": "DA291C",
+        "long_name": "Red Line",
+        "short_name": "",
+        "type": 1
+      },
+      "id": "Red",
+      "relationships": {
+        "line": {
+          "data": {
+            "id": "line-Red",
+            "type": "line"
+          }
+        }
+      },
+      "type": "route"
+    }
+  ],
+  "jsonapi": {
+    "version": "1.0"
+  }
+}

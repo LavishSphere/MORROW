@@ -43,6 +43,8 @@ export type OvertureFootprint = {
   sources: HeightSource[];
   /** OpenStreetMap way id when the feature cites one. */
   osmId: number | null;
+  /** OpenStreetMap relation id when the feature cites a multipolygon relation instead. */
+  osmRelationId?: number | null;
 };
 
 type OsmProps = Record<string, unknown>;
@@ -70,11 +72,39 @@ export function heightDataset(sources: readonly HeightSource[]): string | null {
   return whole?.dataset ?? null;
 }
 
-export function osmWayId(sources: readonly HeightSource[]): number | null {
+function osmRecordId(sources: readonly HeightSource[], prefix: "w" | "r"): number | null {
+  const pattern = prefix === "w" ? /^w(\d+)/ : /^r(\d+)/;
   for (const source of sources) {
-    const match = /^w(\d+)/.exec(source.record_id ?? "");
+    const match = pattern.exec(source.record_id ?? "");
     if (match) return Number(match[1]);
   }
+  return null;
+}
+
+export function osmWayId(sources: readonly HeightSource[]): number | null {
+  return osmRecordId(sources, "w");
+}
+
+/** OpenStreetMap relation id, for buildings mapped as multipolygons (`r7261820@17`). */
+export function osmRelationId(sources: readonly HeightSource[]): number | null {
+  return osmRecordId(sources, "r");
+}
+
+/**
+ * Key for matching OSM shapes: `w<id>` for a way, `r<id>` for a relation.
+ * Ways and relations reuse the same numbers, so the type is part of the key.
+ * Anything else (an Overture id) has no OSM key.
+ */
+function osmKey(osmId: unknown): string | null {
+  if (typeof osmId === "number" && Number.isInteger(osmId) && osmId > 0) return `w${osmId}`;
+  if (typeof osmId !== "string") return null;
+  if (/^\d+$/.test(osmId)) return `w${Number(osmId)}`;
+  return /^r\d+$/.test(osmId) ? osmId : null;
+}
+
+function footprintKey(footprint: OvertureFootprint): string | null {
+  if (footprint.osmId != null) return `w${footprint.osmId}`;
+  if (footprint.osmRelationId != null) return `r${footprint.osmRelationId}`;
   return null;
 }
 
@@ -167,18 +197,19 @@ export function withOvertureBuildings(geoJson: unknown, footprints: readonly Ove
   if (!isCollection(geoJson)) return geoJson;
   const kept = geoJson.features.filter((feature) => feature.properties?.layer !== "building");
   const osmBuildings = geoJson.features.filter((feature) => feature.properties?.layer === "building");
-  const osmById = new Map<number, GeoFeature>();
+  const osmById = new Map<string, GeoFeature>();
   for (const feature of osmBuildings) {
-    const id = positive(feature.properties?.osmId);
-    if (id != null) osmById.set(id, feature);
+    const key = osmKey(feature.properties?.osmId);
+    if (key != null) osmById.set(key, feature);
   }
 
   const buildings: GeoFeature[] = [];
-  const used = new Set<number>();
+  const used = new Set<string>();
   for (const footprint of footprints) {
     if (footprint.ring.length < 4) continue;
-    const osm = footprint.osmId != null ? osmById.get(footprint.osmId) : undefined;
-    if (footprint.osmId != null) used.add(footprint.osmId);
+    const key = footprintKey(footprint);
+    const osm = key != null ? osmById.get(key) : undefined;
+    if (key != null) used.add(key);
     const props = osm?.properties ?? {};
     const resolved = buildingHeightOrFallback({
       overtureHeight: footprint.height,
@@ -191,7 +222,8 @@ export function withOvertureBuildings(geoJson: unknown, footprints: readonly Ove
     const minHeight = positive(footprint.minHeight) ?? positive(props.min_height);
     buildings.push(
       buildingFeature(footprint.ring, {
-        osmId: footprint.osmId ?? footprint.id,
+        // Same id the OSM shape had, so the city's tag lookup still finds it.
+        osmId: footprint.osmId ?? (footprint.osmRelationId != null ? `r${footprint.osmRelationId}` : footprint.id),
         layer: "building",
         name: typeof props.name === "string" ? props.name : undefined,
         building: typeof props.building === "string" ? props.building : "yes",
@@ -208,8 +240,8 @@ export function withOvertureBuildings(geoJson: unknown, footprints: readonly Ove
 
   // An OSM building the extract did not return keeps its own height, levels, or the default.
   for (const feature of osmBuildings) {
-    const id = positive(feature.properties?.osmId);
-    if (id != null && used.has(id)) continue;
+    const key = osmKey(feature.properties?.osmId);
+    if (key != null && used.has(key)) continue;
     if (!feature.geometry || !Array.isArray(feature.geometry.coordinates)) continue;
     const props = feature.properties ?? {};
     const resolved = buildingHeightOrFallback({
