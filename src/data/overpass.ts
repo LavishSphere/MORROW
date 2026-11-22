@@ -4,7 +4,8 @@ import { geocodeUsPlace, type UsPlace } from './places.ts'
 export type OsmWay = {
   id: number
   name: string | null
-  kind: 'road' | 'building'
+  /** 'part' is an OSM building:part: one 3D piece of a detailed building. */
+  kind: 'road' | 'building' | 'part'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -30,7 +31,25 @@ const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
 /** Half-size of one downloaded area in degrees: about 1.4 km across. */
 const HALF = 0.0065
 /** Accessibility tags kept from OpenStreetMap for issue detection. */
-const KEEP_TAGS = ['footway', 'crossing', 'surface', 'sidewalk', 'sidewalk:both', 'sidewalk:left', 'sidewalk:right']
+const KEEP_TAGS = [
+  'footway',
+  'crossing',
+  'surface',
+  'sidewalk',
+  'sidewalk:both',
+  'sidewalk:left',
+  'sidewalk:right',
+  // Real 3D shape, where mappers recorded it (Simple 3D Buildings).
+  'height',
+  'min_height',
+  'building:levels',
+  'building:min_level',
+  'roof:shape',
+  'roof:height',
+  'building:colour',
+  'building:material',
+  'roof:colour',
+]
 
 /** Areas snap to a grid, so nearby requests share one download. */
 export function tileKey(lng: number, lat: number) {
@@ -57,7 +76,8 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       points.push([point.lon, point.lat])
     }
     if (points.length < 2) continue
-    const building = typeof row.tags?.building === 'string'
+    const part = typeof row.tags?.['building:part'] === 'string'
+    const building = !part && typeof row.tags?.building === 'string'
     const name = typeof row.tags?.name === 'string' ? row.tags.name : null
     const tags: Record<string, string> = {}
     for (const key of KEEP_TAGS) {
@@ -67,7 +87,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     ways.push({
       id: row.id,
       name,
-      kind: building ? 'building' : 'road',
+      kind: part ? 'part' : building ? 'building' : 'road',
       highway: typeof row.tags?.highway === 'string' ? row.tags.highway : null,
       building: building ? String(row.tags?.building) : null,
       ...(Object.keys(tags).length > 0 ? { tags } : {}),
@@ -82,7 +102,8 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
   // Streets and buildings get separate quotas, so a dense downtown's
   // buildings cannot crowd out its streets.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 3000;`
+  // building:part pieces carry the real 3D shape of detailed landmarks.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;`
   const res = await fetch(OVERPASS, {
     method: 'POST',
     headers: {
@@ -98,7 +119,8 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
 
 function describe(place: UsPlace, ways: OsmWay[]) {
   const roads = ways.filter((way) => way.kind === 'road').length
-  return `${place.label}. OpenStreetMap: ${roads} streets and ${ways.length - roads} buildings so far; more load as you explore. Not a barrier inventory.`
+  const buildings = ways.filter((way) => way.kind === 'building').length
+  return `${place.label}. OpenStreetMap: ${roads} streets and ${buildings} buildings so far; more load as you explore. Not a barrier inventory.`
 }
 
 /**
@@ -160,7 +182,7 @@ const PATH = new Set(['path', 'track', 'cycleway', 'bridleway'])
 export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
   const features = []
   for (const way of neighborhood.ways) {
-    if (way.kind === 'building') {
+    if (way.kind === 'building' || way.kind === 'part') {
       if (way.points.length < 3) continue
       const ring = [...way.points]
       const [first] = ring
@@ -169,7 +191,13 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
       features.push({
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
-        properties: { osmId: way.id, layer: 'building', name: way.name, building: way.building ?? 'yes', ...way.tags },
+        properties: {
+          osmId: way.id,
+          layer: way.kind === 'part' ? 'building_part' : 'building',
+          name: way.name,
+          building: way.building ?? 'yes',
+          ...way.tags,
+        },
       })
       continue
     }
