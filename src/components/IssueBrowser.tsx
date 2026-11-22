@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ISSUE_KIND_LABEL, type IssueKind } from '../../shared/issues.ts'
-import { flyTo, useCityState } from '../showcase/cityStore'
+import { useCityState } from '../showcase/cityStore'
 import {
   measureFor,
   selectIssue,
@@ -40,7 +40,6 @@ export function IssueBrowser() {
 
   const open = (issue: SceneIssue) => {
     selectIssue(issue.id)
-    flyTo(issue.x, issue.z)
   }
 
   if (issues.length === 0) {

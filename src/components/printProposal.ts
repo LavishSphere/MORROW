@@ -10,7 +10,7 @@ const PAGE_HEIGHT_PX = 10 * 96
  * width with compact print type, measured, and scaled down only if it would
  * spill onto a second page.
  */
-export function printProposal() {
+export function printProposal(fileName?: string) {
   const source = document.getElementById('proposal-print')
   if (!source) {
     window.print()
@@ -31,8 +31,12 @@ export function printProposal() {
   root.style.setProperty('--print-zoom', zoom.toFixed(3))
   root.style.width = ''
   document.documentElement.classList.add('is-printing-proposal')
+  // Browsers name the saved PDF after the page title.
+  const title = document.title
+  if (fileName) document.title = fileName
 
   const cleanup = () => {
+    document.title = title
     root.remove()
     document.documentElement.classList.remove('is-printing-proposal')
     window.removeEventListener('afterprint', cleanup)

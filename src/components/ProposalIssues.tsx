@@ -1,6 +1,6 @@
 import { ISSUE_KIND_LABEL } from '../../shared/issues.ts'
 import type { IssueFact } from '../../shared/types.ts'
-import { toggleChosen, useIssueState } from '../showcase/issueStore'
+import { selectIssue, toggleChosen, useIssueState } from '../showcase/issueStore'
 
 /**
  * Propose: pick which map issues go into the proposal. Improved issues are
@@ -33,6 +33,14 @@ export function ProposalIssuePicker() {
                   {fixed.has(issue.id) ? ' · improved' : ''}
                 </span>
               </label>
+              <button
+                type="button"
+                className="proposal-issues__show"
+                onClick={() => selectIssue(issue.id)}
+                aria-label={`Show ${issue.title} at ${issue.where} on the map`}
+              >
+                Show
+              </button>
             </li>
           ))}
         </ul>
@@ -79,6 +87,46 @@ export function ProposalIssueFacts({
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/** The issues of an issues-only proposal, as a table officials can act on. */
+export function ProposalIssueTable({ issues, title }: { issues: IssueFact[]; title: string }) {
+  if (issues.length === 0) return null
+  return (
+    <section>
+      <h3>{title}</h3>
+      <table className="proposal-print__table">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Location</th>
+            <th scope="col">Issue</th>
+            <th scope="col">Proposed improvement</th>
+            <th scope="col">Today → after</th>
+          </tr>
+        </thead>
+        <tbody>
+          {issues.map((issue, i) => (
+            <tr key={issue.id}>
+              <td>{i + 1}</td>
+              <td>{issue.where}</td>
+              <td>
+                {issue.title}
+                <span className="proposal-print__kind">
+                  {ISSUE_KIND_LABEL[issue.kind as keyof typeof ISSUE_KIND_LABEL] ?? issue.kind}
+                  {issue.modeled ? ' · modeled' : ' · measured'}
+                </span>
+              </td>
+              <td>{issue.fix}</td>
+              <td>
+                {issue.before} → {issue.after}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </section>
   )
 }

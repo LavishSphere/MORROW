@@ -2,6 +2,8 @@ export type UsPlace = {
   label: string
   lng: number
   lat: number
+  /** City or town and state, e.g. "New York, NY", when the geocoder knows it. */
+  town?: string
 }
 
 const GEOCODE =
@@ -22,7 +24,11 @@ export function placeFromEsri(body: unknown): UsPlace | null {
   if (typeof lng !== 'number' || typeof lat !== 'number') return null
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
   if (lat < 15 || lat > 72 || lng < -180 || lng > -60) return null
-  return { label: address.trim(), lng, lat }
+  const attributes = (first as { attributes?: { City?: unknown; RegionAbbr?: unknown } }).attributes
+  const city = typeof attributes?.City === 'string' ? attributes.City.trim() : ''
+  const region = typeof attributes?.RegionAbbr === 'string' ? attributes.RegionAbbr.trim() : ''
+  const town = city ? (region ? `${city}, ${region}` : city) : undefined
+  return { label: address.trim(), lng, lat, ...(town ? { town } : {}) }
 }
 
 const SUGGEST =
@@ -113,6 +119,7 @@ export async function geocodeUsPlace(
   if (magicKey) url.searchParams.set('magicKey', magicKey)
   url.searchParams.set('sourceCountry', 'USA')
   url.searchParams.set('maxLocations', '1')
+  url.searchParams.set('outFields', 'City,RegionAbbr')
   const res = await fetch(url, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(8000),

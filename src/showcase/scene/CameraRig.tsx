@@ -99,6 +99,9 @@ export function CameraRig({
     toZ: number;
     fromDist: number;
     toDist: number | null;
+    /** Viewing direction (target → camera) at the start and end. */
+    fromDir: THREE.Vector3;
+    toDir: THREE.Vector3 | null;
     t: number;
   } | null>(null);
   const signalDuration = descendSignal?.durationMs;
@@ -221,6 +224,16 @@ export function CameraRig({
         toZ: fly.z,
         fromDist: camera.position.distanceTo(controls.target),
         toDist: fly.distance ?? null,
+        fromDir: camera.position.clone().sub(controls.target).normalize(),
+        // Overhead: same compass heading, looking down at about 58°.
+        toDir: fly.overhead
+          ? (() => {
+              const d = camera.position.clone().sub(controls.target);
+              const flat = Math.hypot(d.x, d.z) || 1;
+              const up = Math.tan(THREE.MathUtils.degToRad(58));
+              return new THREE.Vector3(d.x / flat, up, d.z / flat).normalize();
+            })()
+          : null,
         // Teleport: finish the move in this very frame.
         t: fly.instant ? 1 : 0,
       };
@@ -237,7 +250,9 @@ export function CameraRig({
       controls.target.z = nz;
       if (f.toDist !== null) {
         // Zoom in or out on the way, keeping the viewing angle.
-        const offset = camera.position.clone().sub(controls.target);
+        const offset = f.toDir
+          ? f.fromDir.clone().lerp(f.toDir, k).normalize()
+          : camera.position.clone().sub(controls.target);
         const want = THREE.MathUtils.clamp(f.fromDist + (f.toDist - f.fromDist) * k, MIN_DISTANCE, span * 1.8);
         camera.position.copy(controls.target).add(offset.setLength(want));
       }

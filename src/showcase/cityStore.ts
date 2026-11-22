@@ -56,10 +56,12 @@ type State = {
    * A spot the camera should fly to, with a counter so repeats still fire.
    * `distance`, when set, also zooms to that camera distance.
    */
-  fly: { x: number; z: number; id: number; distance?: number; instant?: boolean } | null;
+  fly: { x: number; z: number; id: number; distance?: number; instant?: boolean; overhead?: boolean } | null;
   pin: AddressPin | null;
   /** The city on screen, for labels and offline drafts. */
   placeLabel: string;
+  /** The city or town the map is in, for proposals (e.g. "Wellesley, MA"). */
+  town: string;
   /** True while more of a loaded city is downloading as you explore. */
   loadingMore: boolean;
 };
@@ -70,6 +72,7 @@ let state: State = {
   fly: null,
   pin: null,
   placeLabel: "Wellesley, MA",
+  town: "Wellesley, MA",
   loadingMore: false,
 };
 const listeners = new Set<() => void>();
@@ -101,8 +104,8 @@ export function setLoadingMore(loadingMore: boolean) {
   if (state.loadingMore !== loadingMore) emit({ loadingMore });
 }
 
-export function setPlaceLabel(placeLabel: string) {
-  if (state.placeLabel !== placeLabel) emit({ placeLabel });
+export function setPlaceLabel(placeLabel: string, town: string = placeLabel) {
+  if (state.placeLabel !== placeLabel || state.town !== town) emit({ placeLabel, town });
 }
 
 export function setPin(pin: AddressPin | null) {
@@ -125,7 +128,12 @@ export function publishPose(pose: CameraPose) {
 }
 
 /** Glide the camera to a spot; `instant` teleports instead. */
-export function flyTo(x: number, z: number, options: { distance?: number; instant?: boolean } = {}) {
+/** `overhead` also tilts the view to look down, so buildings do not hide the spot. */
+export function flyTo(
+  x: number,
+  z: number,
+  options: { distance?: number; instant?: boolean; overhead?: boolean } = {},
+) {
   emit({ fly: { x, z, id: (state.fly?.id ?? 0) + 1, ...options } });
 }
 
