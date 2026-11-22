@@ -1,5 +1,6 @@
 import { ShowcaseCanvas } from '../showcase/ShowcaseCanvas'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { setPlaceLabel } from '../showcase/cityStore'
 import { neighborhoodGeoJson, type LoadedNeighborhood } from '../data/overpass'
 import type { AppMode } from '../types'
 import { Minimap } from './Minimap'
@@ -15,6 +16,7 @@ type Props = {
 /** Glass city between the top bar and the mode bar. */
 export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
   const place = neighborhood?.place.label ?? 'Wellesley College'
+  useEffect(() => setPlaceLabel(neighborhood?.place.label ?? 'Wellesley, MA'), [neighborhood])
   // A loaded city rebuilds the glass city from its OpenStreetMap streets
   // and buildings. Without one, the Wellesley showcase stays.
   const geoJson = useMemo(

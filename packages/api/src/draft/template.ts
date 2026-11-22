@@ -1,7 +1,9 @@
+import { buildIssuesDraft } from "../../../../shared/issues.ts";
 import type { DraftProposal, ProposalFacts } from "../../../../shared/types.ts";
 
 /** Deterministic draft when Gemini is unavailable or rejects validation. */
 export function buildTemplateDraft(facts: ProposalFacts): DraftProposal {
+  if (facts.scope === "issues") return buildIssuesDraft(facts);
   const before =
     facts.beforeMeters == null || !Number.isFinite(facts.beforeMeters)
       ? "an inaccessible detour"

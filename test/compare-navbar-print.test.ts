@@ -38,8 +38,10 @@ test("Compare switches between today and the fixes and shows their benefits", as
   assert.match(compare, /useEffect\(\(\) => \(\) => setShowBefore\(false\), \[\]\)/);
   // Benefits come from the data: modeled detours, measured lengths, real buildings nearby.
   assert.match(compare, /wheelchair detour removed \(modeled\)/);
-  assert.match(compare, /buildings within 150 m of a fix/);
-  assert.match(compare, /map\.buildingPoints/);
+  // People, not buildings: an estimate of residents near each fix.
+  assert.equal(compare.includes("buildings within"), false);
+  assert.match(compare, /people live within \$\{NEAR_METERS\} m of a fix \(estimate\)/);
+  assert.match(compare, /PEOPLE_METHOD/);
   assert.match(compare, /WHO_BENEFITS/);
 });
 
@@ -54,4 +56,34 @@ test("Export PDF prints only the proposal, scaled to one Letter page", async () 
   assert.match(css, /size: letter;/);
   assert.match(css, /html\.is-printing-proposal body > \*:not\(#print-root\)/);
   assert.match(css, /zoom: var\(--print-zoom, 1\)/);
+});
+
+test("people near a fix are estimated from home types, honestly", async () => {
+  const people = await readFile("src/showcase/people.ts", "utf8");
+  assert.match(people, /export const PEOPLE_PER_HOME = 2\.5;/);
+  assert.match(people, /detached: 1/);
+  assert.match(people, /apartments: 12/);
+  // Unknown building types are not counted, so the estimate errs low.
+  assert.match(people, /\(HOMES\[kind\] \?\? 0\)/);
+  assert.match(people, /Not a census\./);
+});
+
+test("a happy crowd gathers at each fix, and holds still with reduced motion", async () => {
+  const layer = await readFile("src/showcase/scene/IssueLayer.tsx", "utf8");
+  const crowd = await readFile("src/showcase/scene/HappyCrowd.tsx", "utf8");
+  assert.match(layer, /<HappyCrowd/);
+  assert.match(layer, /\.filter\(\(issue\) => fixed\.has\(issue\.id\)\)/);
+  assert.match(layer, /peopleNear\(map, issue\.x, issue\.z\)/);
+  assert.match(crowd, /function Rider/);
+  assert.match(crowd, /if \(reducedMotion\) \{/);
+});
+
+test("the full map opens from the minimap and a click teleports there", async () => {
+  const minimap = await readFile("src/components/Minimap.tsx", "utf8");
+  const rig = await readFile("src/showcase/scene/CameraRig.tsx", "utf8");
+  assert.match(minimap, /aria-label="Open the full map"/);
+  assert.match(minimap, /role="dialog"/);
+  assert.match(minimap, /flyTo\(spot\.x, spot\.z, \{ instant: true/);
+  assert.match(minimap, /event\.key === 'Escape'/);
+  assert.match(rig, /t: fly\.instant \? 1 : 0/);
 });

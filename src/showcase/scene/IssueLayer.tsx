@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import type { IssueKind } from "../../../shared/issues.ts";
+import { useCityState } from "../cityStore";
 import { selectIssue, useIssueState, type SceneIssue } from "../issueStore";
+import { peopleNear } from "../people";
+import { HappyCrowd } from "./HappyCrowd";
 
 /** Marker color per kind of issue; improved issues turn green. */
 export const ISSUE_COLOR: Record<IssueKind, string> = {
@@ -207,7 +210,8 @@ function Marker({ issue, fixed, selected }: { issue: SceneIssue; fixed: boolean;
  * is today, and the fix once the resident improves it. Click a marker to
  * open it in Improve.
  */
-export function IssueLayer() {
+export function IssueLayer({ reducedMotion = false }: { reducedMotion?: boolean }) {
+  const { map } = useCityState();
   const { issues, fixed: improved, selectedId, showBefore } = useIssueState();
   // Compare's "Today" view hides every fix so the change is easy to see.
   const fixed = showBefore ? new Set<string>() : improved;
@@ -228,6 +232,23 @@ export function IssueLayer() {
       {issues.map((issue) => (
         <Marker key={issue.id} issue={issue} fixed={fixed.has(issue.id)} selected={issue.id === selectedId} />
       ))}
+      {/* A happy crowd gathers at every fix; bigger where more people live nearby. */}
+      {issues
+        .filter((issue) => fixed.has(issue.id))
+        .map((issue) => {
+          const people = map ? peopleNear(map, issue.x, issue.z) : 0;
+          return (
+            <HappyCrowd
+              key={`crowd-${issue.id}`}
+              x={issue.x}
+              z={issue.z}
+              count={Math.max(4, Math.min(12, 3 + Math.round(people / 12)))}
+              wheelchair={issue.kind === "stairs" || issue.kind === "unmarked_crossing"}
+              seed={Math.abs(issue.x * 0.013 + issue.z * 0.017) + 0.1}
+              reducedMotion={reducedMotion}
+            />
+          );
+        })}
     </group>
   );
 }

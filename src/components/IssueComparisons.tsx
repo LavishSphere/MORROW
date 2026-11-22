@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { ISSUE_KIND_LABEL, type IssueKind, type IssueMeasure } from '../../shared/issues.ts'
-import { flyTo, useCityState, type CityMap } from '../showcase/cityStore'
-import { measureFor, setShowBefore, useIssueState, type SceneIssue } from '../showcase/issueStore'
+import { flyTo, useCityState } from '../showcase/cityStore'
+import { measureFor, setShowBefore, useIssueState } from '../showcase/issueStore'
+import { buildingsNear, NEAR_METERS, PEOPLE_METHOD, peopleIn, placesNear } from '../showcase/people'
 import { ISSUE_COLOR } from '../showcase/scene/IssueLayer'
 
 /** Who each kind of fix helps, from standard accessibility guidance. */
@@ -16,9 +17,6 @@ const WHO_BENEFITS: Record<IssueKind, string[]> = {
   unpaved_path: ['Wheelchair, walker, and stroller users', 'People with canes or crutches'],
 }
 
-/** "Near" means within about 150 m (0.14 scene units per metre). */
-const NEAR_UNITS = 150 * 0.14
-
 /** Metres from a value like "218 m"; null for anything else. */
 function metersOf(value: string | undefined) {
   const match = value?.match(/^(\d+) m$/)
@@ -31,22 +29,6 @@ function detourSaved(measure: IssueMeasure) {
   const before = metersOf(measure.metrics[0]?.value)
   const after = metersOf(measure.metrics[1]?.value)
   return before !== null && after !== null ? Math.max(0, before - after) : null
-}
-
-/** Real buildings near a fix, and the named ones among them. */
-function nearby(issue: SceneIssue, map: CityMap | null) {
-  if (!map) return { buildings: [] as number[], names: [] as string[] }
-  const buildings: number[] = []
-  map.buildingPoints.forEach(([x, z], i) => {
-    if (Math.hypot(x - issue.x, z - issue.z) < NEAR_UNITS) buildings.push(i)
-  })
-  const names = map.places
-    .map((place) => ({ place, d: Math.hypot(place.x - issue.x, place.z - issue.z) }))
-    .filter((entry) => entry.d < NEAR_UNITS)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 3)
-    .map((entry) => entry.place.name)
-  return { buildings, names }
 }
 
 /**
@@ -78,12 +60,17 @@ export function IssueComparisons() {
   let crossings = 0
   let sidewalk = 0
   let paved = 0
+  // Buildings near any fix, counted once even when two fixes share them.
   const nearBuildings = new Set<number>()
   const groups = new Set<string>()
   const rows = improved.map((issue) => {
     const measure = measureFor(issue)
-    const near = nearby(issue, map)
-    near.buildings.forEach((b) => nearBuildings.add(b))
+    const buildings = map ? buildingsNear(map, issue.x, issue.z) : []
+    buildings.forEach((b) => nearBuildings.add(b))
+    const near = {
+      people: map ? peopleIn(map, buildings) : 0,
+      names: map ? placesNear(map, issue.x, issue.z) : [],
+    }
     WHO_BENEFITS[issue.kind].forEach((g) => groups.add(g))
     if (issue.kind === 'stairs') {
       ramps += 1
@@ -101,7 +88,10 @@ export function IssueComparisons() {
     crossings > 0 && { value: String(crossings), label: crossings === 1 ? 'crossing made safer' : 'crossings made safer' },
     sidewalk > 0 && { value: `${sidewalk} m`, label: 'new sidewalk' },
     paved > 0 && { value: `${paved} m`, label: 'path paved' },
-    { value: String(nearBuildings.size), label: 'buildings within 150 m of a fix' },
+    {
+      value: `≈ ${map ? peopleIn(map, nearBuildings) : 0}`,
+      label: `people live within ${NEAR_METERS} m of a fix (estimate)`,
+    },
   ].filter((stat): stat is { value: string; label: string } => Boolean(stat))
 
   return (
@@ -161,9 +151,9 @@ export function IssueComparisons() {
               </div>
             </dl>
             <p className="benefit-near">
-              Helps {WHO_BENEFITS[issue.kind][0]?.toLowerCase()} and more. {near.buildings.length} building
-              {near.buildings.length === 1 ? '' : 's'} within 150 m
-              {near.names.length > 0 ? `, including ${near.names.join(', ')}` : ''}.
+              About <strong>{near.people} people</strong> live within {NEAR_METERS} m
+              {near.names.length > 0 ? `, near ${near.names.join(', ')}` : ''}. Helps{' '}
+              {WHO_BENEFITS[issue.kind][0]?.toLowerCase()} and more.
             </p>
             <div className="benefit-row">
               <span className="compare-sheet__note">
@@ -176,6 +166,7 @@ export function IssueComparisons() {
           </li>
         ))}
       </ul>
+      <p className="compare-sheet__note benefit-method">{PEOPLE_METHOD}</p>
     </div>
   )
 }

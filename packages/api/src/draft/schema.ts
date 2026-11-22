@@ -37,12 +37,32 @@ export function parseDraftProposal(value: unknown): DraftProposal {
 }
 
 export const generateRequestSchema = z.object({
-  scenarioId: z.string().min(1).max(120),
-  barrierId: z.string().min(1).max(120),
-  interventionId: z.string().min(1).max(120),
+  /** The showcase route. Optional: a proposal can be map issues only. */
+  scenarioId: z.string().min(1).max(120).optional(),
+  barrierId: z.string().min(1).max(120).optional(),
+  interventionId: z.string().min(1).max(120).optional(),
   /** Extra town-map issues to fold in. Ids only; the server recomputes facts. */
   issueIds: z.array(z.string().min(1).max(120)).max(12).optional(),
 });
+
+/** All three showcase ids, together. */
+export function hasScenario<
+  T extends { scenarioId?: string; barrierId?: string; interventionId?: string },
+>(body: T): body is T & { scenarioId: string; barrierId: string; interventionId: string } {
+  return Boolean(body.scenarioId && body.barrierId && body.interventionId);
+}
+
+/** A proposal needs the showcase route, or at least one map issue. */
+export function hasSubject(body: {
+  scenarioId?: string;
+  barrierId?: string;
+  interventionId?: string;
+  issueIds?: string[];
+}): boolean {
+  return hasScenario(body) || (body.issueIds?.length ?? 0) > 0;
+}
+
+export type GenerateRequest = z.infer<typeof generateRequestSchema>;
 
 export const proposalFactsSchema = z.object({
   city: z.string(),
@@ -82,4 +102,5 @@ export const proposalFactsSchema = z.object({
       }),
     )
     .optional(),
+  scope: z.enum(["scenario", "issues"]).optional(),
 });

@@ -100,6 +100,11 @@ export type ProposalFacts = {
   nextSteps: string;
   /** Extra issues the resident added to this proposal. */
   issues?: IssueFact[];
+  /**
+   * "issues": the proposal is only the map issues the resident picked (no
+   * showcase route). Absent or "scenario": the original single-route draft.
+   */
+  scope?: "scenario" | "issues";
 };
 
 /** Structured draft prose (Gemini or deterministic template). */
@@ -113,9 +118,10 @@ export type DraftProposal = {
 
 /** Body for POST /api/proposals/generate — ids only; server reloads trusted data. */
 export type GenerateProposalRequest = {
-  scenarioId: string;
-  barrierId: string;
-  interventionId: string;
+  /** The showcase route. Optional when the proposal is issues only. */
+  scenarioId?: string;
+  barrierId?: string;
+  interventionId?: string;
   /** Optional extra issues from the town map, by id (see shared/issues.ts). */
   issueIds?: string[];
 };
