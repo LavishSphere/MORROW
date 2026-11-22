@@ -9,7 +9,7 @@ import { fetchOvertureBuildings, uncoveredParts, type NeighborhoodBox } from "..
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
 import { publishIssues } from "../issueStore";
-import { REBUILD_QUIET_MS, whenCameraRests } from "../motion";
+import { cameraMotion, REBUILD_QUIET_MS, whenCameraRests } from "../motion";
 import { oceanPolygons, stitchCoast, type OceanPolygon } from "./coastline.ts";
 import { planBridges, type BridgeOutline, type Pt3 } from "./bridges.ts";
 import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
@@ -249,15 +249,42 @@ const TOWN_GEOJSON = {
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
+/** A growing Float32Array: half the memory of a number[] and no spread copies. */
+class Floats {
+  data = new Float32Array(1024);
+  length = 0;
+
+  reserve(extra: number) {
+    if (this.length + extra <= this.data.length) return;
+    let size = this.data.length * 2;
+    while (size < this.length + extra) size *= 2;
+    const next = new Float32Array(size);
+    next.set(this.data.subarray(0, this.length));
+    this.data = next;
+  }
+
+  add(values: readonly number[], times = 1) {
+    this.reserve(values.length * times);
+    for (let t = 0; t < times; t += 1) {
+      for (let i = 0; i < values.length; i += 1) this.data[this.length++] = values[i]!;
+    }
+  }
+
+  /** An exact-size copy; the growing buffer can then be collected. */
+  done() {
+    return this.data.slice(0, this.length);
+  }
+}
+
 class Bucket {
-  pos: number[] = [];
-  nor: number[] = [];
-  uv: number[] = [];
+  pos = new Floats();
+  nor = new Floats();
+  uv = new Floats();
 
   push(p: readonly number[], n: readonly number[], uv: readonly number[]) {
-    this.pos.push(...p);
-    this.nor.push(...n, ...n, ...n);
-    this.uv.push(...uv);
+    this.pos.add(p);
+    this.nor.add(n, 3);
+    this.uv.add(uv);
   }
 
   /** A ground-facing triangle, wound so it faces up. */
@@ -269,9 +296,9 @@ class Bucket {
 
   geometry() {
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
-    g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setAttribute("position", new THREE.BufferAttribute(this.pos.done(), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(this.nor.done(), 3));
+    g.setAttribute("uv", new THREE.BufferAttribute(this.uv.done(), 2));
     g.computeBoundingSphere();
     return g;
   }
@@ -1448,7 +1475,21 @@ function roadCrossing(ways: readonly WayRibbon[]) {
   };
 }
 
+/** Build the whole city at once. */
 function buildCity(model: CityModel): Built {
+  const steps = buildCitySteps(model);
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
+/**
+ * The city build, pausing (`yield`) after each building, way, and row of
+ * lawn, so a rebuild can run a few milliseconds per frame instead of
+ * stalling one frame for the whole city.
+ */
+function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
   const glass = GLASS_TINTS.map(() => new Bucket());
   const siding = SIDING.map(() => new Bucket());
   const shingles = SHINGLE.map(() => new Bucket());
@@ -1502,6 +1543,7 @@ function buildCity(model: CityModel): Built {
   }
 
   for (const building of model.parsed.buildings) {
+    yield;
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const own = model.tags.get(building.id) ?? {};
@@ -1580,6 +1622,7 @@ function buildCity(model: CityModel): Built {
     occupancy.markHeight(ring, top);
   }
 
+  yield;
   // Shorelines stay clear of trees. The water is the map, not a barrier.
   // Lakes sit just above the lawn and under the roads.
   const water = new Bucket();
@@ -1602,6 +1645,7 @@ function buildCity(model: CityModel): Built {
     occupancy.markLine(brook.points, half + 0.12);
   }
 
+  yield;
   // Bridges: decks lifted over the water and streets below, with ramps,
   // piers, and the towers and cables of the big spans.
   const plan = planBridges(
@@ -1660,10 +1704,12 @@ function buildCity(model: CityModel): Built {
     for (let i = 0; i < cable.points.length - 1; i += 1) rod(bucket, cable.points[i]!, cable.points[i + 1]!, cable.radius);
   }
 
+  yield;
   // Roads stop short of the buildings beside them.
   const edges = new EdgeIndex();
   for (const building of model.parsed.buildings) edges.addRing(building.ring);
 
+  yield;
   // Surface track and platforms keep trees and furniture off them; tunnels do not.
   for (const track of model.parsed.rail.lines) {
     if (!track.underground) occupancy.markLine(track.points, RAIL_CLEARANCE);
@@ -1679,6 +1725,7 @@ function buildCity(model: CityModel): Built {
   const lit = new Bucket();
   const walks = { sidewalk: new Bucket(), footway: new Bucket(), path: new Bucket() };
   for (const way of model.parsed.ways) {
+    yield;
     const half = way.halfWidth;
     const deck = plan.decks.get(way.id);
     occupancy.markLine(way.points, half + 0.6);
@@ -1728,6 +1775,7 @@ function buildCity(model: CityModel): Built {
     reach: number,
   ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
   for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    yield;
     for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
       if (hash(gx + 3, gz + 11) > 0.55) continue;
       const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
@@ -1755,10 +1803,12 @@ function buildCity(model: CityModel): Built {
     }
   }
 
+  yield;
   // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
   const trees: Placement[] = [];
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
+    yield;
     for (let gz = minZ; gz <= maxZ; gz += step) {
       const r = hash(gx, gz);
       if (r < 0.45) continue;
@@ -1796,6 +1846,7 @@ function buildCity(model: CityModel): Built {
   const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
   const SKINS = ["#f1c9a5", "#e0ac83", "#c68a5e", "#a0673f", "#7a4a2a", "#5b3a24"];
   const PANTS = ["#2d3a4f", "#3b4552", "#1f2328", "#6b5a45", "#4a5f7a", "#8a8f96"];
+  yield;
   // Nobody stands or parks inside a building: one coarse grid of footprints, built once.
   const footprints = new FootprintGrid([
     ...model.parsed.buildings.map((b) => b.ring),
@@ -1805,6 +1856,7 @@ function buildCity(model: CityModel): Built {
   // traffic there), and on streets wide enough that the moving lane clears them.
   const cars: Placement[] = [];
   for (const way of model.parsed.ways) {
+    yield;
     // Parked cars stay on the ground: none on bridge decks.
     if (way.indoor || way.bridge) continue;
     const service = way.highway === "service";
@@ -1827,6 +1879,7 @@ function buildCity(model: CityModel): Built {
   const people: Placement[] = [];
   const outdoors = (x: number, z: number) => !footprints.inside(x, z);
   for (const way of model.parsed.ways) {
+    yield;
     if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
     // Drive aisles hold parked cars; corridors, tunnels, and covered ways are indoors.
     if (way.indoor || way.highway === "service" || way.highway === "corridor") continue;
@@ -1860,6 +1913,7 @@ function buildCity(model: CityModel): Built {
   }
   const peopleSkin = people.map((p) => ({ ...p, color: SKINS[Math.floor(hash(p.x + 3, p.z) * SKINS.length)] ?? SKINS[0] }));
   const peoplePants = people.map((p) => ({ ...p, color: PANTS[Math.floor(hash(p.x, p.z + 9) * PANTS.length)] ?? PANTS[0] }));
+  yield;
   // Moving traffic keeps to the ground for now; decks are drawn without it.
   const traffic = buildTrafficLanes(model.parsed.ways.filter((way) => !way.bridge), footprints);
   const lamps = allRoads.flatMap((way) => {
@@ -1874,6 +1928,7 @@ function buildCity(model: CityModel): Built {
     .filter((way) => way.layer === "footway")
     .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
 
+  yield;
   // Proposed street improvements: cans beside benches and at curbs, recycling
   // paired with those stations, extra benches and lamps along footways.
   const footWays = model.parsed.ways.filter((way) => way.layer === "footway");
@@ -1888,6 +1943,7 @@ function buildCity(model: CityModel): Built {
     lamps: footWays.flatMap((way) => along(way.points, 9, WAY_HALF_WIDTH.footway + 0.35)),
   };
 
+  yield;
   // Street signs along named roads, spaced so one street never crowds a block.
   const signs: SignSpot[] = [];
   for (const way of roadWays) {
@@ -1899,6 +1955,7 @@ function buildCity(model: CityModel): Built {
     }
   }
 
+  yield;
   return {
     masonry: [...masonry].map(([color, bucket]) => ({ color, geometry: bucket.geometry() })),
     glass: glass.map((b) => b.geometry()),
@@ -2456,6 +2513,67 @@ function ProposedStreetImprovements({ furniture, spots }: { furniture: Furniture
   );
 }
 
+/** A rebuild works at most this long per frame. */
+const BUILD_SLICE_MS = 6;
+
+type Shown = { base: object; model: CityModel; built: Built };
+
+/**
+ * The built city for a model. The first city of a place builds at once,
+ * under its loading cover. When the same place grows, the city on screen
+ * stays while the new one builds a slice per frame, pausing while the
+ * camera moves, and swaps in when done: no frame stalls for the whole
+ * city.
+ */
+function useBuiltCity(model: CityModel): Built {
+  const [x, z] = model.unproject(0, 0);
+  const place = `${x},${z}`;
+  // Rebuilt per place, not per model: a grown model builds in slices below.
+  const first = useMemo<Shown>(() => ({ base: {}, model, built: timed("buildCity", () => buildCity(model)) }), [place]);
+  const [grown, setGrown] = useState<Shown | null>(null);
+  const shown = grown && grown.base === first.base ? grown : first;
+
+  useEffect(() => {
+    if (shown.model === model) return;
+    const steps = buildCitySteps(model);
+    let frame = 0;
+    let work = 0;
+    let longest = 0;
+    const startedAt = performance.now();
+    const run = () => {
+      frame = requestAnimationFrame(run);
+      if (cameraMotion.busy(Date.now())) return;
+      const start = performance.now();
+      for (;;) {
+        const next = steps.next();
+        if (next.done) {
+          cancelAnimationFrame(frame);
+          const took = performance.now() - start;
+          work += took;
+          longest = Math.max(longest, took);
+          if (LOG_TIMINGS) {
+            const wall = performance.now() - startedAt;
+            console.info(`[city] buildCity sliced ${work.toFixed(1)} ms over ${wall.toFixed(0)} ms, longest slice ${longest.toFixed(1)} ms`);
+          }
+          setGrown({ base: first.base, model, built: next.value });
+          return;
+        }
+        if (performance.now() - start > BUILD_SLICE_MS) break;
+      }
+      const took = performance.now() - start;
+      work += took;
+      longest = Math.max(longest, took);
+    };
+    frame = requestAnimationFrame(run);
+    return () => {
+      cancelAnimationFrame(frame);
+      steps.return(undefined as never);
+    };
+  }, [model, shown.model, first.base]);
+
+  return shown.built;
+}
+
 /**
  * The glass city. With no map it shows the Wellesley town; given a loaded
  * neighborhood (same FeatureCollection shape) it rebuilds from that.
@@ -2537,7 +2655,8 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     () => timed("buildModel", () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center)),
     [enriched, geoJson],
   );
-  const built = useMemo(() => timed("buildCity", () => buildCity(cityModel)), [cityModel]);
+  // A grown city (new tiles, Overture footprints) rebuilds a slice per frame.
+  const built = useBuiltCity(cityModel);
   const masonryLooks = useMemo(
     () =>
       built.masonry.map(
