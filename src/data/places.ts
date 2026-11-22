@@ -35,8 +35,11 @@ export type CitySuggestion = {
   magicKey: string
 }
 
-/** Pull usable city suggestions out of an Esri suggest body. */
-export function suggestionsFromEsri(body: unknown): CitySuggestion[] {
+/** Pull usable suggestions out of an Esri suggest body. */
+export function suggestionsFromEsri(
+  body: unknown,
+  options?: { includeCollections?: boolean },
+): CitySuggestion[] {
   if (!body || typeof body !== 'object') return []
   const list = (body as { suggestions?: unknown }).suggestions
   if (!Array.isArray(list)) return []
@@ -48,7 +51,7 @@ export function suggestionsFromEsri(body: unknown): CitySuggestion[] {
       magicKey?: unknown
       isCollection?: unknown
     }
-    if (isCollection === true) continue
+    if (isCollection === true && !options?.includeCollections) continue
     if (typeof text !== 'string' || !text.trim()) continue
     if (typeof magicKey !== 'string' || !magicKey) continue
     out.push({ label: text.trim(), magicKey })
@@ -77,10 +80,9 @@ export async function suggestUsCities(
   return suggestionsFromEsri(await res.json())
 }
 
-/** Addresses and named places inside a box (the loaded map). */
+/** US addresses and named places, not clipped to the map on screen. */
 export async function suggestAddresses(
   query: string,
-  box: { west: number; south: number; east: number; north: number },
   signal?: AbortSignal,
 ): Promise<CitySuggestion[]> {
   const text = query.trim()
@@ -89,15 +91,13 @@ export async function suggestAddresses(
   url.searchParams.set('f', 'json')
   url.searchParams.set('text', text)
   url.searchParams.set('countryCode', 'USA')
-  url.searchParams.set('searchExtent', `${box.west},${box.south},${box.east},${box.north}`)
-  url.searchParams.set('location', `${(box.west + box.east) / 2},${(box.south + box.north) / 2}`)
-  url.searchParams.set('maxSuggestions', '6')
+  url.searchParams.set('maxSuggestions', '8')
   const res = await fetch(url, {
     headers: { accept: 'application/json' },
     signal,
   })
   if (!res.ok) return []
-  return suggestionsFromEsri(await res.json())
+  return suggestionsFromEsri(await res.json(), { includeCollections: true })
 }
 
 /** Resolve a typed US place name to a point. Does not invent a match. */

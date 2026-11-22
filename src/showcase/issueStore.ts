@@ -65,14 +65,17 @@ export function useIssueState() {
 export function publishIssues(issues: SceneIssue[], collection: unknown, serverKnown: boolean) {
   if (collection === state.collection) return;
   measures.clear();
-  // A different map: keep nothing that pointed into the old one.
+  // Ids are OpenStreetMap way ids: when more of the same city loads, the
+  // resident's fixes and picks carry over; anything not on the new map drops.
+  const ids = new Set(issues.map((issue) => issue.id));
+  const keep = (set: ReadonlySet<string>) => new Set([...set].filter((id) => ids.has(id)));
   emit({
     issues,
     collection,
     serverKnown,
-    selectedId: null,
-    fixed: new Set(),
-    chosen: new Set(),
+    selectedId: state.selectedId && ids.has(state.selectedId) ? state.selectedId : null,
+    fixed: keep(state.fixed),
+    chosen: keep(state.chosen),
   });
 }
 

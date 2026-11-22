@@ -74,6 +74,8 @@ type CityModel = {
   bounds: Bounds;
   /** Longitude/latitude → scene [x, z] for this map. */
   project: (lon: number, lat: number) => readonly [number, number];
+  /** Scene [x, z] → longitude/latitude. */
+  unproject: (x: number, z: number) => readonly [number, number];
   /** Longitude / latitude box of the map's buildings. */
   geoBounds: { west: number; south: number; east: number; north: number };
 };
@@ -123,6 +125,11 @@ function bboxOf(geoJson: unknown): ShowcaseBBox | null {
 
 /** Parse any basemap-shaped FeatureCollection into the city's model. */
 function buildModel(geoJson: unknown, center?: readonly [number, number]): CityModel {
+  const own = (geoJson as { center?: unknown })?.center;
+  if (!center && Array.isArray(own) && typeof own[0] === "number" && typeof own[1] === "number") {
+    // A loaded city keeps one fixed center, so adding areas never moves the scene.
+    center = [own[0], own[1]];
+  }
   const box = bboxOf(geoJson) ?? SHOWCASE_BBOX;
   const bbox: ShowcaseBBox = center ? { ...box, center: [center[0], center[1]] } : box;
   const projector = createProjector(bbox, CITY_SCALE);
@@ -159,6 +166,11 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     kinds,
     bounds,
     project: projector.project,
+    unproject: (x: number, z: number) => {
+      const [lon0, lat0] = bbox.center;
+      const metersPerDegLon = 111_320 * Math.max(0.2, Math.cos((lat0 * Math.PI) / 180));
+      return [lon0 + x / (CITY_SCALE * metersPerDegLon), lat0 - z / (CITY_SCALE * 111_320)] as const;
+    },
     geoBounds: { west: box.west, south: box.south, east: box.east, north: box.north },
   };
 }
@@ -337,6 +349,7 @@ class Occupancy {
   readonly cols: number;
   readonly rows: number;
   readonly data: Uint8Array;
+  readonly heights: Float32Array;
   readonly bounds: Bounds;
 
   constructor(bounds: Bounds) {
@@ -344,6 +357,7 @@ class Occupancy {
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / this.cell) + 1;
     this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / this.cell) + 1;
     this.data = new Uint8Array(this.cols * this.rows);
+    this.heights = new Float32Array(this.cols * this.rows);
   }
 
   private index(x: number, z: number) {
@@ -356,6 +370,48 @@ class Occupancy {
   private set(x: number, z: number) {
     const k = this.index(x, z);
     if (k >= 0) this.data[k] = 1;
+  }
+
+  markHeight(ring: Ring, height: number) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    for (let x = minX; x <= maxX; x += this.cell) {
+      for (let z = minZ; z <= maxZ; z += this.cell) {
+        if (!insideRing(x, z, ring)) continue;
+        const k = this.index(x, z);
+        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+      }
+    }
+  }
+
+  nearbyHeight(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    let best = 0;
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        const k = this.index(x + a * this.cell, z + b * this.cell);
+        if (k >= 0) best = Math.max(best, this.heights[k] ?? 0);
+      }
+    }
+    return best;
+  }
+
+  markDisk(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        if (a * a + b * b > steps * steps) continue;
+        this.set(x + a * this.cell, z + b * this.cell);
+      }
+    }
   }
 
   markRing(ring: Ring, margin: number) {
@@ -444,6 +500,8 @@ type Placement = { x: number; z: number; rot?: number; s?: number; color?: strin
 
 type Built = {
   glass: THREE.BufferGeometry[];
+  siding: THREE.BufferGeometry[];
+  shingles: THREE.BufferGeometry[];
   garden: THREE.BufferGeometry;
   metal: THREE.BufferGeometry;
   stone: THREE.BufferGeometry;
@@ -452,18 +510,129 @@ type Built = {
   lit: THREE.BufferGeometry;
   walks: Record<"sidewalk" | "footway" | "path", THREE.BufferGeometry>;
   trees: Placement[];
+  parks: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  cars: Placement[];
+  people: Placement[];
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
   signs: SignSpot[];
-  brick: THREE.BufferGeometry;
   water: THREE.BufferGeometry;
   streams: THREE.BufferGeometry;
 };
 
+/* —— Suburban houses: siding walls and a pitched gable roof —— */
+
+/** OpenStreetMap building types drawn as houses rather than glass. */
+const HOUSE_KINDS = new Set(["house", "detached", "semidetached_house", "bungalow", "terrace", "residential"]);
+/**
+ * Untyped buildings ("yes") smaller than this footprint (about 250 m², in
+ * scene units²) are almost always homes or garages, so they get houses too.
+ */
+const SMALL_UNTYPED = 250 * 0.14 * 0.14;
+const SIDING = ["#f2efe8", "#e8dcc4", "#c9d4dc", "#d9c4a6"] as const;
+const SHINGLE = ["#4a4f55", "#6b4f3f", "#3f4a5a"] as const;
+
+type Point3 = readonly [number, number, number];
+
+/** One flat-shaded triangle. */
+function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  bucket.push([...a, ...b, ...c], [nx, ny, nz], [0, 0, 1, 0, 0, 1]);
+}
+
+/**
+ * A house on a real footprint: one or two stories of siding, and a gable
+ * roof whose ridge runs along the footprint's longest side. Returns the
+ * roof peak height.
+ */
+function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: number) {
+  const stories = seed > 0.55 ? 2 : 1;
+  const wallTop = 0.08 + stories * 0.62;
+  walls(siding, ring, 0, wallTop);
+
+  // Orient a box to the longest wall so the ridge follows the house.
+  let longest = 0;
+  let angle = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len > longest) {
+      longest = len;
+      angle = Math.atan2(bz - az, bx - ax);
+    }
+  }
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  let umin = Infinity;
+  let umax = -Infinity;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  for (const [x, z] of ring) {
+    const u = x * cos + z * sin;
+    const v = -x * sin + z * cos;
+    umin = Math.min(umin, u);
+    umax = Math.max(umax, u);
+    vmin = Math.min(vmin, v);
+    vmax = Math.max(vmax, v);
+  }
+  const eave = 0.12;
+  umin -= eave;
+  umax += eave;
+  vmin -= eave;
+  vmax += eave;
+  const vmid = (vmin + vmax) / 2;
+  const rise = Math.min(1.1, ((vmax - vmin) / 2) * 0.8);
+  const at = (u: number, v: number, y: number): Point3 => [u * cos - v * sin, y, u * sin + v * cos];
+  const A = at(umin, vmin, wallTop);
+  const B = at(umax, vmin, wallTop);
+  const C = at(umax, vmax, wallTop);
+  const D = at(umin, vmax, wallTop);
+  const R1 = at(umin, vmid, wallTop + rise);
+  const R2 = at(umax, vmid, wallTop + rise);
+  tri(roof, A, B, R2);
+  tri(roof, A, R2, R1);
+  tri(roof, D, R1, R2);
+  tri(roof, D, R2, C);
+  // Gable ends in the siding color.
+  tri(siding, A, R1, D);
+  tri(siding, B, C, R2);
+
+  if (seed > 0.5) {
+    const cu = umin + (umax - umin) * 0.75;
+    const cv = vmin + (vmax - vmin) * 0.3;
+    const half = 0.11;
+    const box: Ring = [
+      [cu - half, cv - half],
+      [cu + half, cv - half],
+      [cu + half, cv + half],
+      [cu - half, cv + half],
+    ].map(([u, v]) => [u * cos - v * sin, u * sin + v * cos] as const);
+    const chimneyTop = wallTop + rise + 0.25;
+    walls(chimney, box, wallTop, chimneyTop);
+    cap(chimney, box, chimneyTop);
+  }
+  return wallTop + rise;
+}
+
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
-  const brick = new Bucket();
+  const siding = SIDING.map(() => new Bucket());
+  const shingles = SHINGLE.map(() => new Bucket());
   const garden = new Bucket();
   const metal = new Bucket();
   const stone = new Bucket();
@@ -473,27 +642,56 @@ function buildCity(model: CityModel): Built {
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const kind = model.kinds.get(building.id) ?? "yes";
-    const floors = (FLOORS[kind] ?? 5) + Math.floor(idHash(building.id) * 4);
+    const seed = idHash(building.id);
+    if (HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED)) {
+      const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
+      const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
+      const peak = house(wall, roof, stone, ring, seed);
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
+    const floors = (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
     const top = PODIUM_H + floors * FLOOR_H;
-    const tint = glass[Math.floor(idHash(building.id) * glass.length)] ?? glass[0]!;
+    const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
+    const style = Math.floor(idHash(`${building.id}m`) * 3);
 
     const podium = shrink(ring, 1.03);
     walls(stone, podium, 0, PODIUM_H);
     cap(stone, podium, PODIUM_H);
-    // Houses stay brick. Taller blocks keep the glass curtain wall.
-    if (floors < 7) walls(brick, ring, PODIUM_H, top);
-    else walls(tint, ring, PODIUM_H, top);
-    // Lower buildings carry roof gardens; towers finish in a glass crown.
-    if (floors >= 9) {
-      const crown = shrink(ring, 0.68);
-      const crownTop = top + (2 + Math.floor(idHash(building.id) * 2)) * FLOOR_H;
+    // Same glass city, three silhouettes so the skyline is not one box.
+    if (floors >= 8 && style === 2) {
+      const step1 = PODIUM_H + Math.max(2, Math.floor(floors * 0.42)) * FLOOR_H;
+      const step2 = PODIUM_H + Math.max(4, Math.floor(floors * 0.72)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, step1);
+      cap(metal, ring, step1);
+      const mid = shrink(ring, 0.74);
+      walls(tint, mid, step1, step2);
+      cap(metal, mid, step2);
+      const crown = shrink(ring, 0.46 + seed * 0.12);
+      const crownTop = top + (1 + Math.floor(seed * 3)) * FLOOR_H;
+      walls(tint, crown, step2, crownTop);
+      cap(metal, crown, crownTop);
+    } else if (floors >= 6 && style === 1) {
+      const waist = PODIUM_H + Math.max(2, Math.floor(floors * 0.58)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, waist);
+      cap(metal, ring, waist);
+      const upper = shrink(ring, 0.58 + seed * 0.18);
+      walls(tint, upper, waist, top);
+      cap(seed > 0.5 ? metal : garden, upper, top);
+    } else if (floors >= 9) {
+      walls(tint, ring, PODIUM_H, top);
+      const crown = shrink(ring, 0.52 + seed * 0.22);
+      const crownTop = top + (2 + Math.floor(seed * 3)) * FLOOR_H;
       cap(metal, ring, top);
       walls(tint, crown, top, crownTop);
       cap(metal, crown, crownTop);
     } else {
+      walls(tint, ring, PODIUM_H, top);
       cap(garden, ring, top);
     }
     occupancy.markRing(ring, 0.9);
+    occupancy.markHeight(ring, top);
   }
 
   // Shorelines stay clear of trees. The water is the map, not a barrier.
@@ -527,9 +725,60 @@ function buildCity(model: CityModel): Built {
     }
   }
 
-  // Trees on open lawn only.
-  const trees: Placement[] = [];
   const { minX, maxX, minZ, maxZ } = model.bounds;
+  const parks: Built["parks"] = [];
+  const ponds: Built["ponds"] = [];
+  const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
+  const parkTarget = Math.min(48, Math.max(10, Math.round(area / 7000)));
+  const pondTarget = Math.min(36, Math.max(8, Math.round(area / 10000)));
+  const spotStep = 7.5;
+  const ellipseBlocked = (x: number, z: number, rx: number, rz: number, rot: number, pad: number) => {
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    for (let u = -(rx + pad); u <= rx + pad; u += occupancy.cell) {
+      for (let v = -(rz + pad); v <= rz + pad; v += occupancy.cell) {
+        if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
+        if (occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos)) return true;
+      }
+    }
+    return false;
+  };
+  const hitsSpot = (
+    spots: { x: number; z: number; rx: number; rz: number }[],
+    x: number,
+    z: number,
+    reach: number,
+  ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
+  for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      if (hash(gx + 3, gz + 11) > 0.55) continue;
+      const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
+      const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
+      // Keep them in the city, in the gaps between buildings, not the empty outskirts.
+      if (occupancy.nearbyHeight(x, z, 16) < 1) continue;
+      const rot = hash(x + 4, z + 4) * Math.PI;
+      const wantPark = hash(x + 1, z + 9) > 0.42 && parks.length < parkTarget;
+      if (wantPark) {
+        const rx = 2.4 + hash(x, z) * 4.6;
+        const rz = rx * (0.52 + hash(z, x) * 0.36);
+        if (!hitsSpot(parks, x, z, Math.max(rx, rz) * 0.45) && !ellipseBlocked(x, z, rx, rz, rot, 0.7)) {
+          parks.push({ x, z, rx, rz, rot });
+        }
+      }
+      if (ponds.length < pondTarget && hash(z + 2, x + 6) > 0.28) {
+        const rx = 0.8 + hash(x + 5, z) * 2.2;
+        const rz = rx * (0.5 + hash(z + 3, x) * 0.38);
+        const pondRot = hash(x + 8, z + 2) * Math.PI;
+        if (!hitsSpot(ponds, x, z, Math.max(rx, rz)) && !ellipseBlocked(x, z, rx, rz, pondRot, 0.7)) {
+          occupancy.markDisk(x, z, Math.max(rx, rz) + 0.45);
+          ponds.push({ x, z, rx, rz, rot: pondRot });
+        }
+      }
+    }
+  }
+
+  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
+  const trees: Placement[] = [];
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
     for (let gz = minZ; gz <= maxZ; gz += step) {
@@ -539,16 +788,71 @@ function buildCity(model: CityModel): Built {
       const z = gz + (hash(gx + 7, gz) - 0.5) * step;
       if (occupancy.taken(x, z)) continue;
       const palette = r > 0.9 ? AUTUMN : GREEN;
+      const roll = hash(x + 1, z + 3);
+      const near = occupancy.nearbyHeight(x, z, 8);
+      const target = near > 1 ? Math.min(near * (0.45 + roll * 0.4), 5.4) : 1.8 + roll * 2.2;
+      let s = Math.min(2.9, Math.max(0.65, target / 1.86));
+      const crownHitsRoad = (scale: number) => {
+        const reach = 0.62 * scale;
+        for (let i = 0; i < 6; i += 1) {
+          const t = (i / 6) * Math.PI * 2;
+          if (occupancy.taken(x + Math.cos(t) * reach, z + Math.sin(t) * reach)) return true;
+        }
+        return false;
+      };
+      while (s > 0.65 && crownHitsRoad(s)) s *= 0.8;
+      if (crownHitsRoad(s)) continue;
       trees.push({
         x,
         z,
-        s: 0.75 + hash(x, z) * 0.6,
+        s,
         color: palette[Math.floor(hash(z, x) * palette.length)] ?? GREEN[0],
       });
     }
   }
 
   const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
+  const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
+  const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
+  const cars: Placement[] = [];
+  for (const way of roadWays) {
+    const origin = way.points[0] ?? [0, 0];
+    const side = hash(origin[0], origin[1]) > 0.5 ? 0.28 : -0.28;
+    for (const spot of along(way.points, 8, side)) {
+      if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
+      cars.push({
+        ...spot,
+        // Local +X is the nose. `along` stores a heading whose long axis sits across the lane.
+        rot: spot.rot - Math.PI / 2 + (side < 0 ? Math.PI : 0),
+        color: CAR_COLORS[Math.floor(hash(spot.z, spot.x) * CAR_COLORS.length)] ?? CAR_COLORS[0],
+      });
+    }
+  }
+  const people: Placement[] = [];
+  for (const way of model.parsed.ways) {
+    if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
+    for (const spot of along(way.points, 4.2, 0)) {
+      if (people.length >= 460 || hash(spot.x + 2, spot.z) < 0.52) continue;
+      people.push({
+        ...spot,
+        color: SHIRTS[Math.floor(hash(spot.z + 1, spot.x) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
+  for (const park of parks) {
+    if (people.length >= 520 || hash(park.x, park.z) < 0.3) continue;
+    const extras = 1 + Math.floor(hash(park.z, park.x) * 3);
+    for (let i = 0; i < extras && people.length < 520; i += 1) {
+      const angle = hash(park.x + i, park.z) * Math.PI * 2;
+      const dist = (0.25 + hash(park.z + i, park.x) * 0.45) * Math.min(park.rx, park.rz);
+      people.push({
+        x: park.x + Math.cos(angle) * dist,
+        z: park.z + Math.sin(angle) * dist,
+        rot: angle,
+        color: SHIRTS[Math.floor(hash(park.x + i, park.z + 4) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
   const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
   const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
   const benches = model.parsed.ways
@@ -568,10 +872,11 @@ function buildCity(model: CityModel): Built {
 
   return {
     glass: glass.map((b) => b.geometry()),
+    siding: siding.map((b) => b.geometry()),
+    shingles: shingles.map((b) => b.geometry()),
     garden: garden.geometry(),
     metal: metal.geometry(),
     stone: stone.geometry(),
-    brick: brick.geometry(),
     roads: roads.geometry(),
     lines: lines.geometry(),
     lit: lit.geometry(),
@@ -581,6 +886,10 @@ function buildCity(model: CityModel): Built {
       path: walks.path.geometry(),
     },
     trees,
+    parks,
+    ponds,
+    cars,
+    people,
     water: water.geometry(),
     streams: streams.geometry(),
     lamps,
@@ -624,6 +933,7 @@ function mapFor(model: CityModel): CityMap {
     bounds: model.bounds,
     geoBounds: model.geoBounds,
     project: model.project,
+    unproject: model.unproject,
     buildingPoints: model.parsed.buildings.map((b) => centroid(b.ring)),
     buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
     roads: roads.join(""),
@@ -637,43 +947,31 @@ function mapFor(model: CityModel): CityMap {
 
 /* —— Materials and shared shapes —— */
 
-/** Brick courses and a few windows, tiled in world-unit UVs. */
-function brickMap() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return texture;
-  ctx.fillStyle = "#c46b52";
-  ctx.fillRect(0, 0, 128, 128);
-  ctx.fillStyle = "#ead7cb";
-  for (let row = 0; row < 8; row += 1) {
-    ctx.fillRect(0, row * 16, 128, 2);
-    const offset = row % 2 === 0 ? 0 : 32;
-    for (let x = offset; x < 128; x += 64) ctx.fillRect(x, row * 16, 2, 16);
-  }
-  ctx.fillStyle = "#d5e3ea";
-  for (const [x, y] of [
-    [20, 28],
-    [76, 28],
-    [20, 92],
-    [76, 92],
-  ] as const) {
-    ctx.fillRect(x, y, 22, 26);
-  }
-  texture.needsUpdate = true;
-  return texture;
+/** Siding and shingle colors for houses; double-sided so gables always show. */
+function useHouseMaterials() {
+  const houses = useMemo(
+    () => ({
+      siding: SIDING.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+      ),
+      shingles: SHINGLE.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide }),
+      ),
+    }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      for (const m of [...houses.siding, ...houses.shingles]) m.dispose();
+    },
+    [houses],
+  );
+  return houses;
 }
 
 function useMaterials() {
   const materials = useMemo(() => {
     const maps = worldCurtainWall(BAY, FLOOR_H);
-    const bricks = brickMap();
     const plain = (color: string, extra: THREE.MeshStandardMaterialParameters = {}) =>
       new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
     return {
@@ -695,7 +993,6 @@ function useMaterials() {
         metal: plain(ROOF_METAL, { metalness: 0.5, roughness: 0.35 }),
         garden: plain(ROOF_GARDEN, { roughness: 0.95 }),
         stone: plain(STONE, { roughness: 0.72 }),
-        brick: new THREE.MeshStandardMaterial({ map: bricks, roughness: 0.86 }),
         road: plain("#3b4448", { roughness: 0.85 }),
         line: new THREE.MeshStandardMaterial({
           color: SMART_LINE,
@@ -707,6 +1004,7 @@ function useMaterials() {
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
+        park: plain("#3e7c4c", { roughness: 0.95 }),
         water: new THREE.MeshPhysicalMaterial({
           color: "#1c6f96",
           roughness: 0.08,
@@ -731,13 +1029,60 @@ function useMaterials() {
     () => () => {
       materials.maps.color.dispose();
       materials.maps.rough.dispose();
-      materials.surfaces.brick.map?.dispose();
       for (const m of materials.glass) m.dispose();
       for (const m of Object.values(materials.surfaces)) m.dispose();
     },
     [materials],
   );
   return materials;
+}
+
+function mergeGeos(parts: THREE.BufferGeometry[]) {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  let offset = 0;
+  for (const part of parts) {
+    const pos = part.getAttribute("position");
+    const nor = part.getAttribute("normal");
+    const index = part.getIndex();
+    for (let i = 0; i < pos.count; i += 1) {
+      positions.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      normals.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+    }
+    if (index) {
+      for (let i = 0; i < index.count; i += 1) indices.push(index.getX(i) + offset);
+    }
+    offset += pos.count;
+    part.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function axle(x: number, z: number, radius: number, width: number) {
+  const geo = new THREE.CylinderGeometry(radius, radius, width, 12);
+  geo.rotateX(Math.PI / 2);
+  geo.translate(x, 0.075, z);
+  return geo;
+}
+
+function carWindows() {
+  const pane = (w: number, h: number, d: number, x: number, y: number, z: number, tilt = 0) => {
+    const glass = new THREE.BoxGeometry(w, h, d);
+    if (tilt) glass.rotateZ(tilt);
+    glass.translate(x, y, z);
+    return glass;
+  };
+  return [
+    pane(0.02, 0.11, 0.26, 0.1, 0.27, 0, -0.42),
+    pane(0.02, 0.1, 0.24, -0.26, 0.27, 0, 0.35),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, 0.145),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, -0.145),
+  ];
 }
 
 function useFurniture() {
@@ -752,6 +1097,45 @@ function useFurniture() {
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
         seat: at(new THREE.BoxGeometry(0.6, 0.035, 0.17), 0.17),
         back: at(new THREE.BoxGeometry(0.6, 0.17, 0.025), 0.27, -0.07),
+        car: mergeGeos([
+          (() => {
+            const body = new THREE.BoxGeometry(0.78, 0.15, 0.34);
+            body.translate(0.02, 0.16, 0);
+            return body;
+          })(),
+          (() => {
+            const roof = new THREE.BoxGeometry(0.28, 0.03, 0.26);
+            roof.translate(-0.08, 0.34, 0);
+            return roof;
+          })(),
+        ]),
+        windows: mergeGeos(carWindows()),
+        wheels: mergeGeos([
+          axle(0.22, 0.18, 0.075, 0.05),
+          axle(0.22, -0.18, 0.075, 0.05),
+          axle(-0.22, 0.18, 0.075, 0.05),
+          axle(-0.22, -0.18, 0.075, 0.05),
+        ]),
+        hubs: mergeGeos([
+          axle(0.22, 0.18, 0.032, 0.058),
+          axle(0.22, -0.18, 0.032, 0.058),
+          axle(-0.22, 0.18, 0.032, 0.058),
+          axle(-0.22, -0.18, 0.032, 0.058),
+        ]),
+        headlights: mergeGeos([
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, 0.1);
+            return lamp;
+          })(),
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, -0.1);
+            return lamp;
+          })(),
+        ]),
+        body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
+        head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
       },
       looks: {
         bark: new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
@@ -765,6 +1149,24 @@ function useFurniture() {
         }),
         red: new THREE.MeshStandardMaterial({ color: "#e08978", roughness: 0.45 }),
         wood: new THREE.MeshStandardMaterial({ color: "#c9a77c", roughness: 0.7 }),
+        paint: new THREE.MeshStandardMaterial({ roughness: 0.28, metalness: 0.55 }),
+        glass: new THREE.MeshStandardMaterial({
+          color: "#b7e4f5",
+          roughness: 0.05,
+          metalness: 0.15,
+          transparent: true,
+          opacity: 0.72,
+        }),
+        tire: new THREE.MeshStandardMaterial({ color: "#141414", roughness: 0.9 }),
+        hub: new THREE.MeshStandardMaterial({ color: "#d5d8dc", metalness: 0.7, roughness: 0.25 }),
+        lamp: new THREE.MeshStandardMaterial({
+          color: "#fff4d2",
+          emissive: "#ffe08a",
+          emissiveIntensity: 1.4,
+          toneMapped: false,
+        }),
+        shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
+        skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
       },
     };
   }, []);
@@ -822,6 +1224,9 @@ function Instanced({
  */
 export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
   const { glass, surfaces } = useMaterials();
+  const houses = useHouseMaterials();
+  const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
+  useEffect(() => () => pondShape.dispose(), [pondShape]);
   const { shapes, looks } = useFurniture();
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
@@ -844,10 +1249,13 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     () => () => {
       for (const g of [
         ...built.glass,
+        ...built.siding,
+        ...built.shingles,
         built.garden,
         built.metal,
         built.stone,
-        built.brick,
+        built.water,
+        built.streams,
         built.roads,
         built.lines,
         built.lit,
@@ -886,11 +1294,62 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           raycast={() => null}
         />
       ))}
-      <mesh geometry={built.brick} material={surfaces.brick} castShadow receiveShadow raycast={() => null} />
+      {built.siding.map((geometry, i) => (
+        <mesh
+          key={`siding-${i}`}
+          geometry={geometry}
+          material={houses.siding[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.shingles.map((geometry, i) => (
+        <mesh
+          key={`roof-${i}`}
+          geometry={geometry}
+          material={houses.shingles[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
       <mesh geometry={built.stone} material={surfaces.stone} castShadow receiveShadow raycast={() => null} />
       <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
       <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />
 
+      {built.parks.map((park) => (
+        <mesh
+          key={`park-${park.x.toFixed(1)}-${park.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.park}
+          position={[park.x, 0.03, park.z]}
+          rotation={[-Math.PI / 2, park.rot, 0]}
+          scale={[park.rx, park.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.ponds.map((pond) => (
+        <mesh
+          key={`${pond.x.toFixed(1)}-${pond.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.water}
+          position={[pond.x, 0.045, pond.z]}
+          rotation={[-Math.PI / 2, pond.rot, 0]}
+          scale={[pond.rx, pond.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
+      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />
+      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
+      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
       <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
       <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />

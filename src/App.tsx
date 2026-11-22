@@ -72,6 +72,7 @@ export default function App() {
           mode={mode}
           reducedMotion={reducedMotion}
           neighborhood={neighborhood}
+          onNeighborhood={setNeighborhood}
         />
         <OverlayPanel open={panelOpen} contentKey={panelMode}>
           {panelMode === 'improve' && (
