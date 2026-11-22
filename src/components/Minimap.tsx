@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { flyTo, useCityState, whereAmI, type CameraPose } from '../showcase/cityStore'
+import { flyTo, useCityState, whereAmI, type CameraPose, type RailPath } from '../showcase/cityStore'
 import { useIssueState, type SceneIssue } from '../showcase/issueStore'
 import { ISSUE_COLOR } from '../showcase/issueVisuals'
+import { LiveTransitBadge } from './LiveTransitBadge'
 
 /** Small minimap size in CSS pixels. */
 const SIZE = 168
@@ -10,7 +11,25 @@ const SIZE = 168
 const ZOOMED_IN = 40
 const LOGO_BLUE = '#1488ff'
 
-type Paths = { roads: Path2D; walks: Path2D; buildings: Path2D; water: Path2D }
+type RailStroke = { path: Path2D; colour: string; tunnel: boolean }
+type Paths = { roads: Path2D; walks: Path2D; buildings: Path2D; water: Path2D; rail: RailStroke[] }
+
+/** One Path2D per line colour and depth, so a whole network is a few strokes. */
+function railStrokes(rail: readonly RailPath[] | undefined): RailStroke[] {
+  const groups = new Map<string, RailStroke>()
+  for (const line of rail ?? []) {
+    const colour = line.colour ?? '#9aa1a8'
+    const key = `${colour}|${line.tunnel}`
+    let group = groups.get(key)
+    if (!group) {
+      group = { path: new Path2D(), colour, tunnel: line.tunnel }
+      groups.set(key, group)
+    }
+    group.path.addPath(new Path2D(line.d))
+  }
+  // Tunnels first, so surface track draws over them.
+  return [...groups.values()].sort((a, b) => Number(b.tunnel) - Number(a.tunnel))
+}
 
 type View = {
   /** Scene point at the middle of the canvas. */
@@ -60,6 +79,17 @@ function drawMap(
   ctx.strokeStyle = '#e9f1f4'
   ctx.lineWidth = Math.max(1.3, 1.6 / (scale / dpr))
   ctx.stroke(paths.roads)
+  // Rail lines in their colours; tunnels dashed.
+  for (const line of paths.rail) {
+    ctx.strokeStyle = line.colour
+    const width = Math.max(1, 1.3 / (scale / dpr))
+    ctx.lineWidth = line.tunnel ? width * 0.8 : width
+    ctx.setLineDash(line.tunnel ? [width * 2.5, width * 2] : [])
+    ctx.globalAlpha = line.tunnel ? 0.75 : 1
+    ctx.stroke(line.path)
+  }
+  ctx.setLineDash([])
+  ctx.globalAlpha = 1
 
   // Issues: a dot each, green once improved, ringed when selected.
   const dot = 3.2 / (scale / dpr)
@@ -129,6 +159,7 @@ export function Minimap({ placeLabel }: Props) {
             walks: new Path2D(map.walks),
             buildings: new Path2D(map.buildings),
             water: new Path2D(map.water),
+            rail: railStrokes(map.rail),
           }
         : null,
     [map],
@@ -180,6 +211,7 @@ export function Minimap({ placeLabel }: Props) {
   return (
     <>
       <section className="minimap" aria-label="Map of the city">
+        <LiveTransitBadge />
         <p className="minimap__where" role="status">
           {where}
         </p>

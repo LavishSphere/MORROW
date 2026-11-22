@@ -68,6 +68,8 @@ test("other upstream errors throw so the registry can retry", async () => {
 
 test("transitLive keeps the shared LiveVehicle and LiveFeed contract", async () => {
   const text = await readFile("src/data/transitLive.ts", "utf8");
-  assert.match(text, /export type LiveVehicle = \{ id: string; lat: number; lon: number;/);
-  assert.match(text, /fetch\(signal: AbortSignal\): Promise<LiveVehicle\[\]>; pollMs: number \}/);
+  assert.match(text, /export type LiveVehicle = \{\s*id: string\s*lat: number\s*lon: number/);
+  assert.match(text, /fetch\(signal: AbortSignal\): Promise<LiveVehicle\[\]>\s*pollMs: number\s*\}/);
+  // The extra agencies join the MBTA feed in one registry.
+  assert.match(text, /export const LIVE_FEEDS: LiveFeed\[\] = \[mbtaFeed, \.\.\.extraFeeds\]/);
 });

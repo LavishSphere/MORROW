@@ -28,11 +28,12 @@ import {
 import { uncoveredParts } from "../src/data/overtureBuildings.ts";
 
 test("a tile's download box is centered on the tile, so neighbors meet edge to edge", () => {
-  for (const [lng, lat] of [
+  const points: [number, number][] = [
     [-71.0589, 42.3601],
     [-115.1398, 36.1699],
     [-0.0001, 0.0001],
-  ]) {
+  ];
+  for (const [lng, lat] of points) {
     const key = tileKey(lng, lat);
     const [cx, cy] = tileCenter(key);
     assert.equal(tileKey(cx, cy), key);
@@ -181,12 +182,12 @@ test("Overpass falls back through its servers and sticks with the one that answe
     return answers[url]!();
   }) as unknown as typeof fetch;
   assert.deepEqual(await postOverpass("q", undefined, send), { elements: [] });
-  assert.deepEqual(asked, [...OVERPASS_ENDPOINTS]);
+  assert.deepEqual(asked, [...OVERPASS_ENDPOINTS] as string[]);
   assert.equal(currentOverpassEndpoint(), OVERPASS_ENDPOINTS[2]);
   // Later requests go straight to the server that worked.
   asked.length = 0;
   await postOverpass("q", undefined, send);
-  assert.deepEqual(asked, [OVERPASS_ENDPOINTS[2]]);
+  assert.deepEqual(asked, [OVERPASS_ENDPOINTS[2] as string]);
   // A bad query is not retried elsewhere.
   resetOverpassEndpoint();
   asked.length = 0;

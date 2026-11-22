@@ -2886,3 +2886,69 @@ code {
   border-color: #1488ff;
   color: #1488ff;
 }
+
+/* —— Rail stations: name plate with line-colour chips —— */
+.rail-station {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(20, 26, 32, 0.9);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  user-select: none;
+  animation: street-sign-in 360ms ease both;
+}
+
+.rail-station__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 2px solid #1f1f1f;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.rail-station__chip {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+}
+
+.rail-station__access {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* —— Live transit: a small line above the minimap while a feed is on —— */
+.minimap__live {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 168px;
+  margin: 0 0.15rem 0.35rem;
+  color: rgba(247, 250, 248, 0.82);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.minimap__live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #2ecc71;
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.25);
+}

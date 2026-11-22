@@ -19,6 +19,9 @@ import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
 import { Traffic } from "./Traffic";
 import { buildTrafficLanes, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
+import { RailLayer } from "./RailLayer";
+import { RAIL_CLEARANCE } from "./railGeometry";
+import { EMPTY_RAIL } from "../../data/rail.ts";
 import { useStreetImprovements } from "../../city/streetImprovements";
 
 /**
@@ -155,6 +158,7 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     water: [],
     waterways: [],
     coastlines: [],
+    rail: EMPTY_RAIL,
   };
   const kinds = new Map<string, string>();
   const tags = new Map<string, Record<string, unknown>>();
@@ -1619,6 +1623,16 @@ function buildCity(model: CityModel): Built {
   const edges = new EdgeIndex();
   for (const building of model.parsed.buildings) edges.addRing(building.ring);
 
+  // Surface track and platforms keep trees and furniture off them; tunnels do not.
+  for (const track of model.parsed.rail.lines) {
+    if (!track.underground) occupancy.markLine(track.points, RAIL_CLEARANCE);
+  }
+  for (const platform of model.parsed.rail.platforms) {
+    if (platform.underground) continue;
+    if (platform.area) occupancy.markRing(platform.points, 0.3);
+    else occupancy.markLine(platform.points, 0.5);
+  }
+
   const roads = new Bucket();
   const lines = new Bucket();
   const lit = new Bucket();
@@ -1906,6 +1920,9 @@ function mapFor(model: CityModel): CityMap {
     ...model.parsed.waterways.map((brook) => line(brook.points)),
     ...model.parsed.coastlines.map((coast) => line(coast.points)),
   ].join("");
+  const rail = model.parsed.rail.lines
+    .filter((track) => !track.minor)
+    .map((track) => ({ d: line(track.points), colour: track.colour, tunnel: track.underground }));
   const places = model.parsed.buildings.flatMap((b) => {
     if (!b.name) return [];
     const [x, z] = centroid(b.ring);
@@ -1924,6 +1941,7 @@ function mapFor(model: CityModel): CityMap {
     buildings,
     streets,
     places,
+    rail,
   };
 }
 
@@ -2602,6 +2620,13 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <IssueLayer reducedMotion={reducedMotion} />
       <AddressPin />
       <StreetSigns signs={built.signs} />
+      <RailLayer
+        network={cityModel.parsed.rail}
+        geoBounds={cityModel.geoBounds}
+        project={cityModel.project}
+        origin={cityModel.unproject(0, 0)}
+        reducedMotion={reducedMotion}
+      />
       <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
   );

@@ -1,4 +1,4 @@
-import type { AppMode } from '../types'
+import type { AppMode } from '../types.ts'
 
 /**
  * The small "what next" nudge: Explore → Improve → Compare → Propose.
