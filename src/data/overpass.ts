@@ -2,7 +2,7 @@ import { generateCity } from './proceduralCity.ts'
 import { geocodeUsPlace, type UsPlace } from './places.ts'
 import { resolveRoadWidth, type WidthKind } from './roadWidth.ts'
 import { lineColour, railRefsFrom, railTags, railWayKind, STATION_NODE_TYPES, type RailRef } from './rail.ts'
-import { coastQuery, landmarkQuery, tileCenter, tileKey, tileQuery, TILE_HALF } from '../../shared/osmQueries.ts'
+import { COAST_HALF, coastQuery, landmarkQuery, tileCenter, tileKey, tileQuery, TILE_HALF } from '../../shared/osmQueries.ts'
 
 export { tileCenter, tileKey, TILE_HALF }
 
@@ -665,7 +665,15 @@ export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]
   try {
     return (await interpret(coastQuery(tileKey(lng, lat)))).filter((way) => way.kind === 'coastline')
   } catch {
-    return []
+    // Not cached and Overpass unavailable: the bay and ocean as water areas
+    // from Overture over the same wide box, so the sea is not drawn as land.
+    try {
+      const [cx, cy] = tileCenter(tileKey(lng, lat))
+      const { fetchOvertureWater } = await import('./overtureBase.ts')
+      return await fetchOvertureWater({ west: cx - COAST_HALF, south: cy - COAST_HALF, east: cx + COAST_HALF, north: cy + COAST_HALF })
+    } catch {
+      return []
+    }
   }
 }
 
