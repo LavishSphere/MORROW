@@ -43,6 +43,37 @@ export type LoadedNeighborhood = {
 }
 
 const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
+/**
+ * Public Overpass servers, tried in order. One may refuse some clients
+ * (403) or be busy (429, 5xx); the next one is tried instead.
+ */
+export const OVERPASS_ENDPOINTS = [
+  OVERPASS,
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+] as const
+/** The server that last answered, so later tiles go straight to it. */
+let workingEndpoint: string | null = null
+
+/** Servers to try, the one that last worked first. */
+export function endpointOrder(preferred: string | null): string[] {
+  const rest = OVERPASS_ENDPOINTS.filter((url) => url !== preferred)
+  return preferred && OVERPASS_ENDPOINTS.some((url) => url === preferred) ? [preferred, ...rest] : rest
+}
+
+/** Refused, rate limited, or failing: worth asking the next server. */
+export function tryNextEndpoint(status: number): boolean {
+  return status === 403 || status === 429 || status >= 500
+}
+
+/** Forget the remembered server (a new session, or a test). */
+export function resetOverpassEndpoint() {
+  workingEndpoint = null
+}
+
+export function currentOverpassEndpoint() {
+  return workingEndpoint
+}
 /** Half-size of one downloaded area in degrees: about 1.4 km across. */
 const HALF = 0.0065
 /**
@@ -80,6 +111,19 @@ const KEEP_TAGS = [
 export function tileKey(lng: number, lat: number) {
   return `${Math.round(lng / (HALF * 2))}:${Math.round(lat / (HALF * 2))}`
 }
+
+/**
+ * Center of a grid tile, as [longitude, latitude]. Downloading the box
+ * around this point covers exactly that tile, so neighbors meet edge to
+ * edge with no gap and no overlap.
+ */
+export function tileCenter(key: string): [number, number] {
+  const [x, y] = key.split(':').map(Number)
+  return [(x ?? 0) * HALF * 2, (y ?? 0) * HALF * 2]
+}
+
+/** Half-size of one tile in degrees, for tests and the loader. */
+export const TILE_HALF = HALF
 
 function closeEnough(a: [number, number], b: [number, number]) {
   return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6
@@ -250,26 +294,68 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   return ways
 }
 
-async function interpret(query: string): Promise<OsmWay[]> {
-  const res = await fetch(OVERPASS, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ data: query }),
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!res.ok) throw new Error(`Overpass ${res.status}`)
-  return waysFromOverpass(await res.json())
+/** The request timeout, plus the caller's own cancel when there is one. */
+function requestSignal(signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(60000)
+  if (!signal) return timeout
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+}
+
+/**
+ * POST one query, trying each server in turn until one answers. Requests
+ * stay one at a time: the next server is asked only after the last one
+ * failed. A cancel from the caller stops at once.
+ */
+export async function postOverpass(
+  query: string,
+  signal?: AbortSignal,
+  send: typeof fetch = fetch,
+): Promise<unknown> {
+  let lastError: unknown = new Error('Overpass unreachable')
+  for (const url of endpointOrder(workingEndpoint)) {
+    signal?.throwIfAborted()
+    let res: Response
+    try {
+      res = await send(url, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: requestSignal(signal),
+      })
+    } catch (error) {
+      signal?.throwIfAborted()
+      lastError = error
+      continue
+    }
+    if (res.ok) {
+      workingEndpoint = url
+      return res.json()
+    }
+    lastError = new Error(`Overpass ${res.status}`)
+    if (!tryNextEndpoint(res.status)) break
+  }
+  throw lastError
+}
+
+async function interpret(query: string, signal?: AbortSignal): Promise<OsmWay[]> {
+  return waysFromOverpass(await postOverpass(query, signal))
 }
 
 /** Real streets and buildings in one area around a point, from OpenStreetMap. */
-export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
+export async function fetchArea(lng: number, lat: number, signal?: AbortSignal): Promise<OsmWay[]> {
   const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
   // Streets, buildings, landmark pieces, and water get separate quotas.
   const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
-  return interpret(query)
+  return interpret(query, signal)
+}
+
+/** One grid tile, downloaded around its snapped center. */
+export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
+  const [lng, lat] = tileCenter(key)
+  return fetchArea(lng, lat, signal)
 }
 
 /**
@@ -317,7 +403,9 @@ export async function loadUsNeighborhood(
     const streets = await fetchArea(place.lng, place.lat)
     const ways = withCoast(streets, await fetchCoastline(place.lng, place.lat))
     if (ways.length > 0) {
-      return { place, ways, note: describe(place, ways), tiles: [tileKey(place.lng, place.lat)] }
+      // A quick preview centered on the place. Its grid tile is still
+      // downloaded in the background, so tiles stay aligned to the grid.
+      return { place, ways, note: describe(place, ways), tiles: [] }
     }
   } catch {
     // Fall through to the labeled stand-in below.
@@ -332,21 +420,28 @@ export async function loadUsNeighborhood(
 }
 
 /**
- * Walked near the edge: download the real area around (lng, lat) and add
- * it to the neighborhood. Ways already loaded are kept once.
+ * Add downloaded tiles to the neighborhood. Ways already loaded (the
+ * preview overlaps its grid tiles) are kept once.
  */
-export async function extendNeighborhood(
+export function mergeAreas(
   neighborhood: LoadedNeighborhood,
-  lng: number,
-  lat: number,
-): Promise<LoadedNeighborhood> {
-  const key = tileKey(lng, lat)
+  fresh: OsmWay[],
+  keys: string[],
+): LoadedNeighborhood {
   const tiles = neighborhood.tiles ?? []
-  if (neighborhood.procedural || tiles.includes(key)) return neighborhood
-  const fresh = await fetchArea(lng, lat)
+  if (neighborhood.procedural) return neighborhood
   const seen = new Set(neighborhood.ways.map((way) => `${way.kind}:${way.id}`))
-  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
-  return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
+  const added = fresh.filter((way) => !seen.has(`${way.kind}:${way.id}`))
+  const ways = [...neighborhood.ways]
+  for (const way of added) {
+    const id = `${way.kind}:${way.id}`
+    // Tiles in one batch share the ways that cross their edge.
+    if (seen.has(id)) continue
+    seen.add(id)
+    ways.push(way)
+  }
+  const newKeys = keys.filter((key) => !tiles.includes(key))
+  return { ...neighborhood, ways, tiles: [...tiles, ...newKeys], note: describe(neighborhood.place, ways) }
 }
 
 const FOOT = new Set(['footway', 'pedestrian', 'steps', 'corridor', 'living_street'])

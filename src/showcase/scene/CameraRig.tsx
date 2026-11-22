@@ -290,6 +290,10 @@ export function CameraRig({
         dirX: forward.x,
         dirZ: forward.z,
         distance: camera.position.distanceTo(t),
+        eyeX: camera.position.x,
+        eyeY: camera.position.y,
+        eyeZ: camera.position.z,
+        ...(camera instanceof THREE.PerspectiveCamera ? { fov: camera.fov, aspect: camera.aspect } : {}),
       });
     }
   });
