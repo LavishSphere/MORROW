@@ -64,6 +64,8 @@ const LAWN = "#7d9a68";
 /** Beaches and sand from OpenStreetMap (natural=beach, natural=sand). */
 const SAND = "#ead7a6";
 const SMART_LINE = "#8ff3ff";
+/** Needleleaved trees mapped in OpenStreetMap. */
+const CONIFER = "#2f5a3a";
 const LOGO_BLUE = "#1488ff";
 const { green: GREEN, autumn: AUTUMN } = lookTrees(["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"], ["#b98c3a", "#c99a4c", "#b8692c"]);
 
@@ -1825,8 +1827,23 @@ function* buildCitySteps(model: CityModel): Generator<void, Built, void> {
   }
 
   yield;
-  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
+  // Real trees first: every tree mapped in OpenStreetMap stands where it is
+  // mapped (street trees line the sidewalks), unless it would land on water
+  // or a road. The random fill below then keeps clear of them.
   const trees: Placement[] = [];
+  for (const tree of model.parsed.trees ?? []) {
+    if (tree.x < minX - 4 || tree.x > maxX + 4 || tree.z < minZ - 4 || tree.z > maxZ + 4) continue;
+    if (occupancy.taken(tree.x, tree.z)) continue;
+    const roll = hash(tree.x + 3, tree.z + 1);
+    trees.push({
+      x: tree.x,
+      z: tree.z,
+      s: 0.85 + roll * 0.55,
+      color: tree.conifer ? CONIFER : (roll > 0.92 ? AUTUMN : GREEN)[Math.floor(hash(tree.z, tree.x) * 3)] ?? GREEN[0],
+    });
+    occupancy.markDisk(tree.x, tree.z, 0.9);
+  }
+  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
   const step = 2.6;
   for (let gx = minX; gx <= maxX; gx += step) {
     yield;
