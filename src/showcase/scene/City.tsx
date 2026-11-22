@@ -16,6 +16,8 @@ import { parseBasemap, type ParsedBasemap, type WayRibbon } from "./parseBasemap
 import { AddressPin } from "./AddressPin";
 import { IssueLayer } from "./IssueLayer";
 import { StreetSigns, type SignSpot } from "./StreetSigns";
+import { Traffic } from "./Traffic";
+import { buildTrafficLanes, carLaneOffset, CAR_HALF_WIDTH, FootprintGrid, type TrafficLanes } from "./trafficLanes.ts";
 import { useStreetImprovements } from "../../city/streetImprovements";
 
 /**
@@ -662,8 +664,14 @@ type Built = {
   trees: Placement[];
   parks: { x: number; z: number; rx: number; rz: number; rot: number }[];
   ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  /** Parked cars at the curb, out of the moving lanes. */
   cars: Placement[];
+  /** Standing people; `color` is the shirt. Skin and trousers share their spots. */
   people: Placement[];
+  peopleSkin: Placement[];
+  peoplePants: Placement[];
+  /** Lanes for moving cars and walking people, drawn only when zoomed in. */
+  traffic: TrafficLanes;
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
@@ -1074,12 +1082,27 @@ function buildCity(model: CityModel): Built {
   const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
   const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
   const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
+  const SKINS = ["#f1c9a5", "#e0ac83", "#c68a5e", "#a0673f", "#7a4a2a", "#5b3a24"];
+  const PANTS = ["#2d3a4f", "#3b4552", "#1f2328", "#6b5a45", "#4a5f7a", "#8a8f96"];
+  // Nobody stands or parks inside a building: one coarse grid of footprints, built once.
+  const footprints = new FootprintGrid([
+    ...model.parsed.buildings.map((b) => b.ring),
+    ...model.parts.map((part) => part.ring),
+  ]);
+  // Parked cars sit at the curb: in drive aisles and driveways (no moving
+  // traffic there), and on streets wide enough that the moving lane clears them.
   const cars: Placement[] = [];
-  for (const way of roadWays) {
+  for (const way of model.parsed.ways) {
+    if (way.indoor) continue;
+    const service = way.highway === "service";
+    if (!service && way.layer !== "road") continue;
+    const curb = Math.max(0, way.halfWidth - 0.2);
+    if (!service && curb - carLaneOffset(way) < 2 * CAR_HALF_WIDTH - 0.04) continue;
     const origin = way.points[0] ?? [0, 0];
-    const side = hash(origin[0], origin[1]) > 0.5 ? 0.28 : -0.28;
-    for (const spot of along(way.points, 8, side)) {
-      if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
+    const side = hash(origin[0], origin[1]) > 0.5 ? 1 : -1;
+    for (const spot of along(way.points, 8, side * curb)) {
+      if (cars.length >= 160 || hash(spot.x, spot.z) < 0.6) continue;
+      if (footprints.inside(spot.x, spot.z)) continue;
       cars.push({
         ...spot,
         // Local +X is the nose. `along` stores a heading whose long axis sits across the lane.
@@ -1089,12 +1112,18 @@ function buildCity(model: CityModel): Built {
     }
   }
   const people: Placement[] = [];
+  const outdoors = (x: number, z: number) => !footprints.inside(x, z);
   for (const way of model.parsed.ways) {
     if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
+    // Drive aisles hold parked cars; corridors, tunnels, and covered ways are indoors.
+    if (way.indoor || way.highway === "service" || way.highway === "corridor") continue;
     for (const spot of along(way.points, 4.2, 0)) {
       if (people.length >= 460 || hash(spot.x + 2, spot.z) < 0.52) continue;
+      if (!outdoors(spot.x, spot.z)) continue;
       people.push({
         ...spot,
+        // Face along the path, either way.
+        rot: spot.rot - Math.PI / 2 + (hash(spot.z, spot.x + 5) > 0.5 ? Math.PI : 0),
         color: SHIRTS[Math.floor(hash(spot.z + 1, spot.x) * SHIRTS.length)] ?? SHIRTS[0],
       });
     }
@@ -1105,14 +1134,20 @@ function buildCity(model: CityModel): Built {
     for (let i = 0; i < extras && people.length < 520; i += 1) {
       const angle = hash(park.x + i, park.z) * Math.PI * 2;
       const dist = (0.25 + hash(park.z + i, park.x) * 0.45) * Math.min(park.rx, park.rz);
+      const x = park.x + Math.cos(angle) * dist;
+      const z = park.z + Math.sin(angle) * dist;
+      if (!outdoors(x, z)) continue;
       people.push({
-        x: park.x + Math.cos(angle) * dist,
-        z: park.z + Math.sin(angle) * dist,
+        x,
+        z,
         rot: angle,
         color: SHIRTS[Math.floor(hash(park.x + i, park.z + 4) * SHIRTS.length)] ?? SHIRTS[0],
       });
     }
   }
+  const peopleSkin = people.map((p) => ({ ...p, color: SKINS[Math.floor(hash(p.x + 3, p.z) * SKINS.length)] ?? SKINS[0] }));
+  const peoplePants = people.map((p) => ({ ...p, color: PANTS[Math.floor(hash(p.x, p.z + 9) * PANTS.length)] ?? PANTS[0] }));
+  const traffic = buildTrafficLanes(model.parsed.ways, footprints);
   const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
   const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
   const benches = model.parsed.ways
@@ -1165,6 +1200,9 @@ function buildCity(model: CityModel): Built {
     ponds,
     cars,
     people,
+    peopleSkin,
+    peoplePants,
+    traffic,
     water: water.geometry(),
     streams: streams.geometry(),
     lamps,
@@ -1363,6 +1401,51 @@ function carWindows() {
   ];
 }
 
+/**
+ * A low-poly person facing +X, in three parts so each takes its own instance
+ * colour: torso and sleeves (shirt), head and hands (skin), legs (trousers).
+ * Each vertex carries `aSwing` = (swing amount, pivot height). Walkers swing
+ * arms and legs about the hip and shoulder; standing people ignore it.
+ */
+function limbs(parts: [THREE.BufferGeometry, number, number][]) {
+  const swing: number[] = [];
+  for (const [geo, amount, pivot] of parts) {
+    for (let i = 0; i < geo.getAttribute("position").count; i += 1) swing.push(amount, pivot + PERSON_LIFT);
+  }
+  const merged = mergeGeos(parts.map(([geo]) => geo)).translate(0, PERSON_LIFT, 0);
+  merged.setAttribute("aSwing", new THREE.Float32BufferAttribute(swing, 2));
+  return merged;
+}
+
+/** Feet stand on the path surface, not in it. */
+const PERSON_LIFT = 0.04;
+const HIP = 0.25;
+const SHOULDER = 0.435;
+
+function personParts() {
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number) =>
+    new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+  const torso = new THREE.CylinderGeometry(0.074, 0.058, 0.2, 7).scale(0.62, 1, 1).translate(0, 0.35, 0);
+  return {
+    body: limbs([
+      [torso, 0, 0],
+      [box(0.042, 0.18, 0.042, 0, 0.35, 0.097), -0.8, SHOULDER],
+      [box(0.042, 0.18, 0.042, 0, 0.35, -0.097), 0.8, SHOULDER],
+    ]),
+    head: limbs([
+      [new THREE.SphereGeometry(0.062, 8, 6).translate(0.004, 0.52, 0), 0, 0],
+      [box(0.036, 0.036, 0.036, 0, 0.244, 0.097), -0.8, SHOULDER],
+      [box(0.036, 0.036, 0.036, 0, 0.244, -0.097), 0.8, SHOULDER],
+    ]),
+    legs: limbs([
+      [box(0.056, 0.24, 0.058, 0, 0.13, 0.036), 1, HIP],
+      [box(0.056, 0.24, 0.058, 0, 0.13, -0.036), -1, HIP],
+      [box(0.08, 0.024, 0.06, 0.012, 0.012, 0.036), 1, HIP],
+      [box(0.08, 0.024, 0.06, 0.012, 0.012, -0.036), -1, HIP],
+    ]),
+  };
+}
+
 function useFurniture() {
   const parts = useMemo(() => {
     const at = (g: THREE.BufferGeometry, y: number, z = 0) => g.translate(0, y, z);
@@ -1412,8 +1495,7 @@ function useFurniture() {
             return lamp;
           })(),
         ]),
-        body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
-        head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
+        ...personParts(),
         canBody: at(new THREE.CylinderGeometry(0.09, 0.08, 0.32, 10), 0.16),
         canBand: at(new THREE.CylinderGeometry(0.092, 0.092, 0.03, 10), 0.24),
         canLid: at(new THREE.CylinderGeometry(0.075, 0.1, 0.04, 10), 0.34),
@@ -1448,7 +1530,8 @@ function useFurniture() {
           toneMapped: false,
         }),
         shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
-        skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
+        skin: new THREE.MeshStandardMaterial({ roughness: 0.7 }),
+        pants: new THREE.MeshStandardMaterial({ roughness: 0.8 }),
         trashBody: new THREE.MeshStandardMaterial({
           color: TRASH_BODY,
           emissive: TRASH_GLOW,
@@ -1783,7 +1866,9 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
       <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
       <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
-      <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.peopleSkin} shadows={false} colored />
+      <Instanced geometry={shapes.legs} material={looks.pants} items={built.peoplePants} colored />
+      <Traffic lanes={built.traffic} shapes={shapes} looks={looks} reducedMotion={reducedMotion} />
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
       <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
       <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />

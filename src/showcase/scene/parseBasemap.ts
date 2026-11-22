@@ -1,5 +1,6 @@
 import { resolveRoadWidth, type WidthKind } from "../../data/roadWidth.ts";
 import { isFeatureCollection, type SceneProjector } from "../geo";
+import { isIndoor, onewayOf } from "./trafficLanes.ts";
 
 export type BasemapLayer =
   | "building"
@@ -35,6 +36,10 @@ export type WayRibbon = {
   metersPerLane: number | null;
   highway: string | null;
   lanes: number | null;
+  /** 1 one-way in the drawn direction (or a roundabout), -1 against it, 0 two-way. */
+  oneway: 1 | -1 | 0;
+  /** Indoor, covered, a tunnel, or on another level: no one is drawn moving here. */
+  indoor: boolean;
 };
 
 /** A mapped lake or pond. The shoreline is the map, not a defect. */
@@ -249,6 +254,8 @@ export function parseBasemap(
         metersPerLane: width.metersPerLane,
         highway: width.highway,
         lanes: width.lanes,
+        oneway: onewayOf(f.properties),
+        indoor: isIndoor(f.properties),
       });
     }
   }

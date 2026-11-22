@@ -64,6 +64,13 @@ const KEEP_TAGS = [
   'lanes:forward',
   'lanes:backward',
   'width',
+  // Traffic direction, and the places nobody is drawn walking (indoors, under cover, underground).
+  'oneway',
+  'junction',
+  'indoor',
+  'tunnel',
+  'covered',
+  'level',
   // Real 3D shape, where mappers recorded it (Simple 3D Buildings).
   'height',
   'min_height',
@@ -229,6 +236,9 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
       const value = row.tags?.[key]
       if (typeof value === 'string') tags[key] = value
     }
+    // The OSM layer (below ground when negative) travels under its own key:
+    // "layer" on a feature names the basemap layer.
+    if (kind === 'road' && typeof row.tags?.layer === 'string') tags['layer:osm'] = row.tags.layer
     const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
     ways.push({
       id: row.id,
