@@ -215,13 +215,14 @@ export function CameraRig({
 
     // Minimap clicks: glide the view to the chosen spot.
     const fly = getCityState().fly;
+    const flyEdges = getCityState().map?.bounds;
     if (fly && fly.id !== lastFly.current) {
       lastFly.current = fly.id;
       flight.current = {
         fromX: controls.target.x,
         fromZ: controls.target.z,
-        toX: fly.x,
-        toZ: fly.z,
+        toX: flyEdges ? THREE.MathUtils.clamp(fly.x, flyEdges.minX, flyEdges.maxX) : fly.x,
+        toZ: flyEdges ? THREE.MathUtils.clamp(fly.z, flyEdges.minZ, flyEdges.maxZ) : fly.z,
         fromDist: camera.position.distanceTo(controls.target),
         toDist: fly.distance ?? null,
         fromDir: camera.position.clone().sub(controls.target).normalize(),
@@ -260,7 +261,9 @@ export function CameraRig({
       if (f.t >= 1) flight.current = null;
     }
 
-    // Keep the view over the city: clamp the target, carry the camera along.
+    // Walk and fly stay inside the loaded city. The eye is not boxed in,
+    // so land, water, and a neighboring city past the edge stay in view.
+    // There is no wall.
     const t = controls.target;
     const edges = getCityState().map?.bounds;
     const cx = edges

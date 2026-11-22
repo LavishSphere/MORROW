@@ -5,8 +5,9 @@ import { neighborhoodGeoJson, tileKey, waysFromOverpass } from "../src/data/over
 
 test("loaded cities use their real OpenStreetMap streets, with a labeled stand-in only as a fallback", async () => {
   const loader = await readFile("src/data/overpass.ts", "utf8");
-  // Real streets first.
-  assert.match(loader, /const ways = await fetchArea\(place\.lng, place\.lat\)/);
+  // Real streets first, then the wider coastline so a coastal city gets the ocean.
+  assert.match(loader, /await fetchArea\(place\.lng, place\.lat\)/);
+  assert.match(loader, /fetchCoastline\(place\.lng, place\.lat\)/);
   // The procedural grid only when OpenStreetMap cannot be reached, and it says so.
   assert.match(loader, /procedural: true/);
   assert.match(loader, /OpenStreetMap could not be reached, so this is a procedural stand-in/);
@@ -53,7 +54,7 @@ test("walking near the edge of a loaded city loads the real area ahead", async (
   assert.match(hook, /map\.unproject\(/);
   assert.match(hook, /failed\.current\.add\(key\)/);
   // New areas join without duplicating ways already loaded.
-  assert.match(loader, /fresh\.filter\(\(way\) => !seen\.has\(way\.id\)\)/);
+  assert.match(loader, /fresh\.filter\(\(way\) => !seen\.has\(`\$\{way\.kind\}:\$\{way\.id\}`\)\)/);
   // The city keeps the loaded place's center.
   assert.match(city, /A loaded city keeps one fixed center/);
   // Fixes and picks carry over when more of the same city loads.

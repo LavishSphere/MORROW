@@ -186,6 +186,7 @@ test("the canvas loads a typed place on the satellite scene", async () => {
   assert.equal(slot.includes("SatelliteTown"), false);
   assert.match(query, /Not a barrier inventory/);
   assert.match(query, /natural"="coastline"/);
+  assert.match(query, /const COAST_HALF = 0\.055/);
   assert.match(query, /relation\["natural"="water"\]/);
   assert.match(town, /No modeled route for this place/);
 });

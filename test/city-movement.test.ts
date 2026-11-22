@@ -19,8 +19,10 @@ test("the city can be explored with mouse, keys, and touch, with hints", async (
   // Keys typed into the search box or the mode tabs never move the camera.
   assert.match(rig, /if \(isTyping\(document\.activeElement\)\) return;/);
   assert.match(rig, /getAttribute\("role"\) === "tab"/);
-  // The view stays over the city.
+  // The view stays over the city, and the ground past the edge stays visible.
   assert.match(rig, /const bound = span \* 0\.6;/);
+  assert.match(rig, /past the edge/);
+  assert.match(rig, /There is no wall/);
 
   // Hints sit over the canvas and adapt to touch screens.
   assert.match(slot, /<MoveHints \/>/);

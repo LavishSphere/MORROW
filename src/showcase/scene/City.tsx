@@ -331,9 +331,44 @@ function cap(bucket: Bucket, ring: Ring, y: number) {
   }
 }
 
+/** Join coastline pieces that share an endpoint so the ocean is one shore. */
+function stitchChains(lines: Ring[]): Ring[] {
+  const pool = lines
+    .map((line) => line.map((p) => [p[0], p[1]] as [number, number]))
+    .filter((line) => line.length >= 2);
+  const chains: Ring[] = [];
+  const near = (a: readonly [number, number], b: readonly [number, number]) =>
+    Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.05;
+  while (pool.length > 0) {
+    const chain = pool.pop();
+    if (!chain) break;
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (let i = 0; i < pool.length; i += 1) {
+        const other = pool[i]!;
+        const head = chain[0]!;
+        const tail = chain[chain.length - 1]!;
+        const start = other[0]!;
+        const end = other[other.length - 1]!;
+        if (near(tail, start)) chain.push(...other.slice(1));
+        else if (near(tail, end)) chain.push(...other.slice(0, -1).reverse());
+        else if (near(head, end)) chain.unshift(...other.slice(0, -1));
+        else if (near(head, start)) chain.unshift(...other.slice(1).reverse());
+        else continue;
+        pool.splice(i, 1);
+        progressed = true;
+        break;
+      }
+    }
+    chains.push(chain);
+  }
+  return chains;
+}
+
 /**
  * OSM coastline keeps water on the right. The band covers that side
- * out to `width`, so a mapped shoreline becomes the ocean in this tile.
+ * past the city edge, so the ocean stays visible when you look outward.
  */
 function shoreBand(bucket: Bucket, points: Ring, width: number, y: number) {
   const clean = points.filter(
@@ -1052,14 +1087,17 @@ function buildCity(model: CityModel): Built {
     cap(water, body.ring, 0.025);
     occupancy.markRing(body.ring, 0.3);
   }
-  const shoreWidth = Math.max(
+  // Wider than the city, on the water side only, so looking past the edge
+  // shows ocean instead of stopping at the streets. Not a wall.
+  const citySpan = Math.max(
     80,
     model.bounds.maxX - model.bounds.minX,
     model.bounds.maxZ - model.bounds.minZ,
   );
-  for (const coast of model.parsed.coastlines) {
-    shoreBand(water, coast.points, shoreWidth, 0.025);
-    occupancy.markLine(coast.points, 1.2);
+  const shoreWidth = citySpan * 1.5;
+  for (const coast of stitchChains(model.parsed.coastlines.map((line) => line.points))) {
+    shoreBand(water, coast, shoreWidth, 0.02);
+    occupancy.markLine(coast, 1.2);
   }
   const streams = new Bucket();
   for (const brook of model.parsed.waterways) {

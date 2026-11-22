@@ -34,6 +34,12 @@ export type LoadedNeighborhood = {
 const OVERPASS = 'https://overpass.openstreetmap.fr/api/interpreter'
 /** Half-size of one downloaded area in degrees: about 1.4 km across. */
 const HALF = 0.0065
+/**
+ * Coastline is searched wider than one street tile. A city on the coast
+ * still gets the ocean when its center sits a few kilometers inland.
+ * About 12 km across.
+ */
+const COAST_HALF = 0.055
 /** Accessibility tags kept from OpenStreetMap for issue detection. */
 const KEEP_TAGS = [
   'footway',
@@ -223,11 +229,7 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
   return ways
 }
 
-/** Real streets and buildings in one area around a point, from OpenStreetMap. */
-export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
-  const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
-  // Streets, buildings, landmark pieces, and water get separate quotas.
-  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
+async function interpret(query: string): Promise<OsmWay[]> {
   const res = await fetch(OVERPASS, {
     method: 'POST',
     headers: {
@@ -239,6 +241,34 @@ export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
   })
   if (!res.ok) throw new Error(`Overpass ${res.status}`)
   return waysFromOverpass(await res.json())
+}
+
+/** Real streets and buildings in one area around a point, from OpenStreetMap. */
+export async function fetchArea(lng: number, lat: number): Promise<OsmWay[]> {
+  const box = `${lat - HALF},${lng - HALF},${lat + HALF},${lng + HALF}`
+  // Streets, buildings, landmark pieces, and water get separate quotas.
+  const query = `[out:json][timeout:60];way["highway"](${box});out tags geom 2500;way["building"](${box});out tags geom 4000;way["building:part"](${box});out tags geom 5000;way["natural"="water"](${box});out tags geom 400;way["natural"="bay"](${box});out tags geom 80;way["natural"="coastline"](${box});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${box});out tags geom 800;relation["natural"="water"](${box});out tags geom 60;relation["natural"="bay"](${box});out tags geom 20;relation["natural"="coastline"](${box});out tags geom 40;relation["waterway"="riverbank"](${box});out tags geom 40;`
+  return interpret(query)
+}
+
+/**
+ * Ocean shoreline around a place. Wider than a street tile, and only the
+ * coastline: water is on the right of these ways. Failure returns nothing
+ * so the city still loads.
+ */
+export async function fetchCoastline(lng: number, lat: number): Promise<OsmWay[]> {
+  const box = `${lat - COAST_HALF},${lng - COAST_HALF},${lat + COAST_HALF},${lng + COAST_HALF}`
+  const query = `[out:json][timeout:25];way["natural"="coastline"](${box});out tags geom 300;relation["natural"="coastline"](${box});out tags geom 30;`
+  try {
+    return (await interpret(query)).filter((way) => way.kind === 'coastline')
+  } catch {
+    return []
+  }
+}
+
+function withCoast(ways: OsmWay[], coast: OsmWay[]) {
+  const seen = new Set(ways.map((way) => `${way.kind}:${way.id}`))
+  return [...ways, ...coast.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
 }
 
 function describe(place: UsPlace, ways: OsmWay[]) {
@@ -263,7 +293,8 @@ export async function loadUsNeighborhood(
     throw new Error('No US place matched that name.')
   }
   try {
-    const ways = await fetchArea(place.lng, place.lat)
+    const streets = await fetchArea(place.lng, place.lat)
+    const ways = withCoast(streets, await fetchCoastline(place.lng, place.lat))
     if (ways.length > 0) {
       return { place, ways, note: describe(place, ways), tiles: [tileKey(place.lng, place.lat)] }
     }
@@ -292,8 +323,8 @@ export async function extendNeighborhood(
   const tiles = neighborhood.tiles ?? []
   if (neighborhood.procedural || tiles.includes(key)) return neighborhood
   const fresh = await fetchArea(lng, lat)
-  const seen = new Set(neighborhood.ways.map((way) => way.id))
-  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(way.id))]
+  const seen = new Set(neighborhood.ways.map((way) => `${way.kind}:${way.id}`))
+  const ways = [...neighborhood.ways, ...fresh.filter((way) => !seen.has(`${way.kind}:${way.id}`))]
   return { ...neighborhood, ways, tiles: [...tiles, key], note: describe(neighborhood.place, ways) }
 }
 
