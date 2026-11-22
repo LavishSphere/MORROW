@@ -603,8 +603,33 @@ function stationNode(row: OverpassElement & { lat?: unknown; lon?: unknown }): O
 }
 
 /** One grid tile, downloaded around its snapped center. */
-export function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
-  return interpret(tileQuery(key), signal)
+export async function fetchTile(key: string, signal?: AbortSignal): Promise<OsmWay[]> {
+  try {
+    return await interpret(tileQuery(key), signal)
+  } catch (error) {
+    signal?.throwIfAborted()
+    // Overpass could not answer: streets, paths, rail, and water from
+    // Overture's static files instead. Buildings come from Overture anyway.
+    const [lng, lat] = tileCenter(key)
+    try {
+      const { fetchOvertureBase } = await import('./overtureBase.ts')
+      const ways = await fetchOvertureBase({
+        west: lng - TILE_HALF,
+        south: lat - TILE_HALF,
+        east: lng + TILE_HALF,
+        north: lat + TILE_HALF,
+      })
+      if (ways.length > 0) return ways
+    } catch {
+      // Overture unreachable too: report the Overpass failure.
+    }
+    throw error
+  }
+}
+
+/** Ways read from Overture carry negative ids (see overtureNumber). */
+export function fromOverture(ways: readonly OsmWay[]) {
+  return ways.some((way) => way.kind === 'road' && way.id < 0)
 }
 
 /**
@@ -642,6 +667,9 @@ function describe(place: UsPlace, ways: OsmWay[]) {
   const roads = ways.filter((way) => way.kind === 'road').length
   const buildings = ways.filter((way) => way.kind === 'building').length
   const water = ways.filter((way) => way.kind === 'water' || way.kind === 'waterway' || way.kind === 'coastline').length
+  if (fromOverture(ways)) {
+    return `${place.label}. OpenStreetMap's servers are busy, so streets and water come from Overture Maps (built from OpenStreetMap): ${roads} streets so far; more load as you explore. Fewer accessibility issues show than with OpenStreetMap. Not a barrier inventory.`
+  }
   return `${place.label}. OpenStreetMap: ${roads} streets, ${buildings} buildings, and ${water} water shapes so far; more load as you explore. Water is the mapped shoreline. Not a barrier inventory.`
 }
 
