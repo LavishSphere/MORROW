@@ -65,6 +65,11 @@ const FIX: Record<IssueKind, string> = {
 
 const UNPAVED = new Set(["dirt", "ground", "sand", "grass", "gravel", "unpaved", "mud", "woodchips", "earth"]);
 const WALK_LAYERS = new Set(["footway", "path", "sidewalk"]);
+/**
+ * Roads nobody walks along: freeways, their ramps, and bus-only lanes.
+ * They carry sidewalk=no by design, so that tag is not a missing sidewalk.
+ */
+const NO_WALKING = new Set(["motorway", "motorway_link", "trunk_link", "busway"]);
 /** Ignore tiny fragments; they are usually mapping artifacts. */
 const MIN_LENGTH_M = 15;
 /** Area around stairs searched for a step-free alternative. */
@@ -218,7 +223,7 @@ export function detectIssues(collection: unknown): MapIssue[] {
         fix: FIX.unmarked_crossing,
         source: `OpenStreetMap: footway=crossing, crossing=unmarked (way ${id})`,
       });
-    } else if (props.layer === "road" && length >= MIN_LENGTH_M) {
+    } else if (props.layer === "road" && length >= MIN_LENGTH_M && !NO_WALKING.has(String(props.highway ?? ""))) {
       const sides = sidewalkSides(props);
       if (!sides) continue;
       issues.push({

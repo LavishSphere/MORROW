@@ -23,7 +23,7 @@ import {
   suggestUsCities,
   type CitySuggestion,
 } from '../data/places'
-import { flyTo, setPin, useCitySelector } from '../showcase/cityStore'
+import { flyTo, setPin, useCitySelector, viewOver } from '../showcase/cityStore'
 import './place-search.css'
 
 /** "Clapp Library, 106 Central St, Wellesley, MA…" → "Clapp Library" */
@@ -66,7 +66,7 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
     pending.current = null
     const [x, z] = map.project(want.lng, want.lat)
     setPin({ label: want.label, x, z })
-    flyTo(x, z, { distance: 16 })
+    flyTo(x, z, viewOver(map.skyline, 16))
     setStatus('')
   }, [map, town])
 
@@ -129,7 +129,7 @@ export function AddressBar({ onLoad }: { onLoad: (neighborhood: LoadedNeighborho
         pending.current = null
         const [x, z] = map.project(place.lng, place.lat)
         setPin({ label, x, z })
-        flyTo(x, z, { distance: 16 })
+        flyTo(x, z, viewOver(map.skyline, 16))
         setStatus('')
         return
       }

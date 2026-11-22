@@ -27,7 +27,7 @@ test("one address bar focuses a street in the city and keeps a city query on the
   assert.equal(places.includes("searchExtent"), false);
   assert.match(address, /loadUsNeighborhood\(text, magicKey\)/);
   assert.match(address, /setPin\(\{ label, x, z \}\)/);
-  assert.match(address, /flyTo\(x, z, \{ distance: 16 \}\)/);
+  assert.match(address, /flyTo\(x, z, viewOver\(map\.skyline, 16\)\)/);
   assert.match(city, /<AddressPin \/>/);
   assert.match(generated, /export function generateCity/);
   assert.match(slot, /ShowcaseCanvas/);

@@ -35,6 +35,8 @@ export type CityMap = {
   places: NamedPlace[];
   /** Rail lines as Path2D strings, with line colour; tunnels draw dashed. */
   rail?: RailPath[];
+  /** Tallest building top near the map's center, in scene units. */
+  skyline?: number;
 };
 
 export type RailPath = { d: string; colour: string | null; tunnel: boolean };
@@ -157,6 +159,21 @@ export function publishPose(pose: CameraPose) {
     return;
   }
   emit({ pose });
+}
+
+/** Towers taller than this (about 60 m) lift a view above the rooftops. */
+const TALL_SKYLINE = 8.5;
+/** Sine of the overhead view's 58° downward look (see CameraRig). */
+const OVERHEAD_SIN = Math.sin((58 * Math.PI) / 180);
+
+/**
+ * How to look at a spot `distance` away. Among real towers (a downtown)
+ * the view rises above their roofs and looks down, so it does not start
+ * inside a building.
+ */
+export function viewOver(skyline: number | undefined, distance: number) {
+  if (!skyline || skyline < TALL_SKYLINE) return { distance };
+  return { distance: Math.max(distance, (skyline * 1.5 + 6) / OVERHEAD_SIN), overhead: true };
 }
 
 /** Glide the camera to a spot; `instant` teleports instead. */
