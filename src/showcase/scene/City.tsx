@@ -477,7 +477,10 @@ type Built = {
   lit: THREE.BufferGeometry;
   walks: Record<"sidewalk" | "footway" | "path", THREE.BufferGeometry>;
   trees: Placement[];
+  parks: { x: number; z: number; rx: number; rz: number; rot: number }[];
   ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  cars: Placement[];
+  people: Placement[];
   lamps: Placement[];
   hydrants: Placement[];
   benches: Placement[];
@@ -557,31 +560,54 @@ function buildCity(model: CityModel): Built {
   }
 
   const { minX, maxX, minZ, maxZ } = model.bounds;
+  const parks: Built["parks"] = [];
   const ponds: Built["ponds"] = [];
   const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
-  const pondTarget = Math.min(22, Math.max(5, Math.round(area / 14000)));
-  const pondStep = 18;
-  for (let gx = minX; gx <= maxX && ponds.length < pondTarget; gx += pondStep) {
-    for (let gz = minZ; gz <= maxZ && ponds.length < pondTarget; gz += pondStep) {
-      if (hash(gx + 3, gz + 11) > 0.16) continue;
-      const x = gx + (hash(gz, gx + 1) - 0.5) * pondStep;
-      const z = gz + (hash(gx + 2, gz) - 0.5) * pondStep;
-      const rx = 1.7 + hash(x, z) * 4.4;
-      const rz = rx * (0.48 + hash(z, x) * 0.4);
+  const parkTarget = Math.min(48, Math.max(10, Math.round(area / 7000)));
+  const pondTarget = Math.min(36, Math.max(8, Math.round(area / 10000)));
+  const spotStep = 7.5;
+  const ellipseBlocked = (x: number, z: number, rx: number, rz: number, rot: number, pad: number) => {
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    for (let u = -(rx + pad); u <= rx + pad; u += occupancy.cell) {
+      for (let v = -(rz + pad); v <= rz + pad; v += occupancy.cell) {
+        if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
+        if (occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos)) return true;
+      }
+    }
+    return false;
+  };
+  const hitsSpot = (
+    spots: { x: number; z: number; rx: number; rz: number }[],
+    x: number,
+    z: number,
+    reach: number,
+  ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
+  for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      if (hash(gx + 3, gz + 11) > 0.55) continue;
+      const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
+      const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
+      // Keep them in the city, in the gaps between buildings, not the empty outskirts.
+      if (occupancy.nearbyHeight(x, z, 16) < 1) continue;
       const rot = hash(x + 4, z + 4) * Math.PI;
-      const cos = Math.cos(rot);
-      const sin = Math.sin(rot);
-      const pad = 0.9;
-      let blocked = false;
-      for (let u = -(rx + pad); u <= rx + pad && !blocked; u += occupancy.cell) {
-        for (let v = -(rz + pad); v <= rz + pad && !blocked; v += occupancy.cell) {
-          if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
-          blocked = occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos);
+      const wantPark = hash(x + 1, z + 9) > 0.42 && parks.length < parkTarget;
+      if (wantPark) {
+        const rx = 2.4 + hash(x, z) * 4.6;
+        const rz = rx * (0.52 + hash(z, x) * 0.36);
+        if (!hitsSpot(parks, x, z, Math.max(rx, rz) * 0.45) && !ellipseBlocked(x, z, rx, rz, rot, 0.7)) {
+          parks.push({ x, z, rx, rz, rot });
         }
       }
-      if (blocked) continue;
-      occupancy.markDisk(x, z, Math.max(rx, rz) + 0.8);
-      ponds.push({ x, z, rx, rz, rot });
+      if (ponds.length < pondTarget && hash(z + 2, x + 6) > 0.28) {
+        const rx = 0.8 + hash(x + 5, z) * 2.2;
+        const rz = rx * (0.5 + hash(z + 3, x) * 0.38);
+        const pondRot = hash(x + 8, z + 2) * Math.PI;
+        if (!hitsSpot(ponds, x, z, Math.max(rx, rz)) && !ellipseBlocked(x, z, rx, rz, pondRot, 0.7)) {
+          occupancy.markDisk(x, z, Math.max(rx, rz) + 0.45);
+          ponds.push({ x, z, rx, rz, rot: pondRot });
+        }
+      }
     }
   }
 
@@ -620,6 +646,45 @@ function buildCity(model: CityModel): Built {
   }
 
   const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
+  const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
+  const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
+  const cars: Placement[] = [];
+  for (const way of roadWays) {
+    const origin = way.points[0] ?? [0, 0];
+    const side = hash(origin[0], origin[1]) > 0.5 ? 0.28 : -0.28;
+    for (const spot of along(way.points, 8, side)) {
+      if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
+      cars.push({
+        ...spot,
+        color: CAR_COLORS[Math.floor(hash(spot.z, spot.x) * CAR_COLORS.length)] ?? CAR_COLORS[0],
+      });
+    }
+  }
+  const people: Placement[] = [];
+  for (const way of model.parsed.ways) {
+    if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
+    for (const spot of along(way.points, 4.2, 0)) {
+      if (people.length >= 460 || hash(spot.x + 2, spot.z) < 0.52) continue;
+      people.push({
+        ...spot,
+        color: SHIRTS[Math.floor(hash(spot.z + 1, spot.x) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
+  for (const park of parks) {
+    if (people.length >= 520 || hash(park.x, park.z) < 0.3) continue;
+    const extras = 1 + Math.floor(hash(park.z, park.x) * 3);
+    for (let i = 0; i < extras && people.length < 520; i += 1) {
+      const angle = hash(park.x + i, park.z) * Math.PI * 2;
+      const dist = (0.25 + hash(park.z + i, park.x) * 0.45) * Math.min(park.rx, park.rz);
+      people.push({
+        x: park.x + Math.cos(angle) * dist,
+        z: park.z + Math.sin(angle) * dist,
+        rot: angle,
+        color: SHIRTS[Math.floor(hash(park.x + i, park.z + 4) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
   const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
   const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
   const benches = model.parsed.ways
@@ -651,7 +716,10 @@ function buildCity(model: CityModel): Built {
       path: walks.path.geometry(),
     },
     trees,
+    parks,
     ponds,
+    cars,
+    people,
     lamps,
     hydrants,
     benches,
@@ -736,10 +804,11 @@ function useMaterials() {
         sidewalk: plain("#d3d6d0"),
         footway: plain("#d9d3c4"),
         path: plain("#cfc7b2"),
+        park: plain("#3e7c4c", { roughness: 0.95 }),
         water: new THREE.MeshStandardMaterial({
-          color: "#6aa8b8",
-          roughness: 0.12,
-          metalness: 0.42,
+          color: "#3f8fd4",
+          roughness: 0.08,
+          metalness: 0.55,
         }),
       },
     };
@@ -768,6 +837,10 @@ function useFurniture() {
         hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
         seat: at(new THREE.BoxGeometry(0.6, 0.035, 0.17), 0.17),
         back: at(new THREE.BoxGeometry(0.6, 0.17, 0.025), 0.27, -0.07),
+        car: at(new THREE.BoxGeometry(1.35, 0.36, 0.68), 0.28),
+        cabin: at(new THREE.BoxGeometry(0.62, 0.28, 0.58), 0.56, -0.06),
+        body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
+        head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
       },
       looks: {
         bark: new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
@@ -781,6 +854,9 @@ function useFurniture() {
         }),
         red: new THREE.MeshStandardMaterial({ color: "#e08978", roughness: 0.45 }),
         wood: new THREE.MeshStandardMaterial({ color: "#c9a77c", roughness: 0.7 }),
+        paint: new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.45 }),
+        shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
+        skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
       },
     };
   }, []);
@@ -905,6 +981,18 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
       <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
       <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />
 
+      {built.parks.map((park) => (
+        <mesh
+          key={`park-${park.x.toFixed(1)}-${park.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.park}
+          position={[park.x, 0.03, park.z]}
+          rotation={[-Math.PI / 2, park.rot, 0]}
+          scale={[park.rx, park.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
       {built.ponds.map((pond) => (
         <mesh
           key={`${pond.x.toFixed(1)}-${pond.z.toFixed(1)}`}
@@ -918,6 +1006,10 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
         />
       ))}
 
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.cabin} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
       <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
       <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
       <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />

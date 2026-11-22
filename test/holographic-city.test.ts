@@ -20,6 +20,9 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   assert.equal(city.includes("circleGeometry"), false);
   assert.match(city, /nearbyHeight\(/);
   assert.match(city, /built\.ponds/);
+  assert.match(city, /built\.parks/);
+  assert.match(city, /built\.cars/);
+  assert.match(city, /built\.people/);
   assert.equal(city.includes('way.name === "Central Street"'), false);
   // Every side is glazed: curtain-wall glass wraps each real footprint.
   const glass = await readFile("src/showcase/scene/glass.ts", "utf8");
