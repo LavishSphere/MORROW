@@ -1001,7 +1001,7 @@ function buildCity(model: CityModel): Built {
   const lit = new Bucket();
   const walks = { sidewalk: new Bucket(), footway: new Bucket(), path: new Bucket() };
   for (const way of model.parsed.ways) {
-    const half = WAY_HALF_WIDTH[way.layer];
+    const half = way.halfWidth;
     occupancy.markLine(way.points, half + 0.6);
     if (way.edgeId && HIGHLIGHT.has(way.edgeId)) {
       strip(lit, way.points, half, 0.045);
