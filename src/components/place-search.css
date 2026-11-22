@@ -1,4 +1,4 @@
-/* One-row city search. Height matches the other top-bar controls
+/* One address bar. Height matches the other top-bar controls
    (--bar-control-h, set on the top bar). */
 .place-search {
   position: relative;
@@ -13,7 +13,7 @@
 
 .place-search__field {
   position: relative;
-  width: clamp(11rem, 20vw, 17rem);
+  width: clamp(16rem, 30vw, 26rem);
 }
 
 .place-search__input {

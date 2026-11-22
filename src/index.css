@@ -2143,10 +2143,6 @@ code {
   fill: #1488ff;
 }
 
-.place-search--address .place-search__field {
-  width: clamp(10rem, 16vw, 14rem);
-}
-
 .address-pin {
   padding: 0.25rem 0.55rem;
   border-radius: 6px;

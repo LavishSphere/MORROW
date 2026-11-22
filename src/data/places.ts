@@ -4,6 +4,11 @@ export type UsPlace = {
   lat: number
   /** City or town and state, e.g. "New York, NY", when the geocoder knows it. */
   town?: string
+  /**
+   * Esri match type: Locality for a city or town, StreetAddress /
+   * PointAddress for a street address. Absent on older responses.
+   */
+  addrType?: string
 }
 
 const GEOCODE =
@@ -24,11 +29,15 @@ export function placeFromEsri(body: unknown): UsPlace | null {
   if (typeof lng !== 'number' || typeof lat !== 'number') return null
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null
   if (lat < 15 || lat > 72 || lng < -180 || lng > -60) return null
-  const attributes = (first as { attributes?: { City?: unknown; RegionAbbr?: unknown } }).attributes
+  const attributes = (first as {
+    attributes?: { City?: unknown; RegionAbbr?: unknown; Addr_type?: unknown; Type?: unknown }
+  }).attributes
   const city = typeof attributes?.City === 'string' ? attributes.City.trim() : ''
   const region = typeof attributes?.RegionAbbr === 'string' ? attributes.RegionAbbr.trim() : ''
   const town = city ? (region ? `${city}, ${region}` : city) : undefined
-  return { label: address.trim(), lng, lat, ...(town ? { town } : {}) }
+  const rawType = attributes?.Addr_type ?? attributes?.Type
+  const addrType = typeof rawType === 'string' && rawType.trim() ? rawType.trim() : undefined
+  return { label: address.trim(), lng, lat, ...(town ? { town } : {}), ...(addrType ? { addrType } : {}) }
 }
 
 const SUGGEST =
@@ -119,11 +128,34 @@ export async function geocodeUsPlace(
   if (magicKey) url.searchParams.set('magicKey', magicKey)
   url.searchParams.set('sourceCountry', 'USA')
   url.searchParams.set('maxLocations', '1')
-  url.searchParams.set('outFields', 'City,RegionAbbr')
+  url.searchParams.set('outFields', 'City,RegionAbbr,Addr_type')
   const res = await fetch(url, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) return null
   return placeFromEsri(await res.json())
+}
+
+/**
+ * One list for the address bar. A street number puts addresses first;
+ * a city name puts cities first. Duplicate labels are dropped.
+ */
+export function mergePlaceSuggestions(
+  query: string,
+  cities: CitySuggestion[],
+  addresses: CitySuggestion[],
+): CitySuggestion[] {
+  const hasNumber = /\d/.test(query)
+  const ordered = hasNumber ? [...addresses, ...cities] : [...cities, ...addresses]
+  const seen = new Set<string>()
+  const out: CitySuggestion[] = []
+  for (const item of ordered) {
+    const key = item.label.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+    if (out.length === 8) break
+  }
+  return out
 }

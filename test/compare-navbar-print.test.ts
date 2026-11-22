@@ -10,20 +10,28 @@ test("the navbar shows which city is on screen", async () => {
   assert.match(app, /placeLabel=\{neighborhood\?\.place\.label \?\? 'Wellesley, MA'\}/);
 });
 
-test("an address builds a procedural city when it is not already on the map", async () => {
-  const jump = await readFile("src/components/AddressJump.tsx", "utf8");
-  const places = await readFile("src/data/places.ts", "utf8");
+test("one address bar focuses a street in the city and keeps a city query on the city view", async () => {
   const bar = await readFile("src/components/TopBar.tsx", "utf8");
+  const address = await readFile("src/components/AddressBar.tsx", "utf8");
+  const places = await readFile("src/data/places.ts", "utf8");
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const generated = await readFile("src/data/proceduralCity.ts", "utf8");
-  assert.match(bar, /<AddressJump onLoad=\{onPlace\} \/>/);
-  assert.match(jump, /suggestAddresses\(text, controller\.signal\)/);
+  const slot = await readFile("src/components/CanvasSlot.tsx", "utf8");
+  assert.match(bar, /<AddressBar onLoad=\{onPlace\} \/>/);
+  assert.equal(bar.includes("AddressJump"), false);
+  assert.equal(bar.includes("PlaceSearch"), false);
+  assert.equal((address.match(/role="search"/g) ?? []).length, 1);
+  assert.match(address, /suggestAddresses\(text, controller\.signal\)/);
+  assert.match(address, /suggestUsCities\(text, controller\.signal\)/);
+  assert.match(address, /decideAddressQuery\(place, map\?\.geoBounds \?\? null, town\)/);
   assert.equal(places.includes("searchExtent"), false);
-  assert.match(jump, /loadUsNeighborhood\(text, magicKey\)/);
-  assert.match(jump, /setPin\(\{ label, x, z \}\)/);
-  assert.match(jump, /flyTo\(x, z, \{ distance: 16 \}\)/);
+  assert.match(address, /loadUsNeighborhood\(text, magicKey\)/);
+  assert.match(address, /setPin\(\{ label, x, z \}\)/);
+  assert.match(address, /flyTo\(x, z, \{ distance: 16 \}\)/);
   assert.match(city, /<AddressPin \/>/);
   assert.match(generated, /export function generateCity/);
+  assert.match(slot, /ShowcaseCanvas/);
+  assert.equal(slot.includes("SatelliteTown"), false);
 });
 
 test("Compare switches between today and the fixes and shows their benefits", async () => {
