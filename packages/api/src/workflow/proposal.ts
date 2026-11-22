@@ -83,7 +83,9 @@ const loadEvidence = createStep({
   execute: async ({ inputData }) => {
     // Issues-only proposal: nothing to load here; issues resolve in the next step.
     if (!hasScenario(inputData)) {
-      if (!inputData.issueIds?.length) throw new Error("No issues or scenario to propose");
+      if (!inputData.issueIds?.length && !inputData.browserIssues?.length) {
+        throw new Error("No issues or scenario to propose");
+      }
       return {
         ...inputData,
         barrierType: "map_issues",
@@ -138,6 +140,8 @@ const collectRouteMetrics = createStep({
       barrierId: inputData.barrierId,
       interventionId: inputData.interventionId,
       issueIds: inputData.issueIds,
+      browserIssues: inputData.browserIssues,
+      city: inputData.city,
     });
     return {
       ...inputData,

@@ -36,6 +36,23 @@ export function parseDraftProposal(value: unknown): DraftProposal {
   return draftProposalSchema.parse(value);
 }
 
+/**
+ * One map issue measured in the visitor's browser, for loaded cities the
+ * server has no map of. Bounded text only; the server re-labels its
+ * evidence and source and says it did not re-check it.
+ */
+export const browserIssueSchema = z.object({
+  id: z.string().min(1).max(120),
+  kind: z.string().min(1).max(60),
+  title: z.string().min(1).max(200),
+  where: z.string().max(200),
+  fix: z.string().max(500),
+  before: z.string().max(300),
+  after: z.string().max(300),
+  metrics: z.array(z.object({ label: z.string().max(80), value: z.string().max(80) })).max(6),
+  modeled: z.boolean(),
+});
+
 export const generateRequestSchema = z.object({
   /** The showcase route. Optional: a proposal can be map issues only. */
   scenarioId: z.string().min(1).max(120).optional(),
@@ -43,6 +60,10 @@ export const generateRequestSchema = z.object({
   interventionId: z.string().min(1).max(120).optional(),
   /** Extra town-map issues to fold in. Ids only; the server recomputes facts. */
   issueIds: z.array(z.string().min(1).max(120)).max(12).optional(),
+  /** Issues in a loaded city the server has no map of (see browserIssueSchema). */
+  browserIssues: z.array(browserIssueSchema).max(12).optional(),
+  /** The loaded city's name, for browserIssues. */
+  city: z.string().min(1).max(120).optional(),
 });
 
 /** All three showcase ids, together. */
@@ -58,8 +79,9 @@ export function hasSubject(body: {
   barrierId?: string;
   interventionId?: string;
   issueIds?: string[];
+  browserIssues?: unknown[];
 }): boolean {
-  return hasScenario(body) || (body.issueIds?.length ?? 0) > 0;
+  return hasScenario(body) || (body.issueIds?.length ?? 0) > 0 || (body.browserIssues?.length ?? 0) > 0;
 }
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;

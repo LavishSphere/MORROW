@@ -88,9 +88,12 @@ export type GenerateProposalRequest = {
   scenarioId?: string
   barrierId?: string
   interventionId?: string
-  /** Issue facts built in the browser, used if the API cannot answer. Never sent. */
+  /**
+   * Issue facts built in the browser. Sent (text only) for a loaded city the
+   * server has no map of; otherwise used only if the API cannot answer.
+   */
   localIssues?: IssueFact[]
-  /** City name for an offline issues-only draft. Never sent. */
+  /** City name for an issues-only draft. */
   city?: string
   /** Extra town-map issues, by id. The API recomputes their facts. */
   issueIds?: string[]

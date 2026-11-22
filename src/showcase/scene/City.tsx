@@ -660,9 +660,26 @@ function realHeights(tags: Record<string, unknown>) {
   return { top, bottom: Math.min(bottom, top - 0.5) };
 }
 
-/** "glass" for glass, else a hex colour from building:colour (stone if none). */
-function facade(tags: Record<string, unknown>): string {
-  if (String(tags["building:material"] ?? "").toLowerCase() === "glass") return "glass";
+/** Typical colours for a mapped material when no colour was recorded. */
+const MATERIAL_COLORS: Record<string, string> = {
+  stone: "#c9bc9c",
+  limestone: "#d4c7a6",
+  sandstone: "#c8a57a",
+  granite: "#9c958d",
+  concrete: "#b7b3aa",
+  metal: "#9aa3ab",
+  steel: "#9aa3ab",
+  wood: "#9c7653",
+  plaster: "#e2d6c2",
+};
+
+/**
+ * "glass" for glass, a hex colour from building:colour or a known material,
+ * or null when the mapper recorded neither (then the city's glass look is used).
+ */
+function facade(tags: Record<string, unknown>): string | null {
+  const material = String(tags["building:material"] ?? "").toLowerCase();
+  if (material === "glass") return "glass";
   const raw = tags["building:colour"];
   if (typeof raw === "string" && raw.trim()) {
     const color = new THREE.Color();
@@ -670,10 +687,10 @@ function facade(tags: Record<string, unknown>): string {
       color.setStyle(raw.trim());
       return `#${color.getHexString()}`;
     } catch {
-      // Unknown colour name: fall through to stone.
+      // Unknown colour name: fall back to the material.
     }
   }
-  return STONE;
+  return MATERIAL_COLORS[material] ?? null;
 }
 
 /** Walls whose top height can differ at each corner (sloped roofs). */
@@ -802,7 +819,8 @@ function buildCity(model: CityModel): Built {
   const masonry = new Map<string, Bucket>();
   const surface = (tags: Record<string, unknown>, key: string) => {
     const look = facade(tags);
-    if (look === "glass") return glass[Math.floor(idHash(key) * glass.length)] ?? glass[0]!;
+    // No colour or material recorded: the city's usual tinted glass, not blank white.
+    if (look === "glass" || look === null) return glass[Math.floor(idHash(key) * glass.length)] ?? glass[0]!;
     let bucket = masonry.get(look);
     if (!bucket) {
       bucket = new Bucket();
@@ -857,14 +875,18 @@ function buildCity(model: CityModel): Built {
       occupancy.markHeight(ring, peak);
       continue;
     }
-    if (!HOUSE_KINDS.has(kind) && realHeights(own)) {
-      // The mapper recorded its real height: use it, not a guess.
+    const real = HOUSE_KINDS.has(kind) ? null : realHeights(own);
+    if (real && facade(own) !== null) {
+      // The mapper recorded its real height and look: use them, not a guess.
       const peak = drawPiece(surface(own, building.id), metal, ring, own, centroid(ring));
       occupancy.markRing(ring, 0.9);
       occupancy.markHeight(ring, peak);
       continue;
     }
-    const floors = (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
+    // Height but no look recorded: the usual glass tower, at its real height.
+    const floors = real
+      ? Math.max(1, Math.round((real.top * REAL_TO_SCENE - PODIUM_H) / FLOOR_H))
+      : (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
     const top = PODIUM_H + floors * FLOOR_H;
     const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
     const style = Math.floor(idHash(`${building.id}m`) * 3);

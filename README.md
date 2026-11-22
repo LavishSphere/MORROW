@@ -68,7 +68,7 @@ npm test
 npm run api:dev
 ```
 
-Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run dev`.
+Listens on `http://127.0.0.1:8787`. During `npm run dev`, Vite proxies `/api` to the hosted API by default; set `VITE_API_PROXY=http://127.0.0.1:8787` to use this local one.
 
 | Variable | Required | Notes |
 | --- | --- | --- |

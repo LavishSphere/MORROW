@@ -20,6 +20,10 @@ import {
   scenario as demoScenario,
   townGeoJSON,
 } from "./data/dataset.ts";
+import type { z } from "zod";
+import type { browserIssueSchema } from "./draft/schema.ts";
+
+type BrowserIssue = z.infer<typeof browserIssueSchema>;
 
 const DEFAULT_NEXT_STEPS =
   "Share this draft with neighbors or local advocates. Do not invent a specific department submission link without verification.";
@@ -59,13 +63,34 @@ export function resolveIssues(ids: readonly string[] | undefined): IssueFact[] {
   });
 }
 
+/** Browser-measured issues: evidence and source are set here, not by the client. */
+export function browserIssueFacts(issues: readonly BrowserIssue[]): IssueFact[] {
+  return issues.map((issue) => ({
+    ...issue,
+    evidenceStatus: "community_reported" as const,
+    source: "OpenStreetMap contributors",
+    sourceUrl: "https://www.openstreetmap.org/copyright",
+  }));
+}
+
+const BROWSER_ISSUES_NOTE =
+  "These issues were measured from OpenStreetMap in the visitor's browser; the server did not re-check them.";
+
 export function resolveGenerateInput(body: {
   scenarioId?: string;
   barrierId?: string;
   interventionId?: string;
   issueIds?: string[];
+  browserIssues?: BrowserIssue[];
+  city?: string;
 }): ResolvedGenerateInput {
   if (!body.scenarioId || !body.barrierId || !body.interventionId) {
+    // A loaded city the server has no map of: use the browser's measurements.
+    if (!body.issueIds?.length && body.browserIssues?.length) {
+      const facts = issuesOnlyFacts(browserIssueFacts(body.browserIssues), body.city ?? "this city");
+      facts.modelAssumptions = [...facts.modelAssumptions, BROWSER_ISSUES_NOTE];
+      return { scenarioId: null, barrier: null, intervention: null, facts };
+    }
     // Issues only: the resident's picked map issues are the whole proposal.
     const issues = resolveIssues(body.issueIds);
     if (issues.length === 0) {

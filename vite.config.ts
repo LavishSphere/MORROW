@@ -38,9 +38,11 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     proxy: {
-      // Forward /api/* to @morrow/api when running locally (npm run api:dev).
+      // Forward /api/* to the hosted API, so local dev gets live Gemini
+      // drafts without CORS. VITE_API_PROXY=http://127.0.0.1:8787 uses a
+      // local API instead (npm run api:dev).
       '/api': {
-        target: process.env.VITE_API_PROXY ?? 'http://127.0.0.1:8787',
+        target: process.env.VITE_API_PROXY ?? 'https://api.morrow.khayrul.com',
         changeOrigin: true,
       },
     },

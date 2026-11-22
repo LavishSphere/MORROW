@@ -50,5 +50,5 @@ test("landmarks are drawn from their real heights, roof shapes, and colors", asy
   assert.match(city, /shape === "dome"/);
   // Incomplete downloads fall back to the whole building at its real height.
   assert.match(city, /const complete = piecesTop >= ownTop \* 0\.9;/);
-  assert.match(city, /The mapper recorded its real height: use it, not a guess\./);
+  assert.match(city, /The mapper recorded its real height and look: use them, not a guess\./);
 });

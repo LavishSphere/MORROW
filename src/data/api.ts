@@ -333,9 +333,24 @@ function bundledGenerate(
 export async function generateProposal(
   req: GenerateProposalRequest,
 ): Promise<GenerateProposalResponse> {
-  // Issues the server cannot check (a loaded city) are drafted in the browser.
+  // Issues in a loaded city the server has no map of: send their measured
+  // facts (text only) so Gemini can still write the draft.
   const hasScenarioIds = Boolean(req.scenarioId && req.barrierId && req.interventionId)
-  if (!hasScenarioIds && !(req.issueIds && req.issueIds.length > 0)) {
+  const browserIssues =
+    !hasScenarioIds && !(req.issueIds && req.issueIds.length > 0)
+      ? (req.localIssues ?? []).slice(0, 12).map((issue) => ({
+          id: issue.id.slice(0, 120),
+          kind: issue.kind.slice(0, 60),
+          title: issue.title.slice(0, 200),
+          where: issue.where.slice(0, 200),
+          fix: issue.fix.slice(0, 500),
+          before: issue.before.slice(0, 300),
+          after: issue.after.slice(0, 300),
+          metrics: issue.metrics.slice(0, 6).map((m) => ({ label: m.label.slice(0, 80), value: m.value.slice(0, 80) })),
+          modeled: issue.modeled,
+        }))
+      : []
+  if (!hasScenarioIds && !(req.issueIds && req.issueIds.length > 0) && browserIssues.length === 0) {
     return localIssuesGenerate(req)
   }
   const live = await probeLiveApi()
@@ -353,6 +368,9 @@ export async function generateProposal(
               }
             : {}),
           ...(req.issueIds && req.issueIds.length > 0 ? { issueIds: req.issueIds } : {}),
+          ...(browserIssues.length > 0
+            ? { browserIssues, ...(req.city ? { city: req.city.slice(0, 120) } : {}) }
+            : {}),
         }),
         // The API may retry a busy Gemini for up to ~45 s before answering.
         signal: AbortSignal.timeout(55_000),
