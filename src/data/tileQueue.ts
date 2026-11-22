@@ -8,8 +8,12 @@
 
 /** Tiles in each direction around the place's own tile: 2 → a 5×5 block. */
 export const BACKGROUND_RADIUS = 2
-/** Never more than this many tiles in one city, however far you look. */
-export const TILE_LIMIT = 80
+/**
+ * Never more than this many tiles in one city, however far you look. The
+ * fog hides ground past about 2.4 km, about a dozen tiles around the view,
+ * and every tile makes each rebuild longer and the page heavier.
+ */
+export const TILE_LIMIT = 40
 /** How far the camera sees in scene units: the far edge of the fog (~2.4 km). */
 export const VIEW_FAR = 340
 /** How often the visible ground is worked out again as the view changes. */
@@ -23,7 +27,7 @@ export const BACKOFF_MS = [5000, 15000, 60000] as const
 /** A tile is retried this many times before it is given up on. */
 export const MAX_RETRIES = 2
 /** Past this many buildings the city is big enough; background loading stops. */
-export const BUILDING_LIMIT = 60_000
+export const BUILDING_LIMIT = 30_000
 /** Finished tiles wait at most this long before they join the city. */
 export const COMMIT_EVERY_MS = 8000
 /** …or join as soon as this many are waiting. */
