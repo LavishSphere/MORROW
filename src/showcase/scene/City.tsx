@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import town from "../../../data/wellesley/town.geojson";
 import waterMap from "../../../data/wellesley/water.geojson";
-import { withOvertureBuildings } from "../../data/buildingHeight.ts";
+import { DEFAULT_HEIGHT_METRES, withOvertureBuildings, type OvertureFootprint } from "../../data/buildingHeight.ts";
 import { fetchOvertureBuildings } from "../../data/overtureBuildings.ts";
 import { detectIssues } from "../../../shared/issues.ts";
 import { publishMap, type Bounds, type CityMap } from "../cityStore";
@@ -197,7 +197,6 @@ const TOWN_GEOJSON = {
     ...(waterMap as { features: unknown[] }).features,
   ],
 };
-const TOWN = buildModel(TOWN_GEOJSON, SHOWCASE_BBOX.center);
 
 /* —— Geometry buckets: many shapes, one mesh —— */
 
@@ -914,8 +913,8 @@ function buildCity(model: CityModel): Built {
       occupancy.markHeight(ring, peak);
       continue;
     }
-    const real = realHeights(own);
-    if (!real) continue;
+    // No recorded height (the raw map before Overture arrives): the plain default, not a gap.
+    const real = realHeights(own) ?? { top: DEFAULT_HEIGHT_METRES, bottom: 0 };
     const shape = String(own["roof:shape"] ?? "").trim().toLowerCase();
     if ((shape && shape !== "flat") || facade(own) !== null) {
       // The mapper recorded its real height and look: use them, not a guess.
@@ -1599,32 +1598,43 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   const furniture = useFurniture();
   const { shapes, looks } = furniture;
   const source = geoJson ?? TOWN_GEOJSON;
-  const [loaded, setLoaded] = useState<{ key: string; json: unknown } | null>(null);
-  const boxKey = (() => {
-    const box = bboxOf(source);
-    return box ? `${box.west.toFixed(5)},${box.south.toFixed(5)},${box.east.toFixed(5)},${box.north.toFixed(5)}` : "";
-  })();
-  const enriched = loaded?.key === boxKey ? loaded.json : null;
+  const box = bboxOf(source);
+  const boxKey = box
+    ? `${box.west.toFixed(5)},${box.south.toFixed(5)},${box.east.toFixed(5)},${box.north.toFixed(5)}`
+    : "";
+  // Footprints from the last Overture download. When the city grows by a
+  // tile they stay in use (those inside the new box) while the bigger box
+  // downloads, so the buildings already on screen do not drop out.
+  const [overture, setOverture] = useState<OvertureFootprint[]>([]);
   useEffect(() => {
     const box = bboxOf(source);
     if (!box) return;
     let cancelled = false;
     fetchOvertureBuildings({ west: box.west, south: box.south, east: box.east, north: box.north })
       .then((footprints) => {
-        if (!cancelled) setLoaded({ key: boxKey, json: withOvertureBuildings(source, footprints) });
+        // An empty list means the extract could not be read: keep what we have.
+        if (!cancelled && footprints.length > 0) setOverture(footprints);
       })
-      .catch(() => {
-        if (!cancelled) setLoaded({ key: boxKey, json: withOvertureBuildings(source, []) });
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [boxKey, source]);
-  const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
-  const cityModel = useMemo(() => {
-    if (!enriched) return model;
-    return buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center);
-  }, [enriched, geoJson, model]);
+  const enriched = useMemo(() => {
+    const here = bboxOf(source);
+    // Footprints from another place (a different city was loaded) are dropped.
+    const footprints = here
+      ? overture.filter((f) => {
+          const [lon, lat] = f.ring[0] ?? [NaN, NaN];
+          return lon >= here.west && lon <= here.east && lat >= here.south && lat <= here.north;
+        })
+      : [];
+    return withOvertureBuildings(source, footprints);
+  }, [source, overture]);
+  const cityModel = useMemo(
+    () => buildModel(enriched, geoJson ? undefined : SHOWCASE_BBOX.center),
+    [enriched, geoJson],
+  );
   const built = useMemo(() => buildCity(cityModel), [cityModel]);
   const masonryLooks = useMemo(
     () =>
@@ -1640,7 +1650,6 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     [masonryLooks],
   );
 
-  useEffect(() => publishMap(mapFor(model)), [model]);
   useEffect(() => publishMap(mapFor(cityModel)), [cityModel]);
   // Accessibility issues from the map's own OpenStreetMap tags.
   useEffect(() => {

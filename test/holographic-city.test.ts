@@ -9,7 +9,7 @@ test("the glass city is rebuilt from the real Wellesley map", async () => {
   const sky = await readFile("src/showcase/scene/Space.tsx", "utf8");
   // No loaded city means the whole town; a loaded city rebuilds from its map.
   assert.match(town, /<City geoJson=\{geoJson === basemap \? undefined : geoJson\} reducedMotion=\{reducedMotion\} \/>/);
-  assert.match(city, /const model = useMemo\(\(\) => \(geoJson \? buildModel\(geoJson\) : TOWN\)/);
+  assert.match(city, /const source = geoJson \?\? TOWN_GEOJSON/);
   // Real town data: every building and street comes from the OSM extract.
   assert.match(city, /data\/wellesley\/town\.geojson/);
   const water = JSON.parse(await readFile("data/wellesley/water.geojson", "utf8")) as {
@@ -86,7 +86,7 @@ test("a minimap, a where-am-I label, and street signs help you find your way", a
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const rig = await readFile("src/showcase/scene/CameraRig.tsx", "utf8");
   assert.match(slot, /<Minimap placeLabel=/);
-  assert.match(city, /publishMap\(mapFor\(model\)\)/);
+  assert.match(city, /publishMap\(mapFor\(cityModel\)\)/);
   assert.match(rig, /publishPose\(/);
   // Click the minimap to fly there.
   assert.match(minimap, /flyTo\(/);
