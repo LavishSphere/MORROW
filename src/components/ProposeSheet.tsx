@@ -17,6 +17,7 @@ import { buildTemplateDraft } from '../data/templateProposal'
 import { chosenFacts, useIssueState } from '../showcase/issueStore'
 import { ProposalEditor } from './ProposalEditor'
 import { ProposalIssuePicker } from './ProposalIssues'
+import { printProposal } from './printProposal'
 
 /**
  * Propose stays on the scene without covering it.
@@ -157,7 +158,7 @@ export function ProposeSheet() {
           geminiAvailable={result.geminiAvailable}
           apiAvailable={result.apiAvailable}
           onChange={setDraft}
-          onExportPdf={() => window.print()}
+          onExportPdf={printProposal}
         />
       )}
     </section>

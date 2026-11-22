@@ -64,7 +64,7 @@ export function ProposalIssueFacts({ issues }: { issues: IssueFact[] }) {
             </p>
             <p>Suggested fix: {issue.fix}</p>
             <p className="proposal-print__limitations">
-              Community-reported in OpenStreetMap ({' '}
+              Community-reported in OpenStreetMap (
               <a href={issue.sourceUrl} target="_blank" rel="noreferrer">
                 {issue.source}
               </a>

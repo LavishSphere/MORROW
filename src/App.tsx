@@ -84,6 +84,7 @@ export default function App() {
         reducedMotion={reducedMotion}
         onReducedMotionChange={setReducedMotion}
         onPlace={setNeighborhood}
+        placeLabel={neighborhood?.place.label ?? 'Wellesley, MA'}
       />
 
       <main

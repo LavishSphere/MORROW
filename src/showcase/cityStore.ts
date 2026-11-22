@@ -11,8 +11,16 @@ export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type NamedSegment = { name: string; ax: number; az: number; bx: number; bz: number };
 export type NamedPlace = { name: string; x: number; z: number };
 
+/** Longitude / latitude box of the loaded map. */
+export type GeoBounds = { west: number; south: number; east: number; north: number };
+
 export type CityMap = {
   bounds: Bounds;
+  geoBounds: GeoBounds;
+  /** Longitude/latitude → scene [x, z] for this map. */
+  project: (lon: number, lat: number) => readonly [number, number];
+  /** Center of every building, for "what is near this fix". */
+  buildingPoints: [number, number][];
   /** Path2D strings in scene units (x right, z down). */
   roads: string;
   walks: string;
@@ -32,17 +40,25 @@ export type CameraPose = {
   distance: number;
 };
 
+/** A searched address, pinned in the city. */
+export type AddressPin = { label: string; x: number; z: number };
+
 type State = {
   map: CityMap | null;
   pose: CameraPose;
-  /** A spot the camera should fly to, with a counter so repeats still fire. */
-  fly: { x: number; z: number; id: number } | null;
+  /**
+   * A spot the camera should fly to, with a counter so repeats still fire.
+   * `distance`, when set, also zooms to that camera distance.
+   */
+  fly: { x: number; z: number; id: number; distance?: number } | null;
+  pin: AddressPin | null;
 };
 
 let state: State = {
   map: null,
   pose: { x: 0, z: 0, dirX: 0, dirZ: -1, distance: 60 },
   fly: null,
+  pin: null,
 };
 const listeners = new Set<() => void>();
 
@@ -65,7 +81,12 @@ export function useCityState() {
 }
 
 export function publishMap(map: CityMap) {
-  emit({ map });
+  // A new map: an old address pin would point into the wrong place.
+  emit({ map, pin: null });
+}
+
+export function setPin(pin: AddressPin | null) {
+  emit({ pin });
 }
 
 export function publishPose(pose: CameraPose) {
@@ -83,8 +104,8 @@ export function publishPose(pose: CameraPose) {
   emit({ pose });
 }
 
-export function flyTo(x: number, z: number) {
-  emit({ fly: { x, z, id: (state.fly?.id ?? 0) + 1 } });
+export function flyTo(x: number, z: number, options: { distance?: number } = {}) {
+  emit({ fly: { x, z, id: (state.fly?.id ?? 0) + 1, ...options } });
 }
 
 function distToSegment(x: number, z: number, s: NamedSegment) {
