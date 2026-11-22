@@ -1138,7 +1138,9 @@ function facade(tags: Record<string, unknown>): string | null {
   const material = String(tags["building:material"] ?? "").toLowerCase();
   if (material === "glass") return "glass";
   const raw = tags["building:colour"];
-  if (typeof raw === "string" && raw.trim()) {
+  // A mistyped hex ("#70c2dcb") would come out white, not the mapped colour.
+  const badHex = typeof raw === "string" && /^#/.test(raw.trim()) && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.trim());
+  if (typeof raw === "string" && raw.trim() && !badHex) {
     const color = new THREE.Color();
     try {
       color.setStyle(raw.trim());
