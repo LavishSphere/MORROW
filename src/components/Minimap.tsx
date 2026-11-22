@@ -112,7 +112,7 @@ function toScene(event: MouseEvent<HTMLCanvasElement>, view: View) {
  * click teleports you. Above it, a one-line "where am I".
  */
 export function Minimap({ placeLabel }: Props) {
-  const { map, pose } = useCityState()
+  const { map, pose, loadingMore } = useCityState()
   const { issues, fixed, selectedId } = useIssueState()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bigRef = useRef<HTMLCanvasElement>(null)
@@ -164,8 +164,9 @@ export function Minimap({ placeLabel }: Props) {
 
   const here = map ? whereAmI(map, pose.x, pose.z) : null
   const zoomed = pose.distance < ZOOMED_IN
-  const where =
-    zoomed && here && (here.street || here.place)
+  const where = loadingMore
+    ? 'Loading more streets…'
+    : zoomed && here && (here.street || here.place)
       ? [here.street, here.place && `near ${here.place}`].filter(Boolean).join(' · ')
       : placeLabel
 
