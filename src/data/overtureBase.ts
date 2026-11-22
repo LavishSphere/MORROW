@@ -191,6 +191,11 @@ async function readCollection(
   return ways;
 }
 
+/** Read Overture's file index ahead of time, so the first fallback tile starts at once. */
+export function warmOverture(): void {
+  void filesFor("segment", { west: 0, south: 0, east: 0, north: 0 }).catch(() => undefined);
+}
+
 /**
  * Streets, paths, rail, and water areas in a box, from Overture. Throws when
  * the files cannot be read, so the caller can fall back further.

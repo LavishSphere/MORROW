@@ -455,25 +455,33 @@ function requestSignal(signal?: AbortSignal, ms = 60000) {
 }
 
 /** Ask the MORROW API, which answers from its cache or asks Overpass itself. */
+/**
+ * Ask the MORROW API's cache, and only its cache: a cached place answers in
+ * about a second. Anything else answers "not cached" at once (the API then
+ * downloads it in the background for the next visitor), and the caller goes
+ * to Overture instead of waiting on Overpass.
+ */
 async function viaApi(query: string, signal?: AbortSignal): Promise<unknown | undefined> {
   if (!OSM_API || Date.now() < apiDownUntil) return undefined
   try {
     const res = await fetch(OSM_API, {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ query }),
-      signal: requestSignal(signal, 90000),
+      body: JSON.stringify({ query, cacheOnly: true }),
+      signal: requestSignal(signal, CACHE_WAIT_MS),
     })
     if (res.ok) return await res.json()
-    // The API reached Overpass and every server said no: asking them again
-    // from the browser is unlikely to go better, but costs little.
-    if (res.status < 500) return undefined
+    return undefined
   } catch {
     signal?.throwIfAborted()
+    // Slow or unreachable: skip the API for a minute.
+    apiDownUntil = Date.now() + 60000
+    return undefined
   }
-  apiDownUntil = Date.now() + 60000
-  return undefined
 }
+
+/** The longest a cache lookup may take before Overture is used instead. */
+const CACHE_WAIT_MS = 6000
 
 /** Wait for the response to start, but no longer than FIRST_BYTE_MS. */
 async function firstByte(work: Promise<Response>, ms: number): Promise<Response> {
@@ -497,6 +505,9 @@ export async function postOverpass(
   if (send === fetch) {
     const cached = await viaApi(query, signal)
     if (cached !== undefined) return cached
+    // With an API, the public Overpass servers are never asked from the
+    // browser: they are slow or refusing, and Overture answers in seconds.
+    if (OSM_API) throw new Error('not in the MORROW cache')
   }
   let lastError: unknown = new Error('Overpass unreachable')
   for (const url of endpointOrder(workingEndpoint)) {
@@ -683,6 +694,9 @@ export async function loadUsNeighborhood(
   query: string,
   magicKey?: string,
 ): Promise<LoadedNeighborhood> {
+  // Overture's index loads while the address is looked up, in case the
+  // place is not in the MORROW cache.
+  void import('./overtureBase.ts').then((m) => m.warmOverture()).catch(() => undefined)
   const place = await geocodeUsPlace(query, magicKey)
   if (!place) {
     throw new Error('No US place matched that name.')
