@@ -1,5 +1,6 @@
 import { formatMeters } from '../satellite/stats/format'
 import { EvidenceBadge } from './EvidenceBadge'
+import { ProposalIssueFacts } from './ProposalIssues'
 import type { DraftProposal, ProposalFacts } from '../types'
 
 type Props = {
@@ -28,6 +29,9 @@ export function ProposalEditor({
     next[index] = value
     onChange({ ...draft, meetingTalkingPoints: next })
   }
+
+  // Issues only: the resident's map issues, no showcase route or trip.
+  const issuesOnly = facts.scope === 'issues'
 
   const addPoint = () => {
     onChange({
@@ -62,25 +66,31 @@ export function ProposalEditor({
         </header>
 
         <section>
-          <h3>1. Location</h3>
+          <h3>1. {issuesOnly ? 'Where' : 'Location'}</h3>
           <p>
             {facts.city} — {facts.locationLabel}
           </p>
-          <p>
-            Trip: {facts.originLabel} → {facts.destinationLabel}
-          </p>
+          {!issuesOnly && (
+            <p>
+              Trip: {facts.originLabel} → {facts.destinationLabel}
+            </p>
+          )}
         </section>
 
         <section>
-          <h3>2. Issue</h3>
-          <p>
-            Barrier type: <strong>{facts.barrierType.replaceAll('_', ' ')}</strong>
-          </p>
+          <h3>2. {issuesOnly ? 'Summary' : 'Issue'}</h3>
+          {!issuesOnly && (
+            <p>
+              Barrier type: <strong>{facts.barrierType.replaceAll('_', ' ')}</strong>
+            </p>
+          )}
           <p>{draft.plainLanguageSummary}</p>
         </section>
 
+        {issuesOnly && <ProposalIssueFacts issues={facts.issues ?? []} title="3. Issues" />}
+
         <section>
-          <h3>3. Evidence</h3>
+          <h3>{issuesOnly ? '4' : '3'}. Evidence</h3>
           <p>
             <EvidenceBadge status={facts.evidenceStatus} />
           </p>
@@ -104,11 +114,14 @@ export function ProposalEditor({
           )}
         </section>
 
-        <section>
-          <h3>4. Suggested intervention</h3>
-          <p>{facts.intervention}</p>
-        </section>
+        {!issuesOnly && (
+          <section>
+            <h3>4. Suggested intervention</h3>
+            <p>{facts.intervention}</p>
+          </section>
+        )}
 
+        {!issuesOnly && (
         <section>
           <h3>5. Modeled outcome</h3>
           <dl className="propose-brief__meters">
@@ -138,9 +151,12 @@ export function ProposalEditor({
             ))}
           </ul>
         </section>
+        )}
+
+        {!issuesOnly && <ProposalIssueFacts issues={facts.issues ?? []} />}
 
         <section>
-          <h3>6. Action requested</h3>
+          <h3>{issuesOnly ? '5' : '6'}. Action requested</h3>
           <p>{draft.requestForReview}</p>
           {draft.meetingTalkingPoints.length > 0 && (
             <>
@@ -159,7 +175,7 @@ export function ProposalEditor({
         </section>
 
         <section>
-          <h3>7. Next steps</h3>
+          <h3>{issuesOnly ? '6' : '7'}. Next steps</h3>
           <p>{facts.nextSteps}</p>
           <p className="proposal-print__limitations">{draft.limitations}</p>
         </section>

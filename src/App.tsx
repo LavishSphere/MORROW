@@ -7,13 +7,11 @@ import { OverlayPanel } from './components/OverlayPanel'
 import { ProposeSheet } from './components/ProposeSheet'
 import { TopBar } from './components/TopBar'
 import { useChromeInsets } from './components/useChromeInsets'
-import { fetchBarriers, getDemoScenario } from './data/api'
+import { useIssueState } from './showcase/issueStore'
 import type { LoadedNeighborhood } from './data/overpass'
-import { getBarrier, interventionsForBarrier } from './data/fixtures'
-import type { AppMode, Barrier } from './types'
+import type { AppMode } from './types'
 
 export default function App() {
-  const scenario = getDemoScenario()
   const [mode, setMode] = useState<AppMode>('explore')
   // The page shown in the left panel. It outlives a switch back to Explore
   // so the panel can slide away with its content still inside.
@@ -25,29 +23,18 @@ export default function App() {
     if (next !== 'explore') setPanelMode(next)
   }
   const panelOpen = mode !== 'explore'
-  const [barriers, setBarriers] = useState<Barrier[]>([])
-  const [selectedBarrierId] = useState<string | null>(
-    scenario.barrierId,
-  )
-  const [selectedInterventionId, setSelectedInterventionId] = useState<
-    string | null
-  >(scenario.interventionId)
+  // Clicking an issue marker in the city opens it in Improve.
+  const { openImprove } = useIssueState()
+  useEffect(() => {
+    if (openImprove === 0) return
+    setMode('improve')
+    setPanelMode('improve')
+  }, [openImprove])
   const [neighborhood, setNeighborhood] = useState<LoadedNeighborhood | null>(null)
   const [reducedMotion, setReducedMotion] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches
   })
-
-  useEffect(() => {
-    let cancelled = false
-    fetchBarriers().then((result) => {
-      if (cancelled) return
-      setBarriers(result.barriers)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -56,12 +43,6 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  const selectedBarrier =
-    barriers.find((barrier) => barrier.id === selectedBarrierId) ??
-    (selectedBarrierId ? (getBarrier(selectedBarrierId) ?? null) : null)
-  const interventions = selectedBarrier
-    ? interventionsForBarrier(selectedBarrier.id)
-    : []
 
   return (
     <div
@@ -76,6 +57,7 @@ export default function App() {
         reducedMotion={reducedMotion}
         onReducedMotionChange={setReducedMotion}
         onPlace={setNeighborhood}
+        placeLabel={neighborhood?.place.label ?? 'Wellesley, MA'}
       />
 
       <main
@@ -90,15 +72,11 @@ export default function App() {
           mode={mode}
           reducedMotion={reducedMotion}
           neighborhood={neighborhood}
+          onNeighborhood={setNeighborhood}
         />
         <OverlayPanel open={panelOpen} contentKey={panelMode}>
           {panelMode === 'improve' && (
-            <ImprovePage
-              barrier={selectedBarrier}
-              interventions={interventions}
-              selectedId={selectedInterventionId}
-              onSelect={setSelectedInterventionId}
-            />
+            <ImprovePage />
           )}
           {panelMode === 'compare' && <CompareSheet />}
           {panelMode === 'propose' && <ProposeSheet />}

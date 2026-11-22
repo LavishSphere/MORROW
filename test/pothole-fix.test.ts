@@ -7,6 +7,7 @@ import {
   getPotholeFix,
   patchPothole,
   resetPotholeFix,
+  scatterPotholes,
   selectPothole,
 } from "../src/city/potholeFix.ts";
 import {
@@ -29,6 +30,25 @@ test("a clicked pothole can be patched without inventing a route", () => {
   resetPotholeFix();
 });
 
+test("any city's roads get illustrative potholes", () => {
+  const roads = [
+    { id: "main", name: "Main Street", points: [[0, 0], [12, 0]] as const },
+    { id: "oak", name: "Oak Avenue", points: [[0, 5], [14, 5]] as const },
+  ];
+  const holes = scatterPotholes(roads);
+  assert.ok(holes.length >= 2);
+  const labels = holes.map((hole) => hole.issue.label).join(" ");
+  assert.match(labels, /Main Street/);
+  assert.match(labels, /Oak Avenue/);
+  const again = scatterPotholes(roads);
+  assert.deepEqual(
+    again.map((hole) => [hole.x, hole.z]),
+    holes.map((hole) => [hole.x, hole.z]),
+  );
+  assert.equal(scatterPotholes([]).length, 0);
+  assert.equal(scatterPotholes([{ id: "stub", points: [[0, 0]] }]).length, 0);
+});
+
 test("a generated draft names the clicked pothole and keeps the route text", () => {
   const base: DraftProposal = {
     headline: "Wellesley route",
@@ -45,16 +65,19 @@ test("a generated draft names the clicked pothole and keeps the route text", () 
   assert.equal(draftForPothole(base, null, false).headline, "Wellesley route");
 });
 
-test("the city popup and the three mode pages share the pothole", async () => {
+test("the popup and mode pages keep the patch flow, and the city draws no disks", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   const popup = await readFile("src/components/PotholePopup.tsx", "utf8");
   const improve = await readFile("src/components/ImprovePage.tsx", "utf8");
   const compare = await readFile("src/components/CompareSheet.tsx", "utf8");
   const propose = await readFile("src/components/ProposeSheet.tsx", "utf8");
   assert.match(propose, /draftForPothole\(/);
-  assert.match(city, /selectPothole\(/);
+  assert.equal(city.includes("function Pothole"), false);
+  assert.equal(city.includes("circleGeometry"), false);
   assert.match(popup, /patchPothole\(/);
   assert.match(popup, /Illustrative street issue/);
+  assert.match(popup, /Not a surveyed defect/);
+  assert.equal(popup.includes("Improve, Compare"), false);
   assert.match(improve, /patchPothole\(/);
   assert.match(compare, /usePotholeFix\(/);
   assert.match(compare, /Not a Gemini estimate/);

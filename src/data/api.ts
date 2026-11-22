@@ -1,3 +1,4 @@
+import { issuesOnlyFacts } from '../../shared/issues.ts'
 import { buildTemplateDraft } from './templateProposal'
 import {
   compareByIds,
@@ -272,9 +273,29 @@ function buildFacts(
   }
 }
 
+/** Issues-only proposal built in the browser when the API cannot answer. */
+function localIssuesGenerate(req: GenerateProposalRequest): GenerateProposalResponse {
+  const facts = issuesOnlyFacts(req.localIssues ?? [], req.city ?? 'Wellesley, MA')
+  return {
+    proposalId: `local-issues-${(req.issueIds ?? []).join('-') || 'browser'}`,
+    facts,
+    draft: buildTemplateDraft(facts),
+    aiGenerated: false,
+    warnings: [
+      'Generate API unavailable — using local template draft.',
+      'Gemini unavailable — template prose only.',
+    ],
+    geminiAvailable: false,
+    apiAvailable: false,
+  }
+}
+
 function bundledGenerate(
   req: GenerateProposalRequest,
 ): GenerateProposalResponse {
+  if (!req.scenarioId || !req.barrierId || !req.interventionId) {
+    return localIssuesGenerate(req)
+  }
   const barrier = getBarrier(req.barrierId)
   const intervention = getIntervention(req.interventionId)
   if (!idsMatchDemoScenario(req, barrier, intervention)) {
@@ -312,6 +333,11 @@ function bundledGenerate(
 export async function generateProposal(
   req: GenerateProposalRequest,
 ): Promise<GenerateProposalResponse> {
+  // Issues the server cannot check (a loaded city) are drafted in the browser.
+  const hasScenarioIds = Boolean(req.scenarioId && req.barrierId && req.interventionId)
+  if (!hasScenarioIds && !(req.issueIds && req.issueIds.length > 0)) {
+    return localIssuesGenerate(req)
+  }
   const live = await probeLiveApi()
   if (live) {
     try {
@@ -319,11 +345,17 @@ export async function generateProposal(
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify({
-          scenarioId: req.scenarioId,
-          barrierId: req.barrierId,
-          interventionId: req.interventionId,
+          ...(req.scenarioId && req.barrierId && req.interventionId
+            ? {
+                scenarioId: req.scenarioId,
+                barrierId: req.barrierId,
+                interventionId: req.interventionId,
+              }
+            : {}),
+          ...(req.issueIds && req.issueIds.length > 0 ? { issueIds: req.issueIds } : {}),
         }),
-        signal: AbortSignal.timeout(30_000),
+        // The API may retry a busy Gemini for up to ~45 s before answering.
+        signal: AbortSignal.timeout(55_000),
       })
       if (res.ok) {
         const body = (await res.json()) as GenerateProposalResponse

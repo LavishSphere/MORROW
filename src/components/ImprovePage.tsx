@@ -9,29 +9,18 @@ import {
   potholeById,
   usePotholeFix,
 } from '../city/potholeFix'
-import type { Barrier, Intervention } from '../types'
+import { IssueBrowser } from './IssueBrowser'
 
-type Props = {
-  barrier: Barrier | null
-  interventions: Intervention[]
-  selectedId: string | null
-  onSelect: (id: string) => void
-}
-
-/** Improve is the intervention list. The map stays on Explore. */
-export function ImprovePage({
-  barrier,
-  interventions,
-  selectedId,
-  onSelect,
-}: Props) {
+/** Improve: the map's accessibility issues, and the fix for each. */
+export function ImprovePage() {
   const fix = usePotholeFix()
   const improvements = useStreetImprovements()
   const hole = potholeById(fix.selectedId)
   const patched = hole ? fix.patchedIds.includes(hole.id) : false
   return (
     <section className="mode-page" aria-label="Intervention options">
-      <h2>Options</h2>
+      <h2>Improve</h2>
+      <IssueBrowser />
       {hole && (
         <>
           <p className="mode-page__lead">
@@ -78,38 +67,6 @@ export function ImprovePage({
           )
         })}
       </ul>
-      {!barrier ? (
-        <p className="mode-page__lead">
-          The Wellesley barrier is not loaded yet.
-        </p>
-      ) : (
-        <>
-          <p className="mode-page__lead">
-            Interventions for <strong>{barrier.locationLabel}</strong>
-          </p>
-          <ul className="option-list">
-            {interventions.map((opt) => {
-              const active = opt.id === selectedId
-              return (
-                <li key={opt.id}>
-                  <button
-                    type="button"
-                    className={`option-list__item${active ? ' is-active' : ''}`}
-                    aria-pressed={active}
-                    onClick={() => onSelect(opt.id)}
-                  >
-                    <span className="option-list__name">{opt.description}</span>
-                    <span className="option-list__meta">{opt.type}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {interventions.length === 0 && (
-            <p className="muted">No interventions for this barrier yet.</p>
-          )}
-        </>
-      )}
     </section>
   )
 }

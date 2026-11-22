@@ -1,592 +1,528 @@
-import { Edges, Sparkles } from "@react-three/drei";
-import { POTHOLES, selectPothole, usePotholeFix } from "../../city/potholeFix";
+import { Sparkles } from "@react-three/drei";
+import { useEffect, useMemo } from "react";
+import * as THREE from "three";
+import town from "../../../data/wellesley/town.geojson";
+import waterMap from "../../../data/wellesley/water.geojson";
+import { detectIssues } from "../../../shared/issues.ts";
+import { publishMap, type Bounds, type CityMap } from "../cityStore";
+import { publishIssues } from "../issueStore";
+import { createProjector, isFeatureCollection, type ShowcaseBBox } from "../geo";
+import { INTERVENTION_EDGE_IDS, SHOWCASE_BBOX } from "../layout";
+import { GLASS_TINTS, worldCurtainWall } from "./glass";
+import { parseBasemap, type ParsedBasemap, type WayRibbon } from "./parseBasemap";
+import { AddressPin } from "./AddressPin";
+import { IssueLayer } from "./IssueLayer";
+import { StreetSigns, type SignSpot } from "./StreetSigns";
 import { useStreetImprovements } from "../../city/streetImprovements";
 
-const GLASS = "#3ec8d8";
-const GLASS_GLOW = "#7af4ff";
-const EDGE = "#f8ffff";
-const GROUND = "#0a3842";
-const ROAD = "#e8fbff";
-const CRYSTAL = "#f4ffff";
+/**
+ * Wellesley, reimagined. Every building, road, and footpath comes from
+ * OpenStreetMap at its true position and outline: by default the wider
+ * town extract in data/wellesley/town.geojson (College, Wellesley Square,
+ * and the streets around them), or a loaded US city. Lakes, ponds, and
+ * brooks come from the same map. That water is the shoreline, not a defect.
+ * Buildings are rebuilt as glass with green roofs; heights are a design
+ * choice (OSM has none here), not a survey.
+ *
+ * Thousands of buildings stay fast because each kind of surface is merged
+ * into one mesh, and trees and street furniture are instanced.
+ */
 
-type Lot = {
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  h: number;
-  glow: number;
-  stepped: boolean;
-  wire: boolean;
+/** Scene units per metre. */
+const CITY_SCALE = 0.14;
+/** Width of the Wellesley College showcase; the opening camera frames this. */
+export const CITY_SPAN = createProjector(SHOWCASE_BBOX, CITY_SCALE).span;
+
+/** One glass bay and one floor, in scene units (about 4 m and 5 m). */
+const BAY = 0.55;
+const FLOOR_H = 0.75;
+const PODIUM_H = 0.35;
+
+/** Floors by OSM building type, before a little per-building variation. */
+const FLOORS: Record<string, number> = {
+  university: 9,
+  college: 7,
+  dormitory: 7,
+  apartments: 8,
+  commercial: 6,
+  retail: 4,
+  office: 8,
+  chapel: 4,
+  church: 4,
+  house: 3,
+  detached: 3,
+  residential: 4,
+  garage: 1,
+  garages: 1,
+  shed: 1,
 };
 
-type TreeSpec = {
-  x: number;
-  z: number;
-  leaf: string;
-  scale: number;
-  crystal?: boolean;
+const STONE = "#d9dcd8";
+const ROOF_METAL = "#dfe5e8";
+const ROOF_GARDEN = "#5f8f55";
+const LAWN = "#7d9a68";
+const SMART_LINE = "#8ff3ff";
+const LOGO_BLUE = "#1488ff";
+const GREEN = ["#3f6f3a", "#4b7d40", "#5a8c48", "#6a9a50"] as const;
+const AUTUMN = ["#b98c3a", "#c99a4c", "#b8692c"] as const;
+
+type Ring = readonly (readonly [number, number])[];
+
+type CityModel = {
+  parsed: ParsedBasemap;
+  /** OSM building tag per footprint id, for the height rule. */
+  kinds: Map<string, string>;
+  bounds: Bounds;
+  /** Longitude/latitude → scene [x, z] for this map. */
+  project: (lon: number, lat: number) => readonly [number, number];
+  /** Scene [x, z] → longitude/latitude. */
+  unproject: (x: number, z: number) => readonly [number, number];
+  /** Longitude / latitude box of the map's buildings. */
+  geoBounds: { west: number; south: number; east: number; north: number };
+  /** All OpenStreetMap tags per building id (height, roof shape, colour…). */
+  tags: Map<string, Record<string, unknown>>;
+  /** building:part pieces: the real 3D shape of detailed landmarks. */
+  parts: Part[];
 };
 
-const GREEN = ["#2f6a32", "#3d7a38", "#5a9a48", "#6ea84a"] as const;
-const AUTUMN = ["#c4a03a", "#d7b25a", "#c9782a"] as const;
+type Part = { id: string; ring: Ring; tags: Record<string, unknown> };
 
 function hash(a: number, b: number) {
   const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
   return n - Math.floor(n);
 }
 
-function pickLeaf(ix: number, iz: number) {
-  return hash(ix + 3, iz + 11) < 0.6
-    ? GREEN[Math.floor(hash(ix, iz) * GREEN.length) % GREEN.length]
-    : AUTUMN[Math.floor(hash(iz, ix) * AUTUMN.length) % AUTUMN.length];
+function idHash(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h % 1000) / 1000;
 }
 
-function buildCity(): { lots: Lot[]; trees: TreeSpec[]; plaza: { x: number; z: number } } {
-  const lots: Lot[] = [];
-  const trees: TreeSpec[] = [];
-  const STEP = 16;
-  const downtown = { x: 8, z: 6 };
+/* —— Model —— */
 
-  for (let ix = -4; ix <= 4; ix += 1) {
-    for (let iz = -4; iz <= 4; iz += 1) {
-      if (ix === 0 && iz === 0) continue;
-      const x = ix * STEP + (hash(ix, iz) - 0.5) * 4.4;
-      const z = iz * STEP + (hash(iz, ix + 9) - 0.5) * 4.4;
-      const dist = Math.hypot(x - downtown.x, z - downtown.z);
-      if (hash(ix * 3, iz * 7) < 0.22 && dist > 22) {
-        const count = 3 + Math.floor(hash(ix, iz) * 3);
-        for (let t = 0; t < count; t += 1) {
-          trees.push({
-            x: x + (hash(ix + t, iz) - 0.5) * 9,
-            z: z + (hash(iz, ix + t + 4) - 0.5) * 9,
-            leaf: pickLeaf(ix + t, iz),
-            scale: 0.9 + hash(t, ix) * 0.55,
-          });
+/** Bounding box of a FeatureCollection; buildings define the neighborhood. */
+function bboxOf(geoJson: unknown): ShowcaseBBox | null {
+  if (!isFeatureCollection(geoJson)) return null;
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  const visit = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === "number" && typeof value[1] === "number") {
+      west = Math.min(west, value[0]);
+      east = Math.max(east, value[0]);
+      south = Math.min(south, value[1]);
+      north = Math.max(north, value[1]);
+      return;
+    }
+    for (const item of value) visit(item);
+  };
+  const features = geoJson.features as {
+    geometry?: { coordinates?: unknown };
+    properties?: Record<string, unknown>;
+  }[];
+  const buildings = features.filter((f) => f.properties?.layer === "building");
+  for (const feature of buildings.length > 0 ? buildings : features) {
+    visit(feature.geometry?.coordinates);
+  }
+  if (!Number.isFinite(west)) return null;
+  return { west, east, south, north, center: [(west + east) / 2, (south + north) / 2] };
+}
+
+/** Parse any basemap-shaped FeatureCollection into the city's model. */
+function buildModel(geoJson: unknown, center?: readonly [number, number]): CityModel {
+  const own = (geoJson as { center?: unknown })?.center;
+  if (!center && Array.isArray(own) && typeof own[0] === "number" && typeof own[1] === "number") {
+    // A loaded city keeps one fixed center, so adding areas never moves the scene.
+    center = [own[0], own[1]];
+  }
+  const box = bboxOf(geoJson) ?? SHOWCASE_BBOX;
+  const bbox: ShowcaseBBox = center ? { ...box, center: [center[0], center[1]] } : box;
+  const projector = createProjector(bbox, CITY_SCALE);
+  const parsed = parseBasemap(geoJson, projector) ?? {
+    buildings: [],
+    ways: [],
+    water: [],
+    waterways: [],
+  };
+  const kinds = new Map<string, string>();
+  const tags = new Map<string, Record<string, unknown>>();
+  const parts: Part[] = [];
+  if (isFeatureCollection(geoJson)) {
+    for (const feature of geoJson.features) {
+      const props = (feature as { properties?: Record<string, unknown> }).properties;
+      if (props?.layer === "building") {
+        kinds.set(String(props.osmId), String(props.building ?? "yes"));
+        tags.set(String(props.osmId), props);
+      } else if (props?.layer === "building_part") {
+        const coords = (feature as { geometry?: { coordinates?: unknown } }).geometry?.coordinates;
+        const outer = Array.isArray(coords) ? (coords[0] as unknown) : null;
+        if (!Array.isArray(outer)) continue;
+        const ring: (readonly [number, number])[] = [];
+        for (const pt of outer) {
+          if (Array.isArray(pt) && typeof pt[0] === "number" && typeof pt[1] === "number") {
+            ring.push(projector.project(pt[0], pt[1]));
+          }
         }
-        continue;
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first && last && first[0] === last[0] && first[1] === last[1]) ring.pop();
+        if (ring.length >= 3) parts.push({ id: String(props.osmId), ring, tags: props });
       }
+    }
+  }
+  const bounds: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  const rings = [
+    ...parsed.buildings.map((b) => b.ring),
+    ...parsed.water.map((body) => body.ring),
+    ...(parsed.buildings.length === 0 ? parsed.ways.map((w) => w.points) : []),
+  ];
+  for (const ring of rings) {
+    for (const [x, z] of ring) {
+      bounds.minX = Math.min(bounds.minX, x);
+      bounds.maxX = Math.max(bounds.maxX, x);
+      bounds.minZ = Math.min(bounds.minZ, z);
+      bounds.maxZ = Math.max(bounds.maxZ, z);
+    }
+  }
+  if (!Number.isFinite(bounds.minX)) Object.assign(bounds, { minX: -40, maxX: 40, minZ: -40, maxZ: 40 });
+  return {
+    parsed,
+    kinds,
+    bounds,
+    tags,
+    parts,
+    project: projector.project,
+    unproject: (x: number, z: number) => {
+      const [lon0, lat0] = bbox.center;
+      const metersPerDegLon = 111_320 * Math.max(0.2, Math.cos((lat0 * Math.PI) / 180));
+      return [lon0 + x / (CITY_SCALE * metersPerDegLon), lat0 - z / (CITY_SCALE * 111_320)] as const;
+    },
+    geoBounds: { west: box.west, south: box.south, east: box.east, north: box.north },
+  };
+}
 
-      const downtownLot = dist < 20;
-      const w = downtownLot ? 4.1 + hash(ix + 1, iz) * 2.4 : 3.0 + hash(ix + 1, iz) * 3.4;
-      const d = downtownLot ? 3.9 + hash(ix, iz + 1) * 2.3 : 2.9 + hash(ix, iz + 1) * 3.2;
-      const h = downtownLot ? 8 + hash(ix, iz) * 12 : 3.4 + hash(ix, iz) * 8;
-      lots.push({
-        x,
-        z,
-        w,
-        d,
-        h,
-        glow: downtownLot ? 0.62 : 0.22,
-        stepped: downtownLot && h > 10,
-        wire: dist > 38,
-      });
-      trees.push({
-        x: x + (hash(ix, iz) > 0.5 ? 1 : -1) * (w * 0.5 + 2.1),
-        z: z + (hash(iz, ix) - 0.5) * (d + 2.4),
-        leaf: pickLeaf(ix, iz + 5),
-        scale: 0.8 + hash(ix, 3) * 0.45,
-      });
+/** The Wellesley town extract plus its mapped water, centered on the College. */
+const TOWN = buildModel(
+  {
+    type: "FeatureCollection",
+    features: [
+      ...(town as { features: unknown[] }).features,
+      ...(waterMap as { features: unknown[] }).features,
+    ],
+  },
+  SHOWCASE_BBOX.center,
+);
+
+/* —— Geometry buckets: many shapes, one mesh —— */
+
+class Bucket {
+  pos: number[] = [];
+  nor: number[] = [];
+  uv: number[] = [];
+
+  push(p: readonly number[], n: readonly number[], uv: readonly number[]) {
+    this.pos.push(...p);
+    this.nor.push(...n, ...n, ...n);
+    this.uv.push(...uv);
+  }
+
+  /** A ground-facing triangle, wound so it faces up. */
+  up(a: readonly [number, number], b: readonly [number, number], c: readonly [number, number], y: number) {
+    const cross = (b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]);
+    const [p, q] = cross >= 0 ? [b, c] : [c, b];
+    this.push([a[0], y, a[1], p[0], y, p[1], q[0], y, q[1]], [0, 1, 0], [a[0], a[1], p[0], p[1], q[0], q[1]]);
+  }
+
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+
+function signedArea(ring: Ring) {
+  let a = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [x1, z1] = ring[i]!;
+    const [x2, z2] = ring[(i + 1) % ring.length]!;
+    a += x1 * z2 - x2 * z1;
+  }
+  return a / 2;
+}
+
+function centroid(ring: Ring): [number, number] {
+  let x = 0;
+  let z = 0;
+  for (const [px, pz] of ring) {
+    x += px;
+    z += pz;
+  }
+  return [x / ring.length, z / ring.length];
+}
+
+function shrink(ring: Ring, factor: number): Ring {
+  const [cx, cz] = centroid(ring);
+  return ring.map(([x, z]) => [cx + (x - cx) * factor, cz + (z - cz) * factor] as const);
+}
+
+/** Outward-facing walls. UVs run along the wall in world units, so glass panes stay square. */
+function walls(bucket: Bucket, ring: Ring, y0: number, y1: number) {
+  const outward = signedArea(ring) > 0;
+  const h = y1 - y0;
+  let u = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-5) continue;
+    const n = outward ? [dz / len, 0, -dx / len] : [-dz / len, 0, dx / len];
+    const A0 = [ax, y0, az];
+    const B0 = [bx, y0, bz];
+    const B1 = [bx, y1, bz];
+    const A1 = [ax, y1, az];
+    const uvA0 = [u, 0];
+    const uvB0 = [u + len, 0];
+    const uvB1 = [u + len, h];
+    const uvA1 = [u, h];
+    if (outward) {
+      bucket.push([...A0, ...B1, ...B0], n, [...uvA0, ...uvB1, ...uvB0]);
+      bucket.push([...A0, ...A1, ...B1], n, [...uvA0, ...uvA1, ...uvB1]);
+    } else {
+      bucket.push([...A0, ...B0, ...B1], n, [...uvA0, ...uvB0, ...uvB1]);
+      bucket.push([...A0, ...B1, ...A1], n, [...uvA0, ...uvB1, ...uvA1]);
+    }
+    u += len;
+  }
+}
+
+/** A flat roof over a footprint. */
+function cap(bucket: Bucket, ring: Ring, y: number) {
+  const contour = ring.map(([x, z]) => new THREE.Vector2(x, z));
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+    const a = ring[i!];
+    const b = ring[j!];
+    const c = ring[k!];
+    if (a && b && c) bucket.up(a, b, c, y);
+  }
+}
+
+/** A ribbon along a polyline with mitered joins, so bends are one surface. */
+function strip(bucket: Bucket, points: Ring, halfWidth: number, y: number) {
+  const clean = points.filter(
+    (p, i) => i === 0 || Math.hypot(p[0] - points[i - 1]![0], p[1] - points[i - 1]![1]) > 1e-4,
+  );
+  if (clean.length < 2) return;
+  const left: [number, number][] = [];
+  const right: [number, number][] = [];
+  for (let i = 0; i < clean.length; i += 1) {
+    const prev = clean[Math.max(0, i - 1)]!;
+    const next = clean[Math.min(clean.length - 1, i + 1)]!;
+    const here = clean[i]!;
+    const inLen = Math.hypot(here[0] - prev[0], here[1] - prev[1]) || 1;
+    const outLen = Math.hypot(next[0] - here[0], next[1] - here[1]) || 1;
+    const n1x = i === 0 ? -(next[1] - here[1]) / outLen : -(here[1] - prev[1]) / inLen;
+    const n1z = i === 0 ? (next[0] - here[0]) / outLen : (here[0] - prev[0]) / inLen;
+    const n2x = i === clean.length - 1 ? n1x : -(next[1] - here[1]) / outLen;
+    const n2z = i === clean.length - 1 ? n1z : (next[0] - here[0]) / outLen;
+    let mx = n1x + n2x;
+    let mz = n1z + n2z;
+    const mLen = Math.hypot(mx, mz) || 1;
+    mx /= mLen;
+    mz /= mLen;
+    // Stretch at the bend so the edge stays parallel; cap sharp corners.
+    const w = halfWidth * Math.min(2.5, 1 / Math.max(0.2, mx * n1x + mz * n1z));
+    left.push([here[0] + mx * w, here[1] + mz * w]);
+    right.push([here[0] - mx * w, here[1] - mz * w]);
+  }
+  for (let i = 0; i < clean.length - 1; i += 1) {
+    bucket.up(left[i]!, left[i + 1]!, right[i]!, y);
+    bucket.up(right[i]!, left[i + 1]!, right[i + 1]!, y);
+  }
+}
+
+/* —— Occupancy grid: where trees may not go —— */
+
+function insideRing(x: number, z: number, ring: Ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, zi] = ring[i]!;
+    const [xj, zj] = ring[j]!;
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function nearRing(x: number, z: number, ring: Ring, margin: number) {
+  for (let i = 0; i < ring.length; i += 1) {
+    const a = ring[i]!;
+    const b = ring[(i + 1) % ring.length]!;
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const len2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len2));
+    if (Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t)) < margin) return true;
+  }
+  return false;
+}
+
+class Occupancy {
+  readonly cell = 0.8;
+  readonly cols: number;
+  readonly rows: number;
+  readonly data: Uint8Array;
+  readonly heights: Float32Array;
+  readonly bounds: Bounds;
+
+  constructor(bounds: Bounds) {
+    this.bounds = bounds;
+    this.cols = Math.ceil((bounds.maxX - bounds.minX) / this.cell) + 1;
+    this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / this.cell) + 1;
+    this.data = new Uint8Array(this.cols * this.rows);
+    this.heights = new Float32Array(this.cols * this.rows);
+  }
+
+  private index(x: number, z: number) {
+    const c = Math.floor((x - this.bounds.minX) / this.cell);
+    const r = Math.floor((z - this.bounds.minZ) / this.cell);
+    if (c < 0 || r < 0 || c >= this.cols || r >= this.rows) return -1;
+    return r * this.cols + c;
+  }
+
+  private set(x: number, z: number) {
+    const k = this.index(x, z);
+    if (k >= 0) this.data[k] = 1;
+  }
+
+  markHeight(ring: Ring, height: number) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    for (let x = minX; x <= maxX; x += this.cell) {
+      for (let z = minZ; z <= maxZ; z += this.cell) {
+        if (!insideRing(x, z, ring)) continue;
+        const k = this.index(x, z);
+        if (k >= 0) this.heights[k] = Math.max(this.heights[k] ?? 0, height);
+      }
     }
   }
 
-  lots.push(
-    { x: 8.2, z: 7.4, w: 5.1, d: 5.3, h: 22, glow: 0.95, stepped: true, wire: false },
-    { x: 13.4, z: 6.2, w: 4.6, d: 4.8, h: 11, glow: 0.8, stepped: true, wire: false },
-    { x: 12.8, z: 11.8, w: 3.4, d: 3.4, h: 16, glow: 0.78, stepped: true, wire: false },
-    { x: 4.0, z: 12.2, w: 4.0, d: 4.4, h: 10, glow: 0.62, stepped: true, wire: false },
-    { x: 7.2, z: 2.6, w: 3.4, d: 3.5, h: 7.2, glow: 0.48, stepped: false, wire: false },
-  );
-
-  trees.push(
-    { x: -6.8, z: 4.0, leaf: CRYSTAL, scale: 1.15, crystal: true },
-    { x: 2.4, z: 18.6, leaf: "#c4a03a", scale: 1.28 },
-    { x: 19.2, z: 3.2, leaf: "#3d7a38", scale: 1.12 },
-    { x: 20.6, z: 14.4, leaf: "#d7b25a", scale: 1.08 },
-    { x: -3.2, z: -9.4, leaf: "#6ea84a", scale: 1.18 },
-    { x: 16.4, z: -8.2, leaf: "#c9782a", scale: 1.05 },
-  );
-
-  return { lots, trees, plaza: { x: 8.8, z: 1.6 } };
-}
-
-const CITY = buildCity();
-
-function WindowPane({
-  position,
-  size,
-  lit,
-}: {
-  position: [number, number, number];
-  size: [number, number, number];
-  lit: boolean;
-}) {
-  return (
-    <mesh position={position} raycast={() => null}>
-      <boxGeometry args={size} />
-      <meshStandardMaterial
-        color={lit ? "#e9fdff" : "#0d4552"}
-        emissive={lit ? "#c8f7ff" : "#1c7f8e"}
-        emissiveIntensity={lit ? 1.05 : 0.4}
-        roughness={0.12}
-      />
-    </mesh>
-  );
-}
-
-function HoloBuilding({ x, z, w, d, h, glow, stepped, wire }: Lot) {
-  const fill = wire ? 0.55 : 0.9 + glow * 0.15;
-  const floors = Math.min(7, Math.max(3, Math.floor(h / 2.1)));
-  const crown = stepped ? h * 0.22 : 0;
-  const story = (index: number) => 0.85 + ((h - 1.1) * (index + 1)) / (floors + 1);
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.38, 0]} castShadow>
-        <boxGeometry args={[w * 1.14, 0.76, d * 1.14]} />
-        <meshStandardMaterial color="#146e7c" emissive="#7af4ff" emissiveIntensity={0.35} roughness={0.4} />
-      </mesh>
-      <mesh position={[0, 0.38 + h / 2, 0]} castShadow>
-        <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial
-          color={GLASS}
-          emissive={GLASS_GLOW}
-          emissiveIntensity={fill}
-          roughness={0.18}
-          metalness={0.22}
-        />
-        <Edges threshold={15} color={EDGE} />
-      </mesh>
-      {Array.from({ length: floors }, (_, index) => (
-        <mesh key={`floor-${index}`} position={[0, story(index), 0]} raycast={() => null}>
-          <boxGeometry args={[w * 1.012, 0.045, d * 1.012]} />
-          <meshBasicMaterial color="#f4ffff" transparent opacity={0.72} />
-        </mesh>
-      ))}
-      {Array.from({ length: floors }, (_, row) =>
-        ([-0.3, 0, 0.3] as const).map((along, slot) => {
-          const paneH = Math.max(0.32, (h / floors) * 0.42);
-          const y = story(row) - paneH * 0.7;
-          const lit = (row + slot) % 3 === 0;
-          const litOpposite = (row + slot + 1) % 3 === 0;
-          return (
-            <group key={`win-${row}-${along}`}>
-              <WindowPane position={[along * w, y, d / 2 + 0.03]} size={[w * 0.2, paneH, 0.03]} lit={lit} />
-              <WindowPane position={[along * w, y, -d / 2 - 0.03]} size={[w * 0.2, paneH, 0.03]} lit={litOpposite} />
-              <WindowPane position={[w / 2 + 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={lit} />
-              <WindowPane position={[-w / 2 - 0.03, y, along * d]} size={[0.03, paneH, d * 0.2]} lit={litOpposite} />
-            </group>
-          );
-        }),
-      )}
-      {([-1, 1] as const).flatMap((side) =>
-        ([1, -1] as const).map((face) => (
-          <mesh
-            key={`mullion-${side}-${face}`}
-            position={[side * w * 0.22, 0.38 + h / 2, face * (d / 2 + 0.02)]}
-            raycast={() => null}
-          >
-            <boxGeometry args={[0.05, h * 0.96, 0.04]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-        )),
-      )}
-      <mesh position={[0, 0.38 + h + 0.06, 0]} raycast={() => null}>
-        <boxGeometry args={[w * 1.04, 0.1, d * 1.04]} />
-        <meshStandardMaterial color="#f7ffff" emissive="#ffffff" emissiveIntensity={0.45} />
-      </mesh>
-      <mesh position={[w * 0.12, 0.38 + h + 0.38, d * 0.08]}>
-        <boxGeometry args={[w * 0.38, 0.42, d * 0.32]} />
-        <meshStandardMaterial color="#d8fbff" emissive="#7af4ff" emissiveIntensity={0.7} roughness={0.3} />
-      </mesh>
-      {stepped && (
-        <mesh position={[0, 0.38 + h + crown / 2, 0]} castShadow>
-          <boxGeometry args={[w * 0.58, crown, d * 0.54]} />
-          <meshStandardMaterial color="#7af4ff" emissive="#d8fbff" emissiveIntensity={1.05} roughness={0.16} />
-          <Edges threshold={12} color="#ffffff" />
-        </mesh>
-      )}
-      {h > 14 && (
-        <mesh position={[w * 0.12, 0.38 + h + crown + 0.9, d * 0.08]} raycast={() => null}>
-          <cylinderGeometry args={[0.04, 0.04, 1.4, 6]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      )}
-    </group>
-  );
-}
-
-function HoloTree({ x, z, leaf, scale, crystal }: TreeSpec) {
-  const canopy = crystal ? CRYSTAL : leaf;
-  return (
-    <group position={[x, 0, z]} scale={scale}>
-      <mesh position={[0, 1.05, 0]} castShadow>
-        <cylinderGeometry args={[0.12, 0.18, 2.1, 8]} />
-        <meshStandardMaterial
-          color={crystal ? "#cfeef4" : "#5c4634"}
-          emissive={crystal ? "#d7fbff" : "#000000"}
-          emissiveIntensity={crystal ? 0.5 : 0}
-          roughness={0.92}
-        />
-      </mesh>
-      <mesh position={[0, 2.35, 0]} castShadow>
-        <sphereGeometry args={[crystal ? 1.25 : 0.95, 16, 12]} />
-        <meshStandardMaterial
-          color={canopy}
-          emissive={crystal ? "#e9ffff" : "#000000"}
-          emissiveIntensity={crystal ? 0.6 : 0}
-          roughness={crystal ? 0.32 : 0.88}
-          transparent={Boolean(crystal)}
-          opacity={crystal ? 0.84 : 1}
-        />
-      </mesh>
-      <mesh position={[0.38, 2.7, 0.22]} castShadow>
-        <sphereGeometry args={[crystal ? 0.7 : 0.52, 12, 10]} />
-        <meshStandardMaterial
-          color={canopy}
-          emissive={crystal ? "#f4ffff" : "#000000"}
-          emissiveIntensity={crystal ? 0.45 : 0}
-          roughness={crystal ? 0.3 : 0.88}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function GlowSeg({
-  from,
-  to,
-  width = 0.13,
-  color = ROAD,
-  y = 0.05,
-  glow = 1.15,
-}: {
-  from: readonly [number, number];
-  to: readonly [number, number];
-  width?: number;
-  color?: string;
-  y?: number;
-  glow?: number;
-}) {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz);
-  if (len < 0.2) return null;
-  return (
-    <mesh
-      position={[(from[0] + to[0]) / 2, y, (from[1] + to[1]) / 2]}
-      rotation={[0, Math.atan2(dx, dz), 0]}
-      receiveShadow
-      raycast={() => null}
-    >
-      <boxGeometry args={[width, 0.045, len]} />
-      <meshStandardMaterial
-        color={color}
-        emissive={color}
-        emissiveIntensity={glow}
-        roughness={0.35}
-        toneMapped={glow > 0.4}
-      />
-    </mesh>
-  );
-}
-
-/** Driving surface in the same cyan family as the glass, wide enough to read as a street. */
-const DECK = "#1a7584";
-const WALK = "#103f4c";
-const CURB = "#f4ffff";
-const LANE = "#f7ffff";
-
-const AVENUES = [-40, -16, 8, 32];
-const CROSS_STREETS = [-36, -12, 12, 36];
-
-function quad(
-  a: readonly [number, number],
-  b: readonly [number, number],
-  c: readonly [number, number],
-  steps: number,
-) {
-  const points: [number, number][] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    const t = i / steps;
-    const u = 1 - t;
-    points.push([
-      u * u * a[0] + 2 * u * t * b[0] + t * t * c[0],
-      u * u * a[1] + 2 * u * t * b[1] + t * t * c[1],
-    ]);
+  nearbyHeight(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    let best = 0;
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        const k = this.index(x + a * this.cell, z + b * this.cell);
+        if (k >= 0) best = Math.max(best, this.heights[k] ?? 0);
+      }
+    }
+    return best;
   }
-  return points;
-}
 
-const BOULEVARD = quad([-62, -20], [4, 18], [64, -6], 28);
-
-function shift(
-  from: readonly [number, number],
-  to: readonly [number, number],
-  offset: number,
-): { from: [number, number]; to: [number, number] } {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const nx = -dz / len;
-  const nz = dx / len;
-  return {
-    from: [from[0] + nx * offset, from[1] + nz * offset],
-    to: [to[0] + nx * offset, to[1] + nz * offset],
-  };
-}
-
-function Pothole({ id, x, z }: { id: string; x: number; z: number }) {
-  const fix = usePotholeFix();
-  const patched = fix.patchedIds.includes(id);
-  const selected = fix.selectedId === id;
-  return (
-    <group position={[x, 0.1, z]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0.2]} raycast={() => null}>
-        <circleGeometry args={[0.95, 8]} />
-        <meshStandardMaterial
-          color={patched ? "#d7fff4" : "#7af4ff"}
-          emissive={patched ? "#9ee7d8" : "#7af4ff"}
-          emissiveIntensity={patched ? 0.15 : 0.35}
-        />
-      </mesh>
-      <mesh position={[0.05, 0.01, -0.04]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <circleGeometry args={[patched ? 0.7 : 0.55, 7]} />
-        <meshStandardMaterial color={patched ? "#9ad7c8" : "#062830"} roughness={1} />
-      </mesh>
-      {selected ? (
-        <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-          <ringGeometry args={[1.05, 1.25, 20]} />
-          <meshBasicMaterial color="#f7faf8" />
-        </mesh>
-      ) : null}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.06, 0]}
-        onClick={(event) => {
-          event.stopPropagation();
-          selectPothole(id);
-        }}
-        onPointerOver={(event) => {
-          event.stopPropagation();
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = "";
-        }}
-      >
-        <circleGeometry args={[1.2, 16]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-}
-
-function LaneDashes({ from, to }: { from: readonly [number, number]; to: readonly [number, number] }) {
-  const dx = to[0] - from[0];
-  const dz = to[1] - from[1];
-  const len = Math.hypot(dx, dz);
-  if (len < 1) return null;
-  const ux = dx / len;
-  const uz = dz / len;
-  const dashes: Array<readonly [readonly [number, number], readonly [number, number]]> = [];
-  for (let dist = 0.6; dist < len - 0.6; dist += 1.8) {
-    const end = Math.min(dist + 0.85, len - 0.4);
-    dashes.push([
-      [from[0] + ux * dist, from[1] + uz * dist],
-      [from[0] + ux * end, from[1] + uz * end],
-    ]);
+  markDisk(x: number, z: number, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    for (let a = -steps; a <= steps; a += 1) {
+      for (let b = -steps; b <= steps; b += 1) {
+        if (a * a + b * b > steps * steps) continue;
+        this.set(x + a * this.cell, z + b * this.cell);
+      }
+    }
   }
-  return (
-    <group>
-      {dashes.map(([start, end], index) => (
-        <GlowSeg key={index} from={start} to={end} width={0.1} color={LANE} y={0.1} glow={0.7} />
-      ))}
-    </group>
-  );
+
+  markRing(ring: Ring, margin: number) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of ring) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    for (let x = minX - margin; x <= maxX + margin; x += this.cell) {
+      for (let z = minZ - margin; z <= maxZ + margin; z += this.cell) {
+        if (insideRing(x, z, ring) || nearRing(x, z, ring, margin)) this.set(x, z);
+      }
+    }
+  }
+
+  markLine(points: Ring, radius: number) {
+    const steps = Math.ceil(radius / this.cell);
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const [ax, az] = points[i]!;
+      const [bx, bz] = points[i + 1]!;
+      const len = Math.hypot(bx - ax, bz - az);
+      const n = Math.max(1, Math.ceil(len / (this.cell * 0.5)));
+      for (let s = 0; s <= n; s += 1) {
+        const x = ax + ((bx - ax) * s) / n;
+        const z = az + ((bz - az) * s) / n;
+        for (let a = -steps; a <= steps; a += 1) {
+          for (let b = -steps; b <= steps; b += 1) this.set(x + a * this.cell, z + b * this.cell);
+        }
+      }
+    }
+  }
+
+  taken(x: number, z: number) {
+    const k = this.index(x, z);
+    return k < 0 || this.data[k] === 1;
+  }
 }
 
-/** A photo-style street: sidewalk, deck, curb, edge lines, dashed center. Colors stay in the glass palette. */
-function Paved({
-  from,
-  to,
-  width = 3.6,
-}: {
-  from: readonly [number, number];
-  to: readonly [number, number];
-  width?: number;
-}) {
-  const half = width / 2;
-  const leftCurb = shift(from, to, -(half + 0.08));
-  const rightCurb = shift(from, to, half + 0.08);
-  const leftEdge = shift(from, to, -(half - 0.22));
-  const rightEdge = shift(from, to, half - 0.22);
-  return (
-    <group>
-      <GlowSeg from={from} to={to} width={width + 2.2} color={WALK} y={0.03} glow={0.18} />
-      <GlowSeg from={from} to={to} width={width} color={DECK} y={0.055} glow={0.42} />
-      <GlowSeg from={leftCurb.from} to={leftCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
-      <GlowSeg from={rightCurb.from} to={rightCurb.to} width={0.14} color={CURB} y={0.09} glow={0.85} />
-      <GlowSeg from={leftEdge.from} to={leftEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
-      <GlowSeg from={rightEdge.from} to={rightEdge.to} width={0.07} color={LANE} y={0.1} glow={0.55} />
-      <LaneDashes from={from} to={to} />
-    </group>
-  );
+/* —— Streets —— */
+
+/** Ground width for each OSM way type, in scene units. */
+const WAY_HALF_WIDTH: Record<WayRibbon["layer"], number> = {
+  road: 0.62,
+  sidewalk: 0.22,
+  footway: 0.2,
+  path: 0.16,
+};
+
+const HIGHLIGHT = new Set<string>(INTERVENTION_EDGE_IDS);
+
+/** Points every `spacing` units along a polyline, with heading and side offset. */
+function along(points: Ring, spacing: number, offset: number) {
+  const out: { x: number; z: number; rot: number }[] = [];
+  let carry = spacing / 2;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const [ax, az] = points[i]!;
+    const [bx, bz] = points[i + 1]!;
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) continue;
+    const nx = -dz / len;
+    const nz = dx / len;
+    let t = carry;
+    while (t < len) {
+      out.push({
+        x: ax + (dx / len) * t + nx * offset,
+        z: az + (dz / len) * t + nz * offset,
+        rot: Math.atan2(dx, dz),
+      });
+      t += spacing;
+    }
+    carry = t - len;
+  }
+  return out;
 }
 
-function CurvedRoads() {
-  const holes = [6, 14, 22].map((index) => beside(BOULEVARD, index, 0.2));
-  return (
-    <group>
-      {BOULEVARD.slice(0, -1).map((from, index) => (
-        <Paved key={`bend-${index}`} from={from} to={BOULEVARD[index + 1] ?? from} width={3.8} />
-      ))}
-      {holes.map((spot, index) => {
-        const hole = POTHOLES[index];
-        if (!hole) return null;
-        return <Pothole key={hole.id} id={hole.id} x={spot.x} z={spot.z} />;
-      })}
-    </group>
-  );
-}
-
-function StreetGrid() {
-  const span = 58;
-  return (
-    <group>
-      {CROSS_STREETS.map((z) => (
-        <Paved key={`h-${z}`} from={[-span, z]} to={[span, z]} />
-      ))}
-      {AVENUES.map((x) => (
-        <Paved key={`v-${x}`} from={[x, -span]} to={[x, span]} />
-      ))}
-    </group>
-  );
-}
-
-function beside(points: readonly (readonly [number, number])[], index: number, dist: number) {
-  const prev = points[Math.max(0, index - 1)] ?? points[index]!;
-  const next = points[Math.min(points.length - 1, index + 1)] ?? points[index]!;
-  const dx = next[0] - prev[0];
-  const dz = next[1] - prev[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const here = points[index] ?? prev;
-  return {
-    x: here[0] + (-dz / len) * dist,
-    z: here[1] + (dx / len) * dist,
-    rot: Math.atan2(dx, dz),
-  };
-}
-
-function Hydrant({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
-      <mesh position={[0, 0.42, 0]} castShadow>
-        <cylinderGeometry args={[0.22, 0.26, 0.84, 8]} />
-        <meshStandardMaterial color="#f3c2b4" emissive="#e08978" emissiveIntensity={0.35} roughness={0.45} />
-      </mesh>
-      <mesh position={[0, 0.92, 0]} castShadow>
-        <cylinderGeometry args={[0.14, 0.18, 0.22, 8]} />
-        <meshStandardMaterial color="#fff6f2" roughness={0.4} />
-      </mesh>
-      <mesh position={[0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
-        <meshStandardMaterial color="#fff6f2" />
-      </mesh>
-      <mesh position={[-0.28, 0.5, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.07, 0.07, 0.22, 6]} />
-        <meshStandardMaterial color="#fff6f2" />
-      </mesh>
-    </group>
-  );
-}
-
-function Lamp({ x, z }: { x: number; z: number }) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 1.45, 0]} castShadow>
-        <cylinderGeometry args={[0.05, 0.08, 2.9, 6]} />
-        <meshStandardMaterial color="#f4ffff" emissive="#d8fbff" emissiveIntensity={0.35} />
-      </mesh>
-      <mesh position={[0.34, 2.85, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.035, 0.035, 0.7, 6]} />
-        <meshStandardMaterial color="#f4ffff" />
-      </mesh>
-      <mesh position={[0.62, 2.72, 0]}>
-        <sphereGeometry args={[0.22, 10, 8]} />
-        <meshStandardMaterial color="#fff3c4" emissive="#ffe08a" emissiveIntensity={1.6} toneMapped={false} />
-      </mesh>
-    </group>
-  );
-}
-
-function Bench({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
-      <mesh position={[0, 0.42, 0]} castShadow>
-        <boxGeometry args={[1.5, 0.08, 0.42]} />
-        <meshStandardMaterial color="#f7fbff" roughness={0.55} />
-      </mesh>
-      <mesh position={[0, 0.68, -0.17]} castShadow>
-        <boxGeometry args={[1.5, 0.42, 0.06]} />
-        <meshStandardMaterial color="#d7eef4" roughness={0.5} />
-      </mesh>
-      {[-0.58, 0.58].map((leg) => (
-        <mesh key={leg} position={[leg, 0.2, 0]}>
-          <boxGeometry args={[0.08, 0.4, 0.36]} />
-          <meshStandardMaterial color="#9fd0da" />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Crosswalk({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0.07, z]} rotation={[0, rot, 0]}>
-      {[-0.7, -0.28, 0.14, 0.56].map((along) => (
-        <mesh key={along} position={[0, 0, along]} raycast={() => null}>
-          <boxGeometry args={[1.7, 0.02, 0.16]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function Shelter({ x, z, rot }: { x: number; z: number; rot: number }) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, rot, 0]}>
-      <mesh position={[0, 1.15, 0]} castShadow>
-        <boxGeometry args={[2.2, 2.1, 0.9]} />
-        <meshStandardMaterial
-          color={GLASS}
-          emissive={GLASS_GLOW}
-          emissiveIntensity={0.45}
-          transparent
-          opacity={0.55}
-          roughness={0.15}
-        />
-      </mesh>
-      <mesh position={[0, 2.28, 0]}>
-        <boxGeometry args={[2.4, 0.08, 1.05]} />
-        <meshStandardMaterial color="#f4ffff" />
-      </mesh>
-      <mesh position={[0, 0.38, 0.1]}>
-        <boxGeometry args={[1.8, 0.1, 0.4]} />
-        <meshStandardMaterial color="#f7fbff" />
-      </mesh>
-    </group>
-  );
-}
-
-function Bin({ x, z }: { x: number; z: number }) {
-  return (
-    <mesh position={[x, 0.45, z]} castShadow>
-      <cylinderGeometry args={[0.22, 0.2, 0.9, 8]} />
-      <meshStandardMaterial color="#1f6f7c" roughness={0.6} />
-    </mesh>
-  );
-}
+/* —— Proposed street improvements —— */
 
 /** Proposed props glow with a ring so they read as additions, not existing furniture. */
 const PROPOSED_RING = "#f7ffff";
@@ -595,207 +531,1240 @@ const TRASH_GLOW = "#c9f6ff";
 const RECYCLE_BODY = "#2fa58a";
 const RECYCLE_GLOW = "#7dffd8";
 
-/** `beside` at a fractional boulevard index, so new props can sit between existing ones. */
-function besideAt(points: readonly (readonly [number, number])[], at: number, dist: number) {
-  const lo = Math.floor(at);
-  const t = at - lo;
-  const a = beside(points, lo, dist);
-  if (t === 0) return a;
-  const b = beside(points, lo + 1, dist);
-  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, rot: a.rot + (b.rot - a.rot) * t };
+type ProposedSpots = {
+  /** Litter bins beside benches (rest points) and at curbs near crossings. */
+  garbage: Placement[];
+  /** Waste stations that recycling pairs with. */
+  stations: Placement[];
+  benches: Placement[];
+  lamps: Placement[];
+};
+
+/** Distance from a bench to the litter bin beside it. */
+const BENCH_BIN_STEP = 0.55;
+/** Recycling sits just down the street from the waste station it pairs with. */
+const RECYCLE_PAIR_STEP = 0.28;
+
+/** Move a spot `dist` along its heading. */
+function stepAlong(spot: Placement, dist: number): Placement {
+  const rot = spot.rot ?? 0;
+  return { x: spot.x + Math.sin(rot) * dist, z: spot.z + Math.cos(rot) * dist, rot };
 }
 
-/** Litter bins near the crossings (8, 16), the benches (7, 18) and the bus stop (12). */
-const GARBAGE_SPOTS = [
-  { at: 8, dist: -3.0 },
-  { at: 16, dist: -3.0 },
-  { at: 7.45, dist: 2.9 },
-  { at: 18.45, dist: 2.9 },
-  { at: 12.5, dist: -3.1 },
-] as const;
-/** Existing waste stations (the plain bins at 6 and 20). */
-const EXISTING_BIN_SPOTS = [
-  { at: 6, dist: 3.1 },
-  { at: 20, dist: 3.1 },
-] as const;
-/** Recycling sits just down the street from the waste station it pairs with. */
-const RECYCLE_PAIR_STEP = 0.2;
-const PROPOSED_BENCH_SPOTS = [
-  { at: 13, dist: 2.7 },
-  { at: 23, dist: 2.7 },
-] as const;
-const PROPOSED_LAMP_SPOTS = [
-  { at: 8.5, dist: 2.6 },
-  { at: 16.5, dist: 2.6 },
-] as const;
+/* —— Build everything once per map —— */
 
-function ProposedRing({ radius }: { radius: number }) {
+type Placement = { x: number; z: number; rot?: number; s?: number; color?: string };
+
+type Built = {
+  glass: THREE.BufferGeometry[];
+  /** Real 3D landmark pieces in their mapped colours. */
+  masonry: { color: string; geometry: THREE.BufferGeometry }[];
+  siding: THREE.BufferGeometry[];
+  shingles: THREE.BufferGeometry[];
+  garden: THREE.BufferGeometry;
+  metal: THREE.BufferGeometry;
+  stone: THREE.BufferGeometry;
+  roads: THREE.BufferGeometry;
+  lines: THREE.BufferGeometry;
+  lit: THREE.BufferGeometry;
+  walks: Record<"sidewalk" | "footway" | "path", THREE.BufferGeometry>;
+  trees: Placement[];
+  parks: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  ponds: { x: number; z: number; rx: number; rz: number; rot: number }[];
+  cars: Placement[];
+  people: Placement[];
+  lamps: Placement[];
+  hydrants: Placement[];
+  benches: Placement[];
+  /** Spots for the street improvements a proposal can add. */
+  proposed: ProposedSpots;
+  signs: SignSpot[];
+  water: THREE.BufferGeometry;
+  streams: THREE.BufferGeometry;
+};
+
+/* —— Suburban houses: siding walls and a pitched gable roof —— */
+
+/** OpenStreetMap building types drawn as houses rather than glass. */
+const HOUSE_KINDS = new Set(["house", "detached", "semidetached_house", "bungalow", "terrace", "residential"]);
+/**
+ * Untyped buildings ("yes") smaller than this footprint (about 250 m², in
+ * scene units²) are almost always homes or garages, so they get houses too.
+ */
+const SMALL_UNTYPED = 250 * 0.14 * 0.14;
+const SIDING = ["#f2efe8", "#e8dcc4", "#c9d4dc", "#d9c4a6"] as const;
+const SHINGLE = ["#4a4f55", "#6b4f3f", "#3f4a5a"] as const;
+
+type Point3 = readonly [number, number, number];
+
+/** One flat-shaded triangle. */
+function tri(bucket: Bucket, a: Point3, b: Point3, c: Point3) {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  bucket.push([...a, ...b, ...c], [nx, ny, nz], [0, 0, 1, 0, 0, 1]);
+}
+
+/**
+ * A house on a real footprint: one or two stories of siding, and a gable
+ * roof whose ridge runs along the footprint's longest side. Returns the
+ * roof peak height.
+ */
+function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: number) {
+  const stories = seed > 0.55 ? 2 : 1;
+  const wallTop = 0.08 + stories * 0.62;
+  walls(siding, ring, 0, wallTop);
+
+  // Orient a box to the longest wall so the ridge follows the house.
+  let longest = 0;
+  let angle = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[(i + 1) % ring.length]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len > longest) {
+      longest = len;
+      angle = Math.atan2(bz - az, bx - ax);
+    }
+  }
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  let umin = Infinity;
+  let umax = -Infinity;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  for (const [x, z] of ring) {
+    const u = x * cos + z * sin;
+    const v = -x * sin + z * cos;
+    umin = Math.min(umin, u);
+    umax = Math.max(umax, u);
+    vmin = Math.min(vmin, v);
+    vmax = Math.max(vmax, v);
+  }
+  const eave = 0.12;
+  umin -= eave;
+  umax += eave;
+  vmin -= eave;
+  vmax += eave;
+  const vmid = (vmin + vmax) / 2;
+  const rise = Math.min(1.1, ((vmax - vmin) / 2) * 0.8);
+  const at = (u: number, v: number, y: number): Point3 => [u * cos - v * sin, y, u * sin + v * cos];
+  const A = at(umin, vmin, wallTop);
+  const B = at(umax, vmin, wallTop);
+  const C = at(umax, vmax, wallTop);
+  const D = at(umin, vmax, wallTop);
+  const R1 = at(umin, vmid, wallTop + rise);
+  const R2 = at(umax, vmid, wallTop + rise);
+  tri(roof, A, B, R2);
+  tri(roof, A, R2, R1);
+  tri(roof, D, R1, R2);
+  tri(roof, D, R2, C);
+  // Gable ends in the siding color.
+  tri(siding, A, R1, D);
+  tri(siding, B, C, R2);
+
+  if (seed > 0.5) {
+    const cu = umin + (umax - umin) * 0.75;
+    const cv = vmin + (vmax - vmin) * 0.3;
+    const half = 0.11;
+    const box: Ring = [
+      [cu - half, cv - half],
+      [cu + half, cv - half],
+      [cu + half, cv + half],
+      [cu - half, cv + half],
+    ].map(([u, v]) => [u * cos - v * sin, u * sin + v * cos] as const);
+    const chimneyTop = wallTop + rise + 0.25;
+    walls(chimney, box, wallTop, chimneyTop);
+    cap(chimney, box, chimneyTop);
+  }
+  return wallTop + rise;
+}
+
+/* —— Real 3D shapes from OpenStreetMap (Simple 3D Buildings) —— */
+
+/** Real metres → scene units, with the same ~1.5× height boost the city uses. */
+const REAL_TO_SCENE = 0.14 * 1.5;
+const METRES_PER_LEVEL = 3.2;
+
+/** "443.2", "75 m" → number; anything else → null. */
+function metres(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const n = parseFloat(String(value));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Real top and bottom in metres, if the mapper recorded them. */
+function realHeights(tags: Record<string, unknown>) {
+  const levels = metres(tags["building:levels"]);
+  const minLevel = metres(tags["building:min_level"]);
+  const top = metres(tags.height) ?? (levels !== null ? levels * METRES_PER_LEVEL : null);
+  if (top === null || top <= 0) return null;
+  const bottom = metres(tags.min_height) ?? (minLevel !== null ? minLevel * METRES_PER_LEVEL : 0);
+  return { top, bottom: Math.min(bottom, top - 0.5) };
+}
+
+/** "glass" for glass, else a hex colour from building:colour (stone if none). */
+function facade(tags: Record<string, unknown>): string {
+  if (String(tags["building:material"] ?? "").toLowerCase() === "glass") return "glass";
+  const raw = tags["building:colour"];
+  if (typeof raw === "string" && raw.trim()) {
+    const color = new THREE.Color();
+    try {
+      color.setStyle(raw.trim());
+      return `#${color.getHexString()}`;
+    } catch {
+      // Unknown colour name: fall through to stone.
+    }
+  }
+  return STONE;
+}
+
+/** Walls whose top height can differ at each corner (sloped roofs). */
+function wallsTo(bucket: Bucket, ring: Ring, y0: number, topAt: (i: number) => number) {
+  const outward = signedArea(ring) > 0;
+  let u = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const j = (i + 1) % ring.length;
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[j]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-5) continue;
+    const A0: Point3 = [ax, y0, az];
+    const B0: Point3 = [bx, y0, bz];
+    const B1: Point3 = [bx, topAt(j), bz];
+    const A1: Point3 = [ax, topAt(i), az];
+    if (outward) {
+      tri(bucket, A0, B1, B0);
+      tri(bucket, A0, A1, B1);
+    } else {
+      tri(bucket, A0, B0, B1);
+      tri(bucket, A0, B1, A1);
+    }
+    u += len;
+  }
+  return u;
+}
+
+/** A slanted band between two rings (domes taper in steps). */
+function band(bucket: Bucket, lower: Ring, y0: number, upper: Ring, y1: number) {
+  const outward = signedArea(lower) > 0;
+  for (let i = 0; i < lower.length; i += 1) {
+    const j = (i + 1) % lower.length;
+    const A0: Point3 = [lower[i]![0], y0, lower[i]![1]];
+    const B0: Point3 = [lower[j]![0], y0, lower[j]![1]];
+    const B1: Point3 = [upper[j]![0], y1, upper[j]![1]];
+    const A1: Point3 = [upper[i]![0], y1, upper[i]![1]];
+    if (outward) {
+      tri(bucket, A0, B1, B0);
+      tri(bucket, A0, A1, B1);
+    } else {
+      tri(bucket, A0, B0, B1);
+      tri(bucket, A0, B1, A1);
+    }
+  }
+}
+
+/** An upward-facing roof over a ring with a height per corner. */
+function slopedCap(bucket: Bucket, ring: Ring, heightAt: (i: number) => number) {
+  const contour = ring.map(([x, z]) => new THREE.Vector2(x, z));
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+    const a: Point3 = [ring[i!]![0], heightAt(i!), ring[i!]![1]];
+    let b: Point3 = [ring[j!]![0], heightAt(j!), ring[j!]![1]];
+    let c: Point3 = [ring[k!]![0], heightAt(k!), ring[k!]![1]];
+    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    if (ny < 0) [b, c] = [c, b];
+    tri(bucket, a, b, c);
+  }
+}
+
+/**
+ * One real 3D piece: walls from its bottom to the roof line, then the
+ * mapped roof shape. `center` is the whole building's middle, which sloped
+ * crowns rise toward.
+ */
+function drawPiece(wall: Bucket, roof: Bucket, ring: Ring, tags: Record<string, unknown>, center: readonly [number, number]) {
+  const h = realHeights(tags);
+  if (!h) return 0;
+  const y0 = h.bottom * REAL_TO_SCENE;
+  const yTop = Math.max(y0 + 0.05, h.top * REAL_TO_SCENE);
+  const shape = String(tags["roof:shape"] ?? "flat").toLowerCase();
+  // A roof taller than a quarter of the piece is almost always a mapping slip.
+  const roofH = shape === "flat" ? 0 : Math.min((yTop - y0) * 0.25, (metres(tags["roof:height"]) ?? 6) * REAL_TO_SCENE);
+  const base = yTop - roofH;
+
+  if (shape === "skillion") {
+    // Corners nearest the building's middle are highest: a tapered crown.
+    const d = ring.map(([x, z]) => Math.hypot(x - center[0], z - center[1]));
+    const near = Math.min(...d);
+    const far = Math.max(...d);
+    const at = (i: number) => base + roofH * (far - near > 1e-4 ? 1 - (d[i]! - near) / (far - near) : 1);
+    wallsTo(wall, ring, y0, at);
+    slopedCap(roof, ring, at);
+  } else if (shape === "dome" || shape === "onion" || shape === "round") {
+    walls(wall, ring, y0, base);
+    let lower = ring;
+    let yLower = base;
+    for (let k = 1; k <= 4; k += 1) {
+      const t = (k / 4) * (Math.PI / 2);
+      const upper = shrink(ring, Math.max(0.05, Math.cos(t)));
+      const yUpper = base + roofH * Math.sin(t);
+      band(roof, lower, yLower, upper, yUpper);
+      lower = upper;
+      yLower = yUpper;
+    }
+    cap(roof, lower, yLower);
+  } else if (shape !== "flat") {
+    // Pyramidal, hipped, gabled…: all rise to a point over the middle.
+    walls(wall, ring, y0, base);
+    const [cx, cz] = centroid(ring);
+    const apex: Point3 = [cx, yTop, cz];
+    const up = signedArea(ring) > 0;
+    for (let i = 0; i < ring.length; i += 1) {
+      const a: Point3 = [ring[i]![0], base, ring[i]![1]];
+      const b: Point3 = [ring[(i + 1) % ring.length]![0], base, ring[(i + 1) % ring.length]![1]];
+      if (up) tri(roof, b, a, apex);
+      else tri(roof, a, b, apex);
+    }
+  } else {
+    walls(wall, ring, y0, yTop);
+    cap(roof, ring, yTop);
+  }
+  return yTop;
+}
+
+function buildCity(model: CityModel): Built {
+  const glass = GLASS_TINTS.map(() => new Bucket());
+  const siding = SIDING.map(() => new Bucket());
+  const shingles = SHINGLE.map(() => new Bucket());
+  const garden = new Bucket();
+  const metal = new Bucket();
+  const stone = new Bucket();
+  const occupancy = new Occupancy(model.bounds);
+
+  // Real 3D landmarks: masonry buckets by mapped colour; glass uses the tints.
+  const masonry = new Map<string, Bucket>();
+  const surface = (tags: Record<string, unknown>, key: string) => {
+    const look = facade(tags);
+    if (look === "glass") return glass[Math.floor(idHash(key) * glass.length)] ?? glass[0]!;
+    let bucket = masonry.get(look);
+    if (!bucket) {
+      bucket = new Bucket();
+      masonry.set(look, bucket);
+    }
+    return bucket;
+  };
+  // Which building each 3D piece belongs to (the piece's middle is inside it).
+  const piecesOf = new Map<string, Part[]>();
+  const orphanPieces: Part[] = [];
+  for (const part of model.parts) {
+    const [px, pz] = centroid(part.ring);
+    const owner = model.parsed.buildings.find((b) => insideRing(px, pz, b.ring));
+    if (owner) piecesOf.set(owner.id, [...(piecesOf.get(owner.id) ?? []), part]);
+    else orphanPieces.push(part);
+  }
+  for (const part of orphanPieces) {
+    const peak = drawPiece(surface(part.tags, part.id), metal, part.ring, part.tags, centroid(part.ring));
+    if (peak > 0) occupancy.markHeight(part.ring, peak);
+  }
+
+  for (const building of model.parsed.buildings) {
+    const ring = building.ring;
+    if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
+    const kind = model.kinds.get(building.id) ?? "yes";
+    const seed = idHash(building.id);
+    const own = model.tags.get(building.id) ?? {};
+    const pieces = piecesOf.get(building.id);
+    // Dense downtowns can hit the download quota partway through a
+    // landmark. If its pieces stop well short of its own recorded height,
+    // they are incomplete: draw the whole building at that height instead.
+    const ownTop = realHeights(own)?.top ?? 0;
+    const piecesTop = Math.max(0, ...(pieces ?? []).map((piece) => realHeights({ ...own, ...piece.tags })?.top ?? 0));
+    const complete = piecesTop >= ownTop * 0.9;
+    if (pieces && complete && pieces.some((piece) => realHeights(piece.tags))) {
+      // A detailed landmark: draw its mapped 3D pieces, not the outline.
+      const middle = centroid(ring);
+      let peak = 0;
+      for (const piece of pieces) {
+        const tags = { ...own, ...piece.tags };
+        peak = Math.max(peak, drawPiece(surface(tags, piece.id), metal, piece.ring, tags, middle));
+      }
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
+    if (HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED)) {
+      const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
+      const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
+      const peak = house(wall, roof, stone, ring, seed);
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
+    if (!HOUSE_KINDS.has(kind) && realHeights(own)) {
+      // The mapper recorded its real height: use it, not a guess.
+      const peak = drawPiece(surface(own, building.id), metal, ring, own, centroid(ring));
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
+    const floors = (FLOORS[kind] ?? 5) + Math.floor(seed * 7);
+    const top = PODIUM_H + floors * FLOOR_H;
+    const tint = glass[Math.floor(idHash(`${building.id}c`) * glass.length)] ?? glass[0]!;
+    const style = Math.floor(idHash(`${building.id}m`) * 3);
+
+    const podium = shrink(ring, 1.03);
+    walls(stone, podium, 0, PODIUM_H);
+    cap(stone, podium, PODIUM_H);
+    // Same glass city, three silhouettes so the skyline is not one box.
+    if (floors >= 8 && style === 2) {
+      const step1 = PODIUM_H + Math.max(2, Math.floor(floors * 0.42)) * FLOOR_H;
+      const step2 = PODIUM_H + Math.max(4, Math.floor(floors * 0.72)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, step1);
+      cap(metal, ring, step1);
+      const mid = shrink(ring, 0.74);
+      walls(tint, mid, step1, step2);
+      cap(metal, mid, step2);
+      const crown = shrink(ring, 0.46 + seed * 0.12);
+      const crownTop = top + (1 + Math.floor(seed * 3)) * FLOOR_H;
+      walls(tint, crown, step2, crownTop);
+      cap(metal, crown, crownTop);
+    } else if (floors >= 6 && style === 1) {
+      const waist = PODIUM_H + Math.max(2, Math.floor(floors * 0.58)) * FLOOR_H;
+      walls(tint, ring, PODIUM_H, waist);
+      cap(metal, ring, waist);
+      const upper = shrink(ring, 0.58 + seed * 0.18);
+      walls(tint, upper, waist, top);
+      cap(seed > 0.5 ? metal : garden, upper, top);
+    } else if (floors >= 9) {
+      walls(tint, ring, PODIUM_H, top);
+      const crown = shrink(ring, 0.52 + seed * 0.22);
+      const crownTop = top + (2 + Math.floor(seed * 3)) * FLOOR_H;
+      cap(metal, ring, top);
+      walls(tint, crown, top, crownTop);
+      cap(metal, crown, crownTop);
+    } else {
+      walls(tint, ring, PODIUM_H, top);
+      cap(garden, ring, top);
+    }
+    occupancy.markRing(ring, 0.9);
+    occupancy.markHeight(ring, top);
+  }
+
+  // Shorelines stay clear of trees. The water is the map, not a barrier.
+  const water = new Bucket();
+  for (const body of model.parsed.water) {
+    if (body.ring.length < 3) continue;
+    cap(water, body.ring, 0.04);
+    occupancy.markRing(body.ring, 0.3);
+  }
+  const streams = new Bucket();
+  for (const brook of model.parsed.waterways) {
+    const half = brook.wide ? 0.22 : 0.07;
+    strip(streams, brook.points, half, 0.045);
+    occupancy.markLine(brook.points, half + 0.12);
+  }
+
+  const roads = new Bucket();
+  const lines = new Bucket();
+  const lit = new Bucket();
+  const walks = { sidewalk: new Bucket(), footway: new Bucket(), path: new Bucket() };
+  for (const way of model.parsed.ways) {
+    const half = WAY_HALF_WIDTH[way.layer];
+    occupancy.markLine(way.points, half + 0.6);
+    if (way.edgeId && HIGHLIGHT.has(way.edgeId)) {
+      strip(lit, way.points, half, 0.045);
+    } else if (way.layer === "road") {
+      strip(roads, way.points, half, 0.05);
+      strip(lines, way.points, 0.035, 0.07);
+    } else {
+      strip(walks[way.layer], way.points, half, 0.035);
+    }
+  }
+
+  const { minX, maxX, minZ, maxZ } = model.bounds;
+  const parks: Built["parks"] = [];
+  const ponds: Built["ponds"] = [];
+  const area = Math.max(1, (maxX - minX) * (maxZ - minZ));
+  const parkTarget = Math.min(48, Math.max(10, Math.round(area / 7000)));
+  const pondTarget = Math.min(36, Math.max(8, Math.round(area / 10000)));
+  const spotStep = 7.5;
+  const ellipseBlocked = (x: number, z: number, rx: number, rz: number, rot: number, pad: number) => {
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    for (let u = -(rx + pad); u <= rx + pad; u += occupancy.cell) {
+      for (let v = -(rz + pad); v <= rz + pad; v += occupancy.cell) {
+        if ((u * u) / ((rx + pad) * (rx + pad)) + (v * v) / ((rz + pad) * (rz + pad)) > 1) continue;
+        if (occupancy.taken(x + u * cos - v * sin, z - u * sin - v * cos)) return true;
+      }
+    }
+    return false;
+  };
+  const hitsSpot = (
+    spots: { x: number; z: number; rx: number; rz: number }[],
+    x: number,
+    z: number,
+    reach: number,
+  ) => spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < Math.max(spot.rx, spot.rz) + reach);
+  for (let gx = minX; gx <= maxX && (parks.length < parkTarget || ponds.length < pondTarget); gx += spotStep) {
+    for (let gz = minZ; gz <= maxZ && (parks.length < parkTarget || ponds.length < pondTarget); gz += spotStep) {
+      if (hash(gx + 3, gz + 11) > 0.55) continue;
+      const x = gx + (hash(gz, gx + 1) - 0.5) * spotStep;
+      const z = gz + (hash(gx + 2, gz) - 0.5) * spotStep;
+      // Keep them in the city, in the gaps between buildings, not the empty outskirts.
+      if (occupancy.nearbyHeight(x, z, 16) < 1) continue;
+      const rot = hash(x + 4, z + 4) * Math.PI;
+      const wantPark = hash(x + 1, z + 9) > 0.42 && parks.length < parkTarget;
+      if (wantPark) {
+        const rx = 2.4 + hash(x, z) * 4.6;
+        const rz = rx * (0.52 + hash(z, x) * 0.36);
+        if (!hitsSpot(parks, x, z, Math.max(rx, rz) * 0.45) && !ellipseBlocked(x, z, rx, rz, rot, 0.7)) {
+          parks.push({ x, z, rx, rz, rot });
+        }
+      }
+      if (ponds.length < pondTarget && hash(z + 2, x + 6) > 0.28) {
+        const rx = 0.8 + hash(x + 5, z) * 2.2;
+        const rz = rx * (0.5 + hash(z + 3, x) * 0.38);
+        const pondRot = hash(x + 8, z + 2) * Math.PI;
+        if (!hitsSpot(ponds, x, z, Math.max(rx, rz)) && !ellipseBlocked(x, z, rx, rz, pondRot, 0.7)) {
+          occupancy.markDisk(x, z, Math.max(rx, rz) + 0.45);
+          ponds.push({ x, z, rx, rz, rot: pondRot });
+        }
+      }
+    }
+  }
+
+  // Trees on open lawn only. Size tracks the nearest buildings, with a wider spread.
+  const trees: Placement[] = [];
+  const step = 2.6;
+  for (let gx = minX; gx <= maxX; gx += step) {
+    for (let gz = minZ; gz <= maxZ; gz += step) {
+      const r = hash(gx, gz);
+      if (r < 0.45) continue;
+      const x = gx + (hash(gz, gx) - 0.5) * step;
+      const z = gz + (hash(gx + 7, gz) - 0.5) * step;
+      if (occupancy.taken(x, z)) continue;
+      const palette = r > 0.9 ? AUTUMN : GREEN;
+      const roll = hash(x + 1, z + 3);
+      const near = occupancy.nearbyHeight(x, z, 8);
+      const target = near > 1 ? Math.min(near * (0.45 + roll * 0.4), 5.4) : 1.8 + roll * 2.2;
+      let s = Math.min(2.9, Math.max(0.65, target / 1.86));
+      const crownHitsRoad = (scale: number) => {
+        const reach = 0.62 * scale;
+        for (let i = 0; i < 6; i += 1) {
+          const t = (i / 6) * Math.PI * 2;
+          if (occupancy.taken(x + Math.cos(t) * reach, z + Math.sin(t) * reach)) return true;
+        }
+        return false;
+      };
+      while (s > 0.65 && crownHitsRoad(s)) s *= 0.8;
+      if (crownHitsRoad(s)) continue;
+      trees.push({
+        x,
+        z,
+        s,
+        color: palette[Math.floor(hash(z, x) * palette.length)] ?? GREEN[0],
+      });
+    }
+  }
+
+  const roadWays = model.parsed.ways.filter((way) => way.layer === "road");
+  const CAR_COLORS = ["#e8eef2", "#d4543c", "#3d6fb5", "#f2c14e", "#2f3438", "#7eb0c8"];
+  const SHIRTS = ["#ff6b6b", "#ffd23f", "#3ec1d3", "#1488ff", "#8e7cff", "#2ecc71", "#ff9f43", "#f78fb3"];
+  const cars: Placement[] = [];
+  for (const way of roadWays) {
+    const origin = way.points[0] ?? [0, 0];
+    const side = hash(origin[0], origin[1]) > 0.5 ? 0.28 : -0.28;
+    for (const spot of along(way.points, 8, side)) {
+      if (cars.length >= 320 || hash(spot.x, spot.z) < 0.4) continue;
+      cars.push({
+        ...spot,
+        // Local +X is the nose. `along` stores a heading whose long axis sits across the lane.
+        rot: spot.rot - Math.PI / 2 + (side < 0 ? Math.PI : 0),
+        color: CAR_COLORS[Math.floor(hash(spot.z, spot.x) * CAR_COLORS.length)] ?? CAR_COLORS[0],
+      });
+    }
+  }
+  const people: Placement[] = [];
+  for (const way of model.parsed.ways) {
+    if (way.layer !== "sidewalk" && way.layer !== "footway") continue;
+    for (const spot of along(way.points, 4.2, 0)) {
+      if (people.length >= 460 || hash(spot.x + 2, spot.z) < 0.52) continue;
+      people.push({
+        ...spot,
+        color: SHIRTS[Math.floor(hash(spot.z + 1, spot.x) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
+  for (const park of parks) {
+    if (people.length >= 520 || hash(park.x, park.z) < 0.3) continue;
+    const extras = 1 + Math.floor(hash(park.z, park.x) * 3);
+    for (let i = 0; i < extras && people.length < 520; i += 1) {
+      const angle = hash(park.x + i, park.z) * Math.PI * 2;
+      const dist = (0.25 + hash(park.z + i, park.x) * 0.45) * Math.min(park.rx, park.rz);
+      people.push({
+        x: park.x + Math.cos(angle) * dist,
+        z: park.z + Math.sin(angle) * dist,
+        rot: angle,
+        color: SHIRTS[Math.floor(hash(park.x + i, park.z + 4) * SHIRTS.length)] ?? SHIRTS[0],
+      });
+    }
+  }
+  const lamps = roadWays.flatMap((way) => along(way.points, 7, WAY_HALF_WIDTH.road + 0.35));
+  const hydrants = roadWays.flatMap((way) => along(way.points, 19, -(WAY_HALF_WIDTH.road + 0.3)));
+  const benches = model.parsed.ways
+    .filter((way) => way.layer === "footway")
+    .flatMap((way) => along(way.points, 13, WAY_HALF_WIDTH.footway + 0.3));
+
+  // Proposed street improvements: cans beside benches and at curbs, recycling
+  // paired with those stations, extra benches and lamps along footways.
+  const footWays = model.parsed.ways.filter((way) => way.layer === "footway");
+  const curbBins = roadWays.flatMap((way) => along(way.points, 23, -(WAY_HALF_WIDTH.road + 0.45)));
+  const garbageSpots = [...benches.map((bench) => stepAlong(bench, BENCH_BIN_STEP)), ...curbBins];
+  const proposed: ProposedSpots = {
+    garbage: garbageSpots,
+    stations: garbageSpots,
+    benches: footWays
+      .flatMap((way) => along(way.points, 13, -(WAY_HALF_WIDTH.footway + 0.3)))
+      .map((spot) => ({ ...spot, rot: spot.rot + Math.PI })),
+    lamps: footWays.flatMap((way) => along(way.points, 9, WAY_HALF_WIDTH.footway + 0.35)),
+  };
+
+  // Street signs along named roads, spaced so one street never crowds a block.
+  const signs: SignSpot[] = [];
+  for (const way of roadWays) {
+    const name = way.name;
+    if (!name) continue;
+    for (const spot of along(way.points, 26, WAY_HALF_WIDTH.road + 0.3)) {
+      if (signs.some((s) => s.name === name && Math.hypot(s.x - spot.x, s.z - spot.z) < 18)) continue;
+      signs.push({ name, x: spot.x, z: spot.z });
+    }
+  }
+
+  return {
+    masonry: [...masonry].map(([color, bucket]) => ({ color, geometry: bucket.geometry() })),
+    glass: glass.map((b) => b.geometry()),
+    siding: siding.map((b) => b.geometry()),
+    shingles: shingles.map((b) => b.geometry()),
+    garden: garden.geometry(),
+    metal: metal.geometry(),
+    stone: stone.geometry(),
+    roads: roads.geometry(),
+    lines: lines.geometry(),
+    lit: lit.geometry(),
+    walks: {
+      sidewalk: walks.sidewalk.geometry(),
+      footway: walks.footway.geometry(),
+      path: walks.path.geometry(),
+    },
+    trees,
+    parks,
+    ponds,
+    cars,
+    people,
+    water: water.geometry(),
+    streams: streams.geometry(),
+    lamps,
+    hydrants,
+    benches,
+    proposed,
+    signs,
+  };
+}
+
+/** Outlines for the minimap, plus names for "where am I". */
+function mapFor(model: CityModel): CityMap {
+  const line = (points: Ring) =>
+    points.map(([x, z], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${z.toFixed(1)}`).join("");
+  const roads: string[] = [];
+  const walks: string[] = [];
+  const streets: CityMap["streets"] = [];
+  for (const way of model.parsed.ways) {
+    if (way.layer !== "road") {
+      walks.push(line(way.points));
+      continue;
+    }
+    roads.push(line(way.points));
+    if (!way.name) continue;
+    for (let i = 0; i < way.points.length - 1; i += 1) {
+      const [ax, az] = way.points[i]!;
+      const [bx, bz] = way.points[i + 1]!;
+      streets.push({ name: way.name, ax, az, bx, bz });
+    }
+  }
+  const buildings = model.parsed.buildings.map((b) => `${line(b.ring)}Z`).join("");
+  const water = [
+    ...model.parsed.water.map((body) => `${line(body.ring)}Z`),
+    ...model.parsed.waterways.map((brook) => line(brook.points)),
+  ].join("");
+  const places = model.parsed.buildings.flatMap((b) => {
+    if (!b.name) return [];
+    const [x, z] = centroid(b.ring);
+    return [{ name: b.name, x, z }];
+  });
+  return {
+    bounds: model.bounds,
+    geoBounds: model.geoBounds,
+    project: model.project,
+    unproject: model.unproject,
+    buildingPoints: model.parsed.buildings.map((b) => centroid(b.ring)),
+    buildingKinds: model.parsed.buildings.map((b) => model.kinds.get(b.id) ?? "yes"),
+    roads: roads.join(""),
+    walks: walks.join(""),
+    water,
+    buildings,
+    streets,
+    places,
+  };
+}
+
+/* —— Materials and shared shapes —— */
+
+/** Siding and shingle colors for houses; double-sided so gables always show. */
+function useHouseMaterials() {
+  const houses = useMemo(
+    () => ({
+      siding: SIDING.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+      ),
+      shingles: SHINGLE.map(
+        (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide }),
+      ),
+    }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      for (const m of [...houses.siding, ...houses.shingles]) m.dispose();
+    },
+    [houses],
+  );
+  return houses;
+}
+
+function useMaterials() {
+  const materials = useMemo(() => {
+    const maps = worldCurtainWall(BAY, FLOOR_H);
+    const plain = (color: string, extra: THREE.MeshStandardMaterialParameters = {}) =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
+    return {
+      maps,
+      glass: GLASS_TINTS.map(
+        (tint) =>
+          new THREE.MeshPhysicalMaterial({
+            color: tint,
+            map: maps.color,
+            roughnessMap: maps.rough,
+            roughness: 1,
+            metalness: 0.78,
+            clearcoat: 0.6,
+            clearcoatRoughness: 0.12,
+            envMapIntensity: 1.4,
+          }),
+      ),
+      surfaces: {
+        metal: plain(ROOF_METAL, { metalness: 0.5, roughness: 0.35 }),
+        garden: plain(ROOF_GARDEN, { roughness: 0.95 }),
+        stone: plain(STONE, { roughness: 0.72 }),
+        road: plain("#3b4448", { roughness: 0.85 }),
+        line: new THREE.MeshStandardMaterial({
+          color: SMART_LINE,
+          emissive: SMART_LINE,
+          emissiveIntensity: 0.9,
+          toneMapped: false,
+        }),
+        lit: plain(LOGO_BLUE, { emissive: new THREE.Color(LOGO_BLUE), emissiveIntensity: 0.6 }),
+        sidewalk: plain("#d3d6d0"),
+        footway: plain("#d9d3c4"),
+        path: plain("#cfc7b2"),
+        park: plain("#3e7c4c", { roughness: 0.95 }),
+        water: new THREE.MeshPhysicalMaterial({
+          color: "#1c6f96",
+          roughness: 0.08,
+          metalness: 0.55,
+          transmission: 0.35,
+          thickness: 0.4,
+          transparent: true,
+          opacity: 0.92,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+        stream: new THREE.MeshStandardMaterial({
+          color: "#2f8eb4",
+          roughness: 0.2,
+          metalness: 0.35,
+        }),
+      },
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      materials.maps.color.dispose();
+      materials.maps.rough.dispose();
+      for (const m of materials.glass) m.dispose();
+      for (const m of Object.values(materials.surfaces)) m.dispose();
+    },
+    [materials],
+  );
+  return materials;
+}
+
+function mergeGeos(parts: THREE.BufferGeometry[]) {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  let offset = 0;
+  for (const part of parts) {
+    const pos = part.getAttribute("position");
+    const nor = part.getAttribute("normal");
+    const index = part.getIndex();
+    for (let i = 0; i < pos.count; i += 1) {
+      positions.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      normals.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+    }
+    if (index) {
+      for (let i = 0; i < index.count; i += 1) indices.push(index.getX(i) + offset);
+    }
+    offset += pos.count;
+    part.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function axle(x: number, z: number, radius: number, width: number) {
+  const geo = new THREE.CylinderGeometry(radius, radius, width, 12);
+  geo.rotateX(Math.PI / 2);
+  geo.translate(x, 0.075, z);
+  return geo;
+}
+
+function carWindows() {
+  const pane = (w: number, h: number, d: number, x: number, y: number, z: number, tilt = 0) => {
+    const glass = new THREE.BoxGeometry(w, h, d);
+    if (tilt) glass.rotateZ(tilt);
+    glass.translate(x, y, z);
+    return glass;
+  };
+  return [
+    pane(0.02, 0.11, 0.26, 0.1, 0.27, 0, -0.42),
+    pane(0.02, 0.1, 0.24, -0.26, 0.27, 0, 0.35),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, 0.145),
+    pane(0.3, 0.09, 0.015, -0.08, 0.27, -0.145),
+  ];
+}
+
+function useFurniture() {
+  const parts = useMemo(() => {
+    const at = (g: THREE.BufferGeometry, y: number, z = 0) => g.translate(0, y, z);
+    return {
+      shapes: {
+        trunk: at(new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6), 0.45),
+        canopy: at(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 1.15, 1), 1.15),
+        pole: at(new THREE.CylinderGeometry(0.025, 0.035, 1.16, 6), 0.58),
+        bulb: at(new THREE.SphereGeometry(0.09, 8, 6), 1.18),
+        hydrant: at(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 8), 0.17),
+        seat: at(new THREE.BoxGeometry(0.6, 0.035, 0.17), 0.17),
+        back: at(new THREE.BoxGeometry(0.6, 0.17, 0.025), 0.27, -0.07),
+        car: mergeGeos([
+          (() => {
+            const body = new THREE.BoxGeometry(0.78, 0.15, 0.34);
+            body.translate(0.02, 0.16, 0);
+            return body;
+          })(),
+          (() => {
+            const roof = new THREE.BoxGeometry(0.28, 0.03, 0.26);
+            roof.translate(-0.08, 0.34, 0);
+            return roof;
+          })(),
+        ]),
+        windows: mergeGeos(carWindows()),
+        wheels: mergeGeos([
+          axle(0.22, 0.18, 0.075, 0.05),
+          axle(0.22, -0.18, 0.075, 0.05),
+          axle(-0.22, 0.18, 0.075, 0.05),
+          axle(-0.22, -0.18, 0.075, 0.05),
+        ]),
+        hubs: mergeGeos([
+          axle(0.22, 0.18, 0.032, 0.058),
+          axle(0.22, -0.18, 0.032, 0.058),
+          axle(-0.22, 0.18, 0.032, 0.058),
+          axle(-0.22, -0.18, 0.032, 0.058),
+        ]),
+        headlights: mergeGeos([
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, 0.1);
+            return lamp;
+          })(),
+          (() => {
+            const lamp = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+            lamp.translate(0.4, 0.16, -0.1);
+            return lamp;
+          })(),
+        ]),
+        body: at(new THREE.CapsuleGeometry(0.07, 0.2, 4, 6), 0.26),
+        head: at(new THREE.SphereGeometry(0.075, 8, 6), 0.5),
+        canBody: at(new THREE.CylinderGeometry(0.09, 0.08, 0.32, 10), 0.16),
+        canBand: at(new THREE.CylinderGeometry(0.092, 0.092, 0.03, 10), 0.24),
+        canLid: at(new THREE.CylinderGeometry(0.075, 0.1, 0.04, 10), 0.34),
+        ring: at(new THREE.RingGeometry(0.9, 1, 24).rotateX(-Math.PI / 2), 0.03),
+      },
+      looks: {
+        bark: new THREE.MeshStandardMaterial({ color: "#5c4634", roughness: 0.9 }),
+        leaves: new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true }),
+        steel: new THREE.MeshStandardMaterial({ color: "#e9edef", metalness: 0.6, roughness: 0.3 }),
+        glow: new THREE.MeshStandardMaterial({
+          color: "#fff3c4",
+          emissive: "#ffe08a",
+          emissiveIntensity: 1.6,
+          toneMapped: false,
+        }),
+        red: new THREE.MeshStandardMaterial({ color: "#e08978", roughness: 0.45 }),
+        wood: new THREE.MeshStandardMaterial({ color: "#c9a77c", roughness: 0.7 }),
+        paint: new THREE.MeshStandardMaterial({ roughness: 0.28, metalness: 0.55 }),
+        glass: new THREE.MeshStandardMaterial({
+          color: "#b7e4f5",
+          roughness: 0.05,
+          metalness: 0.15,
+          transparent: true,
+          opacity: 0.72,
+        }),
+        tire: new THREE.MeshStandardMaterial({ color: "#141414", roughness: 0.9 }),
+        hub: new THREE.MeshStandardMaterial({ color: "#d5d8dc", metalness: 0.7, roughness: 0.25 }),
+        lamp: new THREE.MeshStandardMaterial({
+          color: "#fff4d2",
+          emissive: "#ffe08a",
+          emissiveIntensity: 1.4,
+          toneMapped: false,
+        }),
+        shirt: new THREE.MeshStandardMaterial({ roughness: 0.6 }),
+        skin: new THREE.MeshStandardMaterial({ color: "#e0b08a", roughness: 0.7 }),
+        trashBody: new THREE.MeshStandardMaterial({
+          color: TRASH_BODY,
+          emissive: TRASH_GLOW,
+          emissiveIntensity: 0.18,
+          roughness: 0.5,
+        }),
+        trashGlow: new THREE.MeshStandardMaterial({
+          color: TRASH_GLOW,
+          emissive: TRASH_GLOW,
+          emissiveIntensity: 1.2,
+          toneMapped: false,
+        }),
+        trashLid: new THREE.MeshStandardMaterial({ color: "#eef8fb", roughness: 0.4 }),
+        recycleBody: new THREE.MeshStandardMaterial({
+          color: RECYCLE_BODY,
+          emissive: RECYCLE_GLOW,
+          emissiveIntensity: 0.18,
+          roughness: 0.5,
+        }),
+        recycleGlow: new THREE.MeshStandardMaterial({
+          color: RECYCLE_GLOW,
+          emissive: RECYCLE_GLOW,
+          emissiveIntensity: 1.2,
+          toneMapped: false,
+        }),
+        recycleLid: new THREE.MeshStandardMaterial({ color: "#e9fff7", roughness: 0.4 }),
+        proposedRing: new THREE.MeshBasicMaterial({
+          color: PROPOSED_RING,
+          transparent: true,
+          opacity: 0.85,
+          toneMapped: false,
+        }),
+      },
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      for (const g of Object.values(parts.shapes)) g.dispose();
+      for (const m of Object.values(parts.looks)) m.dispose();
+    },
+    [parts],
+  );
+  return parts;
+}
+
+/** One shape drawn at many spots in a single draw call. */
+function Instanced({
+  geometry,
+  material,
+  items,
+  shadows = true,
+  colored = false,
+}: {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  items: Placement[];
+  shadows?: boolean;
+  /** Use each item's color (tree canopies); otherwise the material's. */
+  colored?: boolean;
+}) {
+  const mesh = useMemo(() => {
+    const m = new THREE.InstancedMesh(geometry, material, Math.max(1, items.length));
+    m.count = items.length;
+    const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const upAxis = new THREE.Vector3(0, 1, 0);
+    const color = new THREE.Color();
+    items.forEach((item, i) => {
+      q.setFromAxisAngle(upAxis, item.rot ?? 0);
+      const s = item.s ?? 1;
+      matrix.compose(new THREE.Vector3(item.x, 0, item.z), q, new THREE.Vector3(s, s, s));
+      m.setMatrixAt(i, matrix);
+      if (colored && item.color) m.setColorAt(i, color.set(item.color));
+    });
+    m.castShadow = shadows;
+    m.receiveShadow = true;
+    m.raycast = () => null;
+    return m;
+  }, [geometry, material, items, shadows, colored]);
+  useEffect(() => () => mesh.dispose(), [mesh]);
+  return <primitive object={mesh} />;
+}
+
+type Furniture = ReturnType<typeof useFurniture>;
+
+/** A glowing ring under each proposed prop; `size` scales the unit ring. */
+function ProposedRings({ furniture, items, size }: { furniture: Furniture; items: Placement[]; size: number }) {
+  const rings = useMemo(() => items.map((item) => ({ x: item.x, z: item.z, s: size })), [items, size]);
   return (
-    <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-      <ringGeometry args={[radius, radius + 0.08, 24]} />
-      <meshBasicMaterial color={PROPOSED_RING} transparent opacity={0.85} toneMapped={false} />
-    </mesh>
+    <Instanced geometry={furniture.shapes.ring} material={furniture.looks.proposedRing} items={rings} shadows={false} />
   );
 }
 
-function ProposedCan({ x, z, kind }: { x: number; z: number; kind: "garbage" | "recycling" }) {
-  const body = kind === "recycling" ? RECYCLE_BODY : TRASH_BODY;
-  const glow = kind === "recycling" ? RECYCLE_GLOW : TRASH_GLOW;
+/** Proposed garbage or recycling cans: slate or green body, glowing band, light lid, ring. */
+function ProposedCans({ furniture, items, kind }: { furniture: Furniture; items: Placement[]; kind: "garbage" | "recycling" }) {
+  const { shapes, looks } = furniture;
+  const recycling = kind === "recycling";
   return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, 0.45, 0]} castShadow raycast={() => null}>
-        <cylinderGeometry args={[0.24, 0.21, 0.9, 12]} />
-        <meshStandardMaterial color={body} emissive={glow} emissiveIntensity={0.18} roughness={0.5} />
-      </mesh>
-      <mesh position={[0, 0.62, 0]} raycast={() => null}>
-        <cylinderGeometry args={[0.245, 0.245, 0.07, 12]} />
-        <meshStandardMaterial color={glow} emissive={glow} emissiveIntensity={1.2} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 0.94, 0]} castShadow raycast={() => null}>
-        <cylinderGeometry args={[0.2, 0.27, 0.1, 12]} />
-        <meshStandardMaterial color={kind === "recycling" ? "#e9fff7" : "#eef8fb"} roughness={0.4} />
-      </mesh>
-      <ProposedRing radius={0.42} />
+    <group name={`proposed-${kind}`}>
+      <Instanced geometry={shapes.canBody} material={recycling ? looks.recycleBody : looks.trashBody} items={items} />
+      <Instanced geometry={shapes.canBand} material={recycling ? looks.recycleGlow : looks.trashGlow} items={items} shadows={false} />
+      <Instanced geometry={shapes.canLid} material={recycling ? looks.recycleLid : looks.trashLid} items={items} />
+      <ProposedRings furniture={furniture} items={items} size={0.17} />
     </group>
   );
 }
 
-function ProposedStreetImprovements() {
+/** Shows the street improvements selected for the proposal as glowing additions. */
+function ProposedStreetImprovements({ furniture, spots }: { furniture: Furniture; spots: ProposedSpots }) {
   const { selectedIds } = useStreetImprovements();
   const garbage = selectedIds.includes("add-garbage-cans");
   const recycling = selectedIds.includes("add-recycling");
   const benches = selectedIds.includes("add-benches");
   const lighting = selectedIds.includes("add-better-lighting");
+  const recyclingSpots = useMemo(
+    () => spots.stations.map((station) => stepAlong(station, RECYCLE_PAIR_STEP)),
+    [spots],
+  );
   if (!garbage && !recycling && !benches && !lighting) return null;
-  const stations = [...EXISTING_BIN_SPOTS, ...(garbage ? GARBAGE_SPOTS : [])];
+  const { shapes, looks } = furniture;
   return (
-    <group>
-      {garbage
-        ? GARBAGE_SPOTS.map(({ at, dist }) => {
-            const spot = besideAt(BOULEVARD, at, dist);
-            return <ProposedCan key={`garbage-${at}`} kind="garbage" x={spot.x} z={spot.z} />;
-          })
-        : null}
-      {recycling
-        ? stations.map(({ at, dist }) => {
-            const spot = besideAt(BOULEVARD, at + RECYCLE_PAIR_STEP, dist);
-            return <ProposedCan key={`recycling-${at}`} kind="recycling" x={spot.x} z={spot.z} />;
-          })
-        : null}
-      {benches
-        ? PROPOSED_BENCH_SPOTS.map(({ at, dist }) => {
-            const spot = besideAt(BOULEVARD, at, dist);
-            return (
-              <group key={`proposed-bench-${at}`}>
-                <Bench x={spot.x} z={spot.z} rot={spot.rot} />
-                <group position={[spot.x, 0, spot.z]}>
-                  <ProposedRing radius={1.0} />
-                </group>
-              </group>
-            );
-          })
-        : null}
-      {lighting
-        ? PROPOSED_LAMP_SPOTS.map(({ at, dist }) => {
-            const spot = besideAt(BOULEVARD, at, dist);
-            return (
-              <group key={`proposed-lamp-${at}`}>
-                <Lamp x={spot.x} z={spot.z} />
-                <group position={[spot.x, 0, spot.z]}>
-                  <ProposedRing radius={0.5} />
-                </group>
-              </group>
-            );
-          })
-        : null}
+    <group name="proposed-street-improvements">
+      {garbage ? <ProposedCans kind="garbage" furniture={furniture} items={spots.garbage} /> : null}
+      {recycling ? <ProposedCans kind="recycling" furniture={furniture} items={recyclingSpots} /> : null}
+      {benches ? (
+        <group name="proposed-benches">
+          <Instanced geometry={shapes.seat} material={looks.wood} items={spots.benches} />
+          <Instanced geometry={shapes.back} material={looks.wood} items={spots.benches} />
+          <ProposedRings furniture={furniture} items={spots.benches} size={0.42} />
+        </group>
+      ) : null}
+      {lighting ? (
+        <group name="proposed-lamps">
+          <Instanced geometry={shapes.pole} material={looks.steel} items={spots.lamps} />
+          <Instanced geometry={shapes.bulb} material={looks.glow} items={spots.lamps} shadows={false} />
+          <ProposedRings furniture={furniture} items={spots.lamps} size={0.2} />
+        </group>
+      ) : null}
     </group>
   );
 }
 
-function StreetLife() {
-  const hydrants = [4, 10, 16, 22].map((index) => beside(BOULEVARD, index, 2.5));
-  const lamps = [3, 9, 15, 21].map((index) => beside(BOULEVARD, index, -2.6));
-  const benches = [7, 18].map((index) => beside(BOULEVARD, index, 2.7));
-  const walks = [8, 16].map((index) => beside(BOULEVARD, index, 0));
-  const stop = beside(BOULEVARD, 12, -3.1);
-  const bins = EXISTING_BIN_SPOTS.map(({ at, dist }) => beside(BOULEVARD, at, dist));
-  return (
-    <group>
-      {hydrants.map((spot) => (
-        <Hydrant key={`hydrant-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      {lamps.map((spot) => (
-        <Lamp key={`lamp-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
-      ))}
-      {benches.map((spot) => (
-        <Bench key={`bench-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      {walks.map((spot) => (
-        <Crosswalk key={`walk-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} rot={spot.rot} />
-      ))}
-      <Shelter x={stop.x} z={stop.z} rot={stop.rot} />
-      {bins.map((spot) => (
-        <Bin key={`bin-${spot.x.toFixed(1)}`} x={spot.x} z={spot.z} />
-      ))}
-      <ProposedStreetImprovements />
-    </group>
+/**
+ * The glass city. With no map it shows the Wellesley town; given a loaded
+ * neighborhood (same FeatureCollection shape) it rebuilds from that.
+ */
+export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; reducedMotion?: boolean }) {
+  const { glass, surfaces } = useMaterials();
+  const houses = useHouseMaterials();
+  const pondShape = useMemo(() => new THREE.CircleGeometry(1, 18), []);
+  useEffect(() => () => pondShape.dispose(), [pondShape]);
+  const furniture = useFurniture();
+  const { shapes, looks } = furniture;
+  const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
+  const built = useMemo(() => buildCity(model), [model]);
+  const masonryLooks = useMemo(
+    () =>
+      built.masonry.map(
+        ({ color }) => new THREE.MeshStandardMaterial({ color, roughness: 0.78, side: THREE.DoubleSide }),
+      ),
+    [built],
   );
-}
-
-function Roads() {
-  return (
-    <group>
-      <StreetGrid />
-      <CurvedRoads />
-      <StreetLife />
-    </group>
+  useEffect(
+    () => () => {
+      for (const material of masonryLooks) material.dispose();
+    },
+    [masonryLooks],
   );
-}
 
-function Plaza({ x, z }: { x: number; z: number }) {
-  const s = 3.4;
+  useEffect(() => publishMap(mapFor(model)), [model]);
+  // Accessibility issues from the map's own OpenStreetMap tags.
+  useEffect(() => {
+    const source = geoJson ?? town;
+    const issues = detectIssues(source).map((issue) => {
+      const [x, z] = model.project(issue.point[0], issue.point[1]);
+      const path = issue.line.map(([lon, lat]) => {
+        const [px, pz] = model.project(lon, lat);
+        return [px, pz] as [number, number];
+      });
+      return { ...issue, x, z, path };
+    });
+    publishIssues(issues, source, !geoJson);
+  }, [model, geoJson]);
+  useEffect(
+    () => () => {
+      for (const g of [
+        ...built.glass,
+        ...built.masonry.map((m) => m.geometry),
+        ...built.siding,
+        ...built.shingles,
+        built.garden,
+        built.metal,
+        built.stone,
+        built.water,
+        built.streams,
+        built.roads,
+        built.lines,
+        built.lit,
+        ...Object.values(built.walks),
+      ]) {
+        g.dispose();
+      }
+    },
+    [built],
+  );
+
   return (
-    <group position={[x, 0.08, z]}>
-      <GlowSeg from={[-s, -s]} to={[s, -s]} width={0.3} />
-      <GlowSeg from={[-s, s]} to={[s, s]} width={0.3} />
-      <GlowSeg from={[-s, -s]} to={[-s, s]} width={0.3} />
-      <GlowSeg from={[s, -s]} to={[s, s]} width={0.3} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <planeGeometry args={[s * 1.3, s * 1.3]} />
-        <meshStandardMaterial
-          color="#7fe0ea"
-          transparent
-          opacity={0.32}
-          emissive="#c4f7ff"
-          emissiveIntensity={0.6}
+    <group name="wellesley-reimagined">
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow raycast={() => null}>
+        {/* Wide enough that the fog hides its edge from any camera angle. */}
+        <planeGeometry args={[4000, 4000]} />
+        <meshStandardMaterial color={LAWN} roughness={0.95} />
+      </mesh>
+
+      <mesh geometry={built.walks.path} material={surfaces.path} receiveShadow raycast={() => null} />
+      <mesh geometry={built.walks.sidewalk} material={surfaces.sidewalk} receiveShadow raycast={() => null} />
+      <mesh geometry={built.walks.footway} material={surfaces.footway} receiveShadow raycast={() => null} />
+      <mesh geometry={built.water} material={surfaces.water} receiveShadow raycast={() => null} />
+      <mesh geometry={built.streams} material={surfaces.stream} receiveShadow raycast={() => null} />
+      <mesh geometry={built.roads} material={surfaces.road} receiveShadow raycast={() => null} />
+      <mesh geometry={built.lines} material={surfaces.line} raycast={() => null} />
+      <mesh geometry={built.lit} material={surfaces.lit} raycast={() => null} />
+
+      {built.glass.map((geometry, i) => (
+        <mesh
+          key={`glass-${i}`}
+          geometry={geometry}
+          material={glass[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
         />
-      </mesh>
-    </group>
-  );
-}
+      ))}
+      {built.siding.map((geometry, i) => (
+        <mesh
+          key={`siding-${i}`}
+          geometry={geometry}
+          material={houses.siding[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.shingles.map((geometry, i) => (
+        <mesh
+          key={`roof-${i}`}
+          geometry={geometry}
+          material={houses.shingles[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.masonry.map(({ color, geometry }, i) => (
+        <mesh
+          key={`masonry-${color}`}
+          geometry={geometry}
+          material={masonryLooks[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      <mesh geometry={built.stone} material={surfaces.stone} castShadow receiveShadow raycast={() => null} />
+      <mesh geometry={built.garden} material={surfaces.garden} receiveShadow raycast={() => null} />
+      <mesh geometry={built.metal} material={surfaces.metal} castShadow receiveShadow raycast={() => null} />
 
-export function City() {
-  return (
-    <group>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.02, 0]}
-        receiveShadow
-        raycast={() => null}
-      >
-        <planeGeometry args={[180, 180]} />
-        <meshStandardMaterial color={GROUND} roughness={0.95} metalness={0.08} />
-      </mesh>
-      <Roads />
-      {CITY.lots.map((lot) => (
-        <HoloBuilding key={`b-${lot.x}-${lot.z}`} {...lot} />
+      {built.parks.map((park) => (
+        <mesh
+          key={`park-${park.x.toFixed(1)}-${park.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.park}
+          position={[park.x, 0.03, park.z]}
+          rotation={[-Math.PI / 2, park.rot, 0]}
+          scale={[park.rx, park.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
       ))}
-      {CITY.trees.map((tree) => (
-        <HoloTree key={`t-${tree.x}-${tree.z}`} {...tree} />
+      {built.ponds.map((pond) => (
+        <mesh
+          key={`${pond.x.toFixed(1)}-${pond.z.toFixed(1)}`}
+          geometry={pondShape}
+          material={surfaces.water}
+          position={[pond.x, 0.045, pond.z]}
+          rotation={[-Math.PI / 2, pond.rot, 0]}
+          scale={[pond.rx, pond.rz, 1]}
+          receiveShadow
+          raycast={() => null}
+        />
       ))}
-      <Plaza x={CITY.plaza.x} z={CITY.plaza.z} />
-      <pointLight position={[9, 16, 7]} intensity={26} distance={52} color="#c8fbff" />
-      <Sparkles count={160} scale={110} size={3.4} speed={0.16} color="#e8ffff" opacity={0.72} />
+
+      <Instanced geometry={shapes.car} material={looks.paint} items={built.cars} colored />
+      <Instanced geometry={shapes.windows} material={looks.glass} items={built.cars} shadows={false} />
+      <Instanced geometry={shapes.wheels} material={looks.tire} items={built.cars} />
+      <Instanced geometry={shapes.hubs} material={looks.hub} items={built.cars} />
+      <Instanced geometry={shapes.headlights} material={looks.lamp} items={built.cars} shadows={false} />
+      <Instanced geometry={shapes.body} material={looks.shirt} items={built.people} colored />
+      <Instanced geometry={shapes.head} material={looks.skin} items={built.people} shadows={false} />
+      <Instanced geometry={shapes.trunk} material={looks.bark} items={built.trees} />
+      <Instanced geometry={shapes.canopy} material={looks.leaves} items={built.trees} colored />
+      <Instanced geometry={shapes.pole} material={looks.steel} items={built.lamps} />
+      <Instanced geometry={shapes.bulb} material={looks.glow} items={built.lamps} shadows={false} />
+      <Instanced geometry={shapes.hydrant} material={looks.red} items={built.hydrants} />
+      <Instanced geometry={shapes.seat} material={looks.wood} items={built.benches} />
+      <Instanced geometry={shapes.back} material={looks.wood} items={built.benches} />
+      <ProposedStreetImprovements furniture={furniture} spots={built.proposed} />
+
+      <IssueLayer reducedMotion={reducedMotion} />
+      <AddressPin />
+      <StreetSigns signs={built.signs} />
+      <Sparkles count={90} scale={CITY_SPAN} size={2.4} speed={0.16} color="#ffffff" opacity={0.45} />
     </group>
   );
 }

@@ -25,10 +25,10 @@ Meters, evidence status, and sources are never taken from the client.
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | No | — | Server-side Google Gemini key. When unset, the deterministic template always runs. |
-| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Model id for `@google/genai` |
+| `GEMINI_MODEL` | No | `gemini-3.8-flash` | First model to try. A retired or busy model is followed by other Flash models. |
 | `DATABASE_URL` | No | — | Tiger Data / PostGIS URL with TLS (`sslmode=require`). When unset or unreachable, the API uses the bundled dataset. |
-| `PORT` | No | `8787` | Listen port |
-| `HOST` | No | `127.0.0.1` | Bind address |
+| `PORT` | No | `8787` | Listen port. `SERVER_PORT` wins when Pterodactyl sets it. |
+| `HOST` | No | `127.0.0.1` | Bind address. `0.0.0.0` when `SERVER_PORT` is set and `HOST` is empty. |
 | `MORROW_CORS_ORIGIN` | No | `*` | Exact browser origin to allow, or omit for `*` |
 
 Do **not** put `GEMINI_API_KEY` or `DATABASE_URL` in Vite `VITE_*` env vars or ship them to the browser. See the repo root [`.env.example`](../../.env.example) for the template shape (no real secrets).
@@ -70,6 +70,8 @@ curl -s -X POST "http://127.0.0.1:8787/api/proposals/generate" \
 
 ## Frontend
 
-Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin (see [`docs/deploy-api-vultr.md`](../../docs/deploy-api-vultr.md)). When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
+Set `VITE_API_BASE=http://127.0.0.1:8787` (no trailing slash) so the Vite app can call these endpoints. For GitHub Pages, set the repository Actions variable `VITE_API_BASE` to the public HTTPS API origin, such as `https://api.morrow.khayrul.com`. When the API is down, the UI keeps the bundled fixtures and labels generate / Gemini **unavailable**.
 
-Set `MORROW_HOSTED_ON=vultr` on the Vultr container so `GET /api/health` reports `"vultr": true`. Do not claim Vultr until that public health check succeeds.
+## Pterodactyl
+
+Import [`pterodactyl/morrow-api.json`](../../pterodactyl/morrow-api.json) as an egg. The image is `ghcr.io/lavishsphere/morrow:latest`. The panel allocation is `SERVER_PORT`. Put `DATABASE_URL` and `GEMINI_API_KEY` in the egg variables, not in git. Nginx on the VPS proxies public HTTPS to that allocation.

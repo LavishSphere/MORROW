@@ -4,9 +4,11 @@
  */
 
 import { compareScenario } from "@morrow/routing";
+import { detectIssues, issueFact, issuesOnlyFacts, type MapIssue } from "../../../shared/issues.ts";
 import type {
   Barrier,
   Intervention,
+  IssueFact,
   ProposalFacts,
 } from "../../../shared/types.ts";
 import {
@@ -16,6 +18,7 @@ import {
   getScenario,
   graphChangesForIntervention,
   scenario as demoScenario,
+  townGeoJSON,
 } from "./data/dataset.ts";
 
 const DEFAULT_NEXT_STEPS =
@@ -32,17 +35,49 @@ export class ProposalInputError extends Error {
 }
 
 export type ResolvedGenerateInput = {
-  scenarioId: string;
-  barrier: Barrier;
-  intervention: Intervention;
+  /** Null for an issues-only proposal. */
+  scenarioId: string | null;
+  barrier: Barrier | null;
+  intervention: Intervention | null;
   facts: ProposalFacts;
 };
 
+let townIssues: Map<string, MapIssue> | null = null;
+
+/**
+ * Rebuild trusted facts for extra issues from ids alone: re-detect them in
+ * the bundled town map and recompute what fixing them changes.
+ */
+export function resolveIssues(ids: readonly string[] | undefined): IssueFact[] {
+  if (!ids || ids.length === 0) return [];
+  townIssues ??= new Map(detectIssues(townGeoJSON()).map((issue) => [issue.id, issue]));
+  const known = townIssues;
+  return [...new Set(ids)].map((id) => {
+    const issue = known.get(id);
+    if (!issue) throw new ProposalInputError(`Unknown issueId: ${id}`, 400);
+    return issueFact(issue, townGeoJSON());
+  });
+}
+
 export function resolveGenerateInput(body: {
-  scenarioId: string;
-  barrierId: string;
-  interventionId: string;
+  scenarioId?: string;
+  barrierId?: string;
+  interventionId?: string;
+  issueIds?: string[];
 }): ResolvedGenerateInput {
+  if (!body.scenarioId || !body.barrierId || !body.interventionId) {
+    // Issues only: the resident's picked map issues are the whole proposal.
+    const issues = resolveIssues(body.issueIds);
+    if (issues.length === 0) {
+      throw new ProposalInputError("Pick at least one issue, or send the showcase scenario ids.", 400);
+    }
+    return {
+      scenarioId: null,
+      barrier: null,
+      intervention: null,
+      facts: issuesOnlyFacts(issues, "Wellesley, MA"),
+    };
+  }
   const scenario = getScenario(body.scenarioId);
   if (!scenario) {
     throw new ProposalInputError(
@@ -129,6 +164,8 @@ export function resolveGenerateInput(body: {
     destinationLabel: scenario.destinationLabel,
     nextSteps: DEFAULT_NEXT_STEPS,
   };
+  const issues = resolveIssues(body.issueIds);
+  if (issues.length > 0) facts.issues = issues;
 
   return {
     scenarioId: scenario.id,

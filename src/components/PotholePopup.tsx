@@ -24,10 +24,7 @@ export function PotholePopup() {
     <div className="pothole-popup" role="dialog" aria-labelledby="pothole-popup-title">
       <p className="pothole-popup__kicker">Illustrative street issue</p>
       <h2 id="pothole-popup-title">{hole.label}</h2>
-      <p>
-        Not a surveyed defect. Patching it updates Improve, Compare, and
-        Propose for this spot.
-      </p>
+      <p>Not a surveyed defect.</p>
       <p>{PATCH_DESCRIPTION}</p>
       <div className="pothole-popup__actions">
         {patched ? (

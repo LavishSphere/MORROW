@@ -64,6 +64,26 @@ export type Intervention = {
  * Route meters come from the routing module — never from the model.
  * originLabel / destinationLabel / nextSteps match the PDF seven-section brief.
  */
+/**
+ * One extra issue folded into a proposal. The server rebuilds these from
+ * issue ids and the bundled town map; clients never supply the numbers.
+ */
+export type IssueFact = {
+  id: string;
+  kind: string;
+  title: string;
+  where: string;
+  fix: string;
+  evidenceStatus: EvidenceStatus;
+  source: string;
+  sourceUrl: string;
+  before: string;
+  after: string;
+  metrics: { label: string; value: string }[];
+  /** True when the numbers come from the routing model, not just geometry. */
+  modeled: boolean;
+};
+
 export type ProposalFacts = {
   city: string;
   locationLabel: string;
@@ -78,6 +98,13 @@ export type ProposalFacts = {
   originLabel: string;
   destinationLabel: string;
   nextSteps: string;
+  /** Extra issues the resident added to this proposal. */
+  issues?: IssueFact[];
+  /**
+   * "issues": the proposal is only the map issues the resident picked (no
+   * showcase route). Absent or "scenario": the original single-route draft.
+   */
+  scope?: "scenario" | "issues";
 };
 
 /** Structured draft prose (Gemini or deterministic template). */
@@ -91,9 +118,12 @@ export type DraftProposal = {
 
 /** Body for POST /api/proposals/generate — ids only; server reloads trusted data. */
 export type GenerateProposalRequest = {
-  scenarioId: string;
-  barrierId: string;
-  interventionId: string;
+  /** The showcase route. Optional when the proposal is issues only. */
+  scenarioId?: string;
+  barrierId?: string;
+  interventionId?: string;
+  /** Optional extra issues from the town map, by id (see shared/issues.ts). */
+  issueIds?: string[];
 };
 
 /** Response from generate / GET proposal by id. */

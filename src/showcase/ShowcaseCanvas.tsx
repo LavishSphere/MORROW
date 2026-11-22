@@ -11,7 +11,10 @@ const PAINTED_FRAMES = 3;
 /** Avoid a one-frame flash when the city is already warm. */
 const MIN_COVER_MS = 700;
 /** If the canvas never paints, do not hold the cover forever. */
-const COVER_LIMIT_MS = 12000;
+/** If the canvas never paints (say, a background tab), lift the cover anyway. */
+const COVER_LIMIT_MS = 4000;
+/** How many times to rebuild the 3D view after the GPU drops it. */
+const MAX_GL_RESTARTS = 3;
 
 function CityPainted({ onPainted }: { onPainted: () => void }) {
   const frames = useRef(0);
@@ -45,6 +48,9 @@ export function ShowcaseCanvas({
   const [covered, setCovered] = useState(true);
   const [startedAt] = useState(() => performance.now());
   const liftTimer = useRef<number | null>(null);
+  // Bumped to remount the canvas when the GPU drops the WebGL context,
+  // which otherwise leaves a black screen until the page is reloaded.
+  const [glKey, setGlKey] = useState(0);
 
   useEffect(() => {
     const limit = window.setTimeout(() => setCovered(false), COVER_LIMIT_MS);
@@ -72,11 +78,12 @@ export function ShowcaseCanvas({
       data-barrier-count={barriers.length}
     >
       <Canvas
+        key={glKey}
         shadows
         camera={{
           fov: 34,
           near: 0.1,
-          far: 420,
+          far: 2500,
           position: [46, 34, 50],
         }}
         dpr={[1, 1.75]}
@@ -86,8 +93,19 @@ export function ShowcaseCanvas({
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 0.92,
         }}
-        onCreated={({ camera }) => {
+        onCreated={({ camera, gl }) => {
           camera.lookAt(8, 3.2, 6);
+          gl.domElement.addEventListener(
+            "webglcontextlost",
+            (event) => {
+              event.preventDefault();
+              setCovered(false);
+              if (glKey < MAX_GL_RESTARTS) {
+                window.setTimeout(() => setGlKey((key) => key + 1), 500);
+              }
+            },
+            { once: true },
+          );
         }}
       >
         <TownScene

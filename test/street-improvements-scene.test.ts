@@ -10,7 +10,7 @@ test("selected garbage and recycling improvements add cans to the map", async ()
   assert.match(city, /useStreetImprovements\(\)/);
   assert.match(city, /selectedIds\.includes\("add-garbage-cans"\)/);
   assert.match(city, /selectedIds\.includes\("add-recycling"\)/);
-  assert.match(city, /<ProposedStreetImprovements \/>/);
+  assert.match(city, /<ProposedStreetImprovements furniture=\{furniture\} spots=\{built\.proposed\} \/>/);
   assert.match(city, /kind="garbage"/);
   assert.match(city, /kind="recycling"/);
   for (const id of ["add-garbage-cans", "add-recycling"]) {
@@ -18,30 +18,25 @@ test("selected garbage and recycling improvements add cans to the map", async ()
   }
 });
 
-test("proposed cans are distinct from the plain bin and stay out of click targets", async () => {
+test("proposed cans are distinct from existing furniture and stay out of click targets", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  const can = city.slice(city.indexOf("function ProposedCan"), city.indexOf("function ProposedStreetImprovements"));
+  const can = city.slice(city.indexOf("function ProposedCans"), city.indexOf("function ProposedStreetImprovements"));
   assert.ok(can.length > 0);
-  assert.notEqual(city.match(/const TRASH_BODY = "(#[0-9a-f]+)"/)?.[1], "#1f6f7c");
-  assert.notEqual(
-    city.match(/const TRASH_BODY = "(#[0-9a-f]+)"/)?.[1],
-    city.match(/const RECYCLE_BODY = "(#[0-9a-f]+)"/)?.[1],
-  );
-  assert.match(can, /<ProposedRing/);
-  const meshes = can.match(/<mesh\b[^\n]*/g) ?? [];
-  assert.ok(meshes.length >= 3);
-  for (const mesh of meshes) assert.match(mesh, /raycast=\{\(\) => null\}/);
-  // Pothole click target is still interactive.
-  assert.match(city, /selectPothole\(id\)/);
+  const trash = city.match(/const TRASH_BODY = "(#[0-9a-f]+)"/)?.[1];
+  assert.equal(trash, "#5b6f78");
+  assert.notEqual(trash, city.match(/const RECYCLE_BODY = "(#[0-9a-f]+)"/)?.[1]);
+  assert.match(can, /<ProposedRings/);
+  // Cans are drawn with the shared instanced helper, which never takes pointer hits.
+  const parts = can.match(/<Instanced\b[^\n]*/g) ?? [];
+  assert.ok(parts.length >= 3);
+  const instanced = city.slice(city.indexOf("function Instanced"), city.indexOf("type Furniture"));
+  assert.match(instanced, /m\.raycast = \(\) => null/);
 });
 
-test("cans sit near crossings, rest points and existing waste stations", async () => {
+test("cans sit beside benches and at curbs, with recycling paired to each station", async () => {
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
-  const garbage = city.slice(city.indexOf("const GARBAGE_SPOTS"), city.indexOf("const EXISTING_BIN_SPOTS"));
-  for (const at of ["at: 8,", "at: 16,", "at: 7.45,", "at: 18.45,", "at: 12.5,"]) {
-    assert.ok(garbage.includes(at), `garbage can at ${at}`);
-  }
-  assert.match(city, /const EXISTING_BIN_SPOTS = \[\s*\{ at: 6, dist: 3\.1 \},\s*\{ at: 20, dist: 3\.1 \},/);
-  assert.match(city, /\[\.\.\.EXISTING_BIN_SPOTS, \.\.\.\(garbage \? GARBAGE_SPOTS : \[\]\)\]/);
-  assert.match(city, /at \+ RECYCLE_PAIR_STEP/);
+  assert.match(city, /benches\.map\(\(bench\) => stepAlong\(bench, BENCH_BIN_STEP\)\)/);
+  assert.match(city, /const curbBins = roadWays\.flatMap/);
+  assert.match(city, /garbage: garbageSpots,\s*stations: garbageSpots,/);
+  assert.match(city, /stepAlong\(station, RECYCLE_PAIR_STEP\)/);
 });

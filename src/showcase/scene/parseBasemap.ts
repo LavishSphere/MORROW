@@ -1,6 +1,13 @@
 import { isFeatureCollection, type SceneProjector } from "../geo";
 
-export type BasemapLayer = "building" | "road" | "footway" | "path" | "sidewalk";
+export type BasemapLayer =
+  | "building"
+  | "road"
+  | "footway"
+  | "path"
+  | "sidewalk"
+  | "water"
+  | "waterway";
 
 export type BuildingFootprint = {
   id: string;
@@ -14,15 +21,32 @@ export type BuildingFootprint = {
 export type WayRibbon = {
   id: string;
   edgeId?: string;
-  layer: Exclude<BasemapLayer, "building">;
+  layer: Exclude<BasemapLayer, "building" | "water" | "waterway">;
   name?: string;
   points: readonly (readonly [number, number])[];
   halfWidth: number;
 };
 
+/** A mapped lake or pond. The shoreline is the map, not a defect. */
+export type WaterBody = {
+  id: string;
+  name?: string;
+  ring: readonly (readonly [number, number])[];
+};
+
+/** A mapped river or brook, as a centerline. */
+export type Waterway = {
+  id: string;
+  name?: string;
+  points: readonly (readonly [number, number])[];
+  wide: boolean;
+};
+
 export type ParsedBasemap = {
   buildings: BuildingFootprint[];
   ways: WayRibbon[];
+  water: WaterBody[];
+  waterways: Waterway[];
 };
 
 const BUILDING_HEIGHTS: Record<string, number> = {
@@ -80,14 +104,16 @@ function layerOf(properties: Record<string, unknown> | null): BasemapLayer | nul
     layer === "road" ||
     layer === "footway" ||
     layer === "path" ||
-    layer === "sidewalk"
+    layer === "sidewalk" ||
+    layer === "water" ||
+    layer === "waterway"
   ) {
     return layer;
   }
   return null;
 }
 
-function wayHalfWidth(layer: Exclude<BasemapLayer, "building">): number {
+function wayHalfWidth(layer: WayRibbon["layer"]): number {
   switch (layer) {
     case "road":
       return 0.28;
@@ -116,6 +142,8 @@ export function parseBasemap(
 
   const buildings: BuildingFootprint[] = [];
   const ways: WayRibbon[] = [];
+  const water: WaterBody[] = [];
+  const waterways: Waterway[] = [];
 
   for (const feature of geoJson.features) {
     if (typeof feature !== "object" || feature === null) continue;
@@ -127,7 +155,9 @@ export function parseBasemap(
     const layer = layerOf(f.properties ?? null);
     if (!layer || !f.geometry?.type || f.geometry.coordinates == null) continue;
 
-    const id = String(f.id ?? f.properties?.osmId ?? `${layer}-${buildings.length + ways.length}`);
+    const id = String(
+      f.id ?? f.properties?.osmId ?? `${layer}-${buildings.length + ways.length + water.length}`,
+    );
     const edgeId =
       typeof f.properties?.edgeId === "string" ? f.properties.edgeId : undefined;
     const name = typeof f.properties?.name === "string" ? f.properties.name : undefined;
@@ -147,8 +177,35 @@ export function parseBasemap(
       continue;
     }
 
+    if (layer === "water" && f.geometry.type === "Polygon") {
+      const rings = f.geometry.coordinates as unknown[];
+      if (!Array.isArray(rings) || !Array.isArray(rings[0])) continue;
+      const ring = projectRing(rings[0] as unknown[], projector.project);
+      if (ring.length < 3) continue;
+      water.push({ id, name, ring });
+      continue;
+    }
+
+    if (
+      layer === "waterway" &&
+      f.geometry.type === "LineString" &&
+      Array.isArray(f.geometry.coordinates)
+    ) {
+      const points = projectLine(f.geometry.coordinates as unknown[], projector.project);
+      if (points.length < 2) continue;
+      waterways.push({
+        id,
+        name,
+        points,
+        wide: f.properties?.waterway === "river" || f.properties?.waterway === "canal",
+      });
+      continue;
+    }
+
     if (
       layer !== "building" &&
+      layer !== "water" &&
+      layer !== "waterway" &&
       f.geometry.type === "LineString" &&
       Array.isArray(f.geometry.coordinates)
     ) {
@@ -165,6 +222,8 @@ export function parseBasemap(
     }
   }
 
-  if (buildings.length === 0 && ways.length === 0) return null;
-  return { buildings, ways };
+  if (buildings.length === 0 && ways.length === 0 && water.length === 0 && waterways.length === 0) {
+    return null;
+  }
+  return { buildings, ways, water, waterways };
 }

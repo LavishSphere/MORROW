@@ -1,3 +1,5 @@
+import type { IssueFact } from '../shared/types.ts'
+
 export type EvidenceStatus = 'verified' | 'community_reported' | 'illustrative'
 export type BarrierType = 'missing_ramp' | 'unsafe_crossing' | 'blocked_path'
 export type InterventionType = 'install_ramp' | 'improve_crossing' | 'connect_path'
@@ -67,6 +69,10 @@ export type ProposalFacts = {
   originLabel: string
   destinationLabel: string
   nextSteps: string
+  /** Extra map issues in this proposal (see shared/issues.ts). */
+  issues?: IssueFact[]
+  /** "issues": only the resident's picked map issues, no showcase route. */
+  scope?: 'scenario' | 'issues'
 }
 
 export type DraftProposal = {
@@ -78,9 +84,16 @@ export type DraftProposal = {
 }
 
 export type GenerateProposalRequest = {
-  scenarioId: string
-  barrierId: string
-  interventionId: string
+  /** The showcase route. Left out for an issues-only proposal. */
+  scenarioId?: string
+  barrierId?: string
+  interventionId?: string
+  /** Issue facts built in the browser, used if the API cannot answer. Never sent. */
+  localIssues?: IssueFact[]
+  /** City name for an offline issues-only draft. Never sent. */
+  city?: string
+  /** Extra town-map issues, by id. The API recomputes their facts. */
+  issueIds?: string[]
 }
 
 export type GenerateProposalResponse = {

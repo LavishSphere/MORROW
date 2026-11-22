@@ -17,6 +17,10 @@ The barrier and intervention in [`demo-dataset.json`](./demo-dataset.json) are *
 
 When a future import uses municipal open data or documented observations, preserve `sourceTitle`, `sourceUrl`, `observedAt`, and a defensible `evidenceStatus` of `verified` or `community_reported`.
 
+## Town extract (3D view only)
+
+[`town.geojson`](./town.geojson) is a wider OpenStreetMap extract (Wellesley College, Wellesley Square, and nearby streets; bbox 42.283–42.307 N, 71.322–71.280 W) pulled via Overpass on 2026-11-21. Same © OpenStreetMap contributors (ODbL) terms as the basemap. It feeds only the 3D glass city and minimap. Routing and compare still use `basemap.geojson`.
+
 ## Honesty labels (UI / PDF)
 
 | Surface | Required language |
