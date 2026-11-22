@@ -4,6 +4,8 @@ import { neighborhoodGeoJson, type LoadedNeighborhood } from '../data/overpass'
 import type { AppMode } from '../types'
 import { Minimap } from './Minimap'
 import { MoveHints } from './MoveHints'
+import { PotholePopup } from './PotholePopup'
+
 type Props = {
   mode: AppMode
   reducedMotion: boolean
@@ -28,6 +30,7 @@ export function CanvasSlot({ mode, reducedMotion, neighborhood }: Props) {
       aria-label="Holographic city"
     >
       <ShowcaseCanvas reducedMotion={reducedMotion} barriers={[]} geoJson={geoJson} />
+      <PotholePopup />
       <Minimap placeLabel={neighborhood?.place.label ?? 'Wellesley, MA'} />
       <MoveHints />
       <p className="sr-only">

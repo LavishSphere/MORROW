@@ -1,4 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import {
+  PATCH_DESCRIPTION,
+  draftForPothole,
+  potholeById,
+  usePotholeFix,
+} from '../city/potholeFix'
 import {
   compareByIds,
   generateProposal,
@@ -14,11 +20,20 @@ import { ProposalEditor } from './ProposalEditor'
  * When the API is down, generateProposal returns the labeled template.
  */
 export function ProposeSheet() {
+  const fix = usePotholeFix()
+  const hole = potholeById(fix.selectedId)
+  const patched = hole ? fix.patchedIds.includes(hole.id) : false
   const scenario = getDemoScenario()
   const intervention = getDemoIntervention()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<GenerateProposalResponse | null>(null)
+  const [baseDraft, setBaseDraft] = useState<DraftProposal | null>(null)
   const [draft, setDraft] = useState<DraftProposal | null>(null)
+
+  useEffect(() => {
+    if (!baseDraft) return
+    setDraft(draftForPothole(baseDraft, hole, patched))
+  }, [baseDraft, hole, patched])
 
   let beforeMeters: number | null = null
   let afterMeters: number | null = null
@@ -43,7 +58,8 @@ export function ProposeSheet() {
         interventionId: scenario.interventionId,
       })
       setResult(next)
-      setDraft(next.draft)
+      setBaseDraft(next.draft)
+      setDraft(draftForPothole(next.draft, hole, patched))
     } finally {
       setLoading(false)
     }
@@ -55,6 +71,9 @@ export function ProposeSheet() {
         <div>
           <h2 className="propose-sheet__title">Proposal</h2>
           <p className="propose-sheet__lead">
+            {hole
+              ? `${hole.label}. ${patched ? 'Patched in this demo.' : 'Not patched yet.'} `
+              : null}
             {scenario.originLabel} to {scenario.destinationLabel}.
           </p>
         </div>
@@ -70,6 +89,9 @@ export function ProposeSheet() {
 
       {!(result && draft) && (
         <>
+          {hole && (
+            <p className="propose-sheet__change">{PATCH_DESCRIPTION}</p>
+          )}
           {intervention && (
             <p className="propose-sheet__change">{intervention.description}</p>
           )}

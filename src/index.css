@@ -186,6 +186,75 @@ a {
   height: 100%;
 }
 
+.pothole-popup {
+  position: absolute;
+  z-index: 6;
+  top: 4.8rem;
+  right: 1.15rem;
+  width: min(22rem, calc(100% - 2.3rem));
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 18px;
+  background: rgba(250, 252, 250, 0.96);
+  color: var(--ink);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  pointer-events: auto;
+}
+
+.pothole-popup h2 {
+  margin: 0.15rem 0 0.45rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.pothole-popup p {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.pothole-popup__kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.pothole-popup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.pothole-popup__patch,
+.pothole-popup__close {
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pothole-popup__patch {
+  border: 0;
+  background: #14211c;
+  color: #f7faf8;
+}
+
+.pothole-popup__close {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.pothole-popup__done {
+  margin: 0;
+  font-weight: 700;
+}
+
 .canvas-slot__atmosphere {
   position: absolute;
   inset: 0;

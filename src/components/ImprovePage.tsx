@@ -1,3 +1,9 @@
+import {
+  PATCH_DESCRIPTION,
+  patchPothole,
+  potholeById,
+  usePotholeFix,
+} from '../city/potholeFix'
 import type { Barrier, Intervention } from '../types'
 
 type Props = {
@@ -14,9 +20,33 @@ export function ImprovePage({
   selectedId,
   onSelect,
 }: Props) {
+  const fix = usePotholeFix()
+  const hole = potholeById(fix.selectedId)
+  const patched = hole ? fix.patchedIds.includes(hole.id) : false
   return (
     <section className="mode-page" aria-label="Intervention options">
       <h2>Options</h2>
+      {hole && (
+        <>
+          <p className="mode-page__lead">
+            <strong>{hole.label}</strong>. Illustrative pothole, not a surveyed
+            defect.
+          </p>
+          <ul className="option-list">
+            <li>
+              <button
+                type="button"
+                className={`option-list__item${patched ? ' is-active' : ''}`}
+                aria-pressed={patched}
+                onClick={() => patchPothole(hole.id)}
+              >
+                <span className="option-list__name">{PATCH_DESCRIPTION}</span>
+                <span className="option-list__meta">{patched ? 'patched' : 'patch'}</span>
+              </button>
+            </li>
+          </ul>
+        </>
+      )}
       {!barrier ? (
         <p className="mode-page__lead">
           The Wellesley barrier is not loaded yet.
