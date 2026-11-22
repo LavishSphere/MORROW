@@ -57,8 +57,9 @@ async function probeLiveApi(): Promise<boolean> {
   // the first probe (local npm run dev without api:dev already running).
   if (liveApiReachable === true) return true
   try {
+    // A server waking from idle can take several seconds to answer.
     const res = await fetch(apiUrl('/api/health'), {
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) {
       API_STATUS.barriersApi = false
@@ -354,6 +355,7 @@ export async function generateProposal(
     return localIssuesGenerate(req)
   }
   const live = await probeLiveApi()
+  let liveReason = ''
   if (live) {
     try {
       const res = await fetch(apiUrl('/api/proposals/generate'), {
@@ -384,13 +386,24 @@ export async function generateProposal(
           apiAvailable: true,
         }
       }
-    } catch {
+      // Say why instead of quietly swapping in the template.
+      const detail = await res
+        .json()
+        .then((b: { error?: unknown }) => (typeof b.error === 'string' ? b.error : ''))
+        .catch(() => '')
+      liveReason = `The proposal server answered ${res.status}${detail ? `: ${detail.slice(0, 160)}` : ''}.`
+    } catch (err) {
       liveApiReachable = null
       API_STATUS.generateApi = false
+      liveReason =
+        err instanceof DOMException && err.name === 'TimeoutError'
+          ? 'The proposal server did not answer within 55 seconds.'
+          : 'The proposal server could not be reached.'
     }
   }
 
-  return bundledGenerate(req)
+  const fallback = bundledGenerate(req)
+  return liveReason ? { ...fallback, warnings: [liveReason, ...fallback.warnings] } : fallback
 }
 
 export async function fetchProposalById(

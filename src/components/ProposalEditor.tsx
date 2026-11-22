@@ -10,6 +10,8 @@ type Props = {
   draft: DraftProposal
   warnings: string[]
   aiGenerated: boolean
+  /** The Gemini model that wrote the draft, when the live API says. */
+  draftModel?: string | null
   geminiAvailable: boolean
   apiAvailable: boolean
   onChange: (draft: DraftProposal) => void
@@ -22,6 +24,7 @@ export function ProposalEditor({
   draft,
   warnings,
   aiGenerated,
+  draftModel,
   geminiAvailable,
   apiAvailable,
   onChange,
@@ -73,7 +76,7 @@ export function ProposalEditor({
           </span>
         )}
         <span className="status-pill">
-          {aiGenerated ? 'AI draft' : 'Template draft'}
+          {aiGenerated ? `AI draft${draftModel ? ` · ${modelLabel(draftModel)}` : ''}` : 'Template draft'}
         </span>
       </div>
 
@@ -312,4 +315,12 @@ export function ProposalEditor({
       </details>
     </div>
   )
+}
+
+/** "gemini-3.8-flash" → "Gemini 3.8 Flash". */
+function modelLabel(id: string): string {
+  return id
+    .split('-')
+    .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : part))
+    .join(' ')
 }

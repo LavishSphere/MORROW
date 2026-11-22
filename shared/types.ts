@@ -139,6 +139,8 @@ export type GenerateProposalResponse = {
   apiAvailable: boolean;
   /** True when generate ran through the Mastra proposal workflow. */
   mastra?: boolean;
+  /** The Gemini model that wrote the draft (e.g. gemini-3.8-flash); null or absent for the template. */
+  draftModel?: string | null;
   /** Mastra step ids completed for this generate call (observability). */
   workflowSteps?: string[];
 };

@@ -106,6 +106,7 @@ export function ProposeSheet() {
           draft={draft}
           warnings={result.warnings}
           aiGenerated={result.aiGenerated}
+          draftModel={result.draftModel}
           geminiAvailable={result.geminiAvailable}
           apiAvailable={result.apiAvailable}
           onChange={setDraft}

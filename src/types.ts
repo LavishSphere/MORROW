@@ -107,6 +107,8 @@ export type GenerateProposalResponse = {
   warnings: string[]
   geminiAvailable: boolean
   apiAvailable: boolean
+  /** The Gemini model that wrote the draft, when the live API reports it. */
+  draftModel?: string | null
 }
 
 export type { RouteComparison, RoutePath, GraphChange, RouteQuery } from '@morrow/routing'
