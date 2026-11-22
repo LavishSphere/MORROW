@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { flyTo, useCityState, whereAmI, type CameraPose, type RailPath } from '../showcase/cityStore'
 import { useIssueState, type SceneIssue } from '../showcase/issueStore'
 import { ISSUE_COLOR } from '../showcase/issueVisuals'
+import { cameraMotion, SETTLE_MS } from '../showcase/motion'
 import { LiveTransitBadge } from './LiveTransitBadge'
 
 /** Small minimap size in CSS pixels. */
@@ -41,32 +42,20 @@ type View = {
   size: number
 }
 
-/** Draw streets, buildings, issues, and the "you are here" arrow. */
-function drawMap(
-  canvas: HTMLCanvasElement,
-  view: View,
-  paths: Paths | null,
-  issues: SceneIssue[],
-  fixed: ReadonlySet<string>,
-  selectedId: string | null,
-  pose: CameraPose,
-) {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const dpr = window.devicePixelRatio || 1
-  const px = Math.round(view.size * dpr)
-  if (canvas.width !== px) {
-    canvas.width = px
-    canvas.height = px
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.fillStyle = '#16231f'
-  ctx.fillRect(0, 0, px, px)
-  if (!paths) return
+/** A picture of the streets and buildings around a spot, wider than the minimap. */
+type BaseLayer = { canvas: HTMLCanvasElement; paths: Paths; cx: number; cz: number; span: number; px: number }
 
-  // Scene units → pixels, centered on the view.
-  const scale = px / view.span
-  ctx.setTransform(scale, 0, 0, scale, px / 2 - view.cx * scale, px / 2 - view.cz * scale)
+/** Water, buildings, walks, roads, and rail, centered on (cx, cz) at `scale` pixels per unit. */
+function drawStatic(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cz: number,
+  scale: number,
+  px: number,
+  dpr: number,
+  paths: Paths,
+) {
+  ctx.setTransform(scale, 0, 0, scale, px / 2 - cx * scale, px / 2 - cz * scale)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.fillStyle = 'rgba(36, 140, 176, 0.72)'
@@ -90,6 +79,83 @@ function drawMap(
   }
   ctx.setLineDash([])
   ctx.globalAlpha = 1
+}
+
+/**
+ * The cached picture for this view, drawn again only when the view nears
+ * its edge, zooms by more than a sixth, or the map changes. While the
+ * camera moves, a picture that still covers the view is stretched instead:
+ * redrawing a big city takes longer than a frame.
+ */
+function baseLayer(cache: { current: BaseLayer | null }, view: View, paths: Paths, px: number, dpr: number): BaseLayer {
+  const old = cache.current
+  const moving = cameraMotion.busy(Date.now())
+  if (
+    old &&
+    old.paths === paths &&
+    old.px === px * 2 &&
+    (moving || Math.abs(old.span - view.span * 2) < old.span / 6) &&
+    Math.abs(view.cx - old.cx) + view.span / 2 < old.span / 2 &&
+    Math.abs(view.cz - old.cz) + view.span / 2 < old.span / 2
+  ) {
+    return old
+  }
+  const canvas = old?.canvas ?? document.createElement('canvas')
+  canvas.width = px * 2
+  canvas.height = px * 2
+  const next = { canvas, paths, cx: view.cx, cz: view.cz, span: view.span * 2, px: px * 2 }
+  const ctx = canvas.getContext('2d')
+  if (ctx) drawStatic(ctx, next.cx, next.cz, next.px / next.span, next.px, dpr, paths)
+  cache.current = next
+  return next
+}
+
+/** Draw streets, buildings, issues, and the "you are here" arrow. */
+function drawMap(
+  canvas: HTMLCanvasElement,
+  view: View,
+  paths: Paths | null,
+  issues: SceneIssue[],
+  fixed: ReadonlySet<string>,
+  selectedId: string | null,
+  pose: CameraPose,
+  cache?: { current: BaseLayer | null },
+) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const dpr = window.devicePixelRatio || 1
+  const px = Math.round(view.size * dpr)
+  if (canvas.width !== px) {
+    canvas.width = px
+    canvas.height = px
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.fillStyle = '#16231f'
+  ctx.fillRect(0, 0, px, px)
+  if (!paths) return
+
+  // Scene units → pixels, centered on the view.
+  const scale = px / view.span
+  if (cache) {
+    // The streets and buildings come from a cached picture of a wider area,
+    // so moving the camera copies pixels instead of redrawing the city.
+    const base = baseLayer(cache, view, paths, px, dpr)
+    const k = base.px / base.span
+    ctx.drawImage(
+      base.canvas,
+      (view.cx - view.span / 2 - (base.cx - base.span / 2)) * k,
+      (view.cz - view.span / 2 - (base.cz - base.span / 2)) * k,
+      view.span * k,
+      view.span * k,
+      0,
+      0,
+      px,
+      px,
+    )
+  } else {
+    drawStatic(ctx, view.cx, view.cz, scale, px, dpr, paths)
+  }
+  ctx.setTransform(scale, 0, 0, scale, px / 2 - view.cx * scale, px / 2 - view.cz * scale)
 
   // Issues: a dot each, green once improved, ringed when selected.
   const dot = 3.2 / (scale / dpr)
@@ -177,8 +243,15 @@ export function Minimap({ placeLabel }: Props) {
       }
     : null
 
+  const base = useRef<BaseLayer | null>(null)
   useEffect(() => {
-    if (canvasRef.current) drawMap(canvasRef.current, small, paths, issues, fixed, selectedId, pose)
+    const draw = () => {
+      if (canvasRef.current) drawMap(canvasRef.current, small, paths, issues, fixed, selectedId, pose, base)
+    }
+    draw()
+    // Once the camera rests, draw again so a stretched picture turns sharp.
+    const settle = window.setTimeout(draw, SETTLE_MS + 100)
+    return () => window.clearTimeout(settle)
   })
 
   useEffect(() => {
@@ -200,8 +273,9 @@ export function Minimap({ placeLabel }: Props) {
     }
   }, [open])
 
-  const here = map ? whereAmI(map, pose.x, pose.z) : null
   const zoomed = pose.distance < ZOOMED_IN
+  // Only named when zoomed in: a big city has tens of thousands of street pieces.
+  const here = map && zoomed ? whereAmI(map, pose.x, pose.z) : null
   const where = loadingMore
     ? 'Loading more streets…'
     : zoomed && here && (here.street || here.place)
