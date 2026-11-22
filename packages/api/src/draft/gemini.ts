@@ -3,7 +3,7 @@
  * Keys stay server-side — never sent to the browser.
  */
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type { DraftProposal, ProposalFacts } from "../../../../shared/types.ts";
 import {
   geminiProposalDraftSchema,
@@ -20,6 +20,11 @@ const FALLBACK_MODELS = [
   "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
 ] as const;
+
+/** Optional last resort before the template; see draft/openrouter.ts. */
+export function openRouterConfigured(): boolean {
+  return Boolean(process.env.OPENROUTER_API_KEY?.trim());
+}
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -85,7 +90,7 @@ async function availableModels(ai: GoogleGenAI): Promise<string[]> {
   return listedModels.ids;
 }
 
-const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
+export const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
 State that results are modeled, retain the evidence status, and ask officials to assess feasibility.
 Do not invent real accessibility defects, agency names, source links, cost estimates, construction timelines, or outcome figures.
 If scope is "issues", there is no main route: the proposal is entirely about the additionalIssues.
@@ -93,7 +98,7 @@ If additionalIssues are supplied, the proposal covers every one of them: name wh
 Their evidence status "community_reported" means OpenStreetMap mapper data, not a field survey; say so once.
 Return only the requested JSON fields.`;
 
-function buildUserPayload(facts: ProposalFacts): string {
+export function buildUserPayload(facts: ProposalFacts): string {
   return JSON.stringify(
     {
       scope: facts.scope ?? "scenario",
@@ -129,7 +134,7 @@ function buildUserPayload(facts: ProposalFacts): string {
   );
 }
 
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     headline: { type: "string" },
@@ -154,12 +159,19 @@ const RESPONSE_SCHEMA = {
 
 /** Give up on one model after this long and try the next. */
 const CALL_TIMEOUT_MS = 12_000;
+/** gemini-3.8-flash gets longer before the search moves on: it is the model we want. */
+const PRIMARY_TIMEOUT_MS = 22_000;
 /**
  * The whole search stops here, so the reply reaches the browser before the
  * 60 s proxy limit and the browser's 55 s wait. A busy model usually answers
  * "high demand" in about a second, so many models fit in this window.
  */
 const TOTAL_BUDGET_MS = 48_000;
+/**
+ * With an OpenRouter key, Gemini stops this much earlier so the OpenRouter
+ * fallback still fits inside the same reply window.
+ */
+export const OPENROUTER_RESERVE_MS = 14_000;
 /** Not worth starting another model with less time left than this. */
 const MIN_CALL_MS = 4_000;
 
@@ -172,8 +184,8 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 export type GeminiDraftResult =
-  | { ok: true; draft: DraftProposal; model: string; tried: string[] }
-  | { ok: false; reason: string; tried: string[] };
+  | { ok: true; draft: DraftProposal; model: string; tried: string[]; primaryFailure?: string }
+  | { ok: false; reason: string; tried: string[]; primaryFailure?: string };
 
 type DraftAttempt = { ok: true; draft: DraftProposal } | { ok: false; reason: string };
 
@@ -191,7 +203,7 @@ export function shouldTryNextModel(reason: string): boolean {
   );
 }
 
-function parseModelJson(text: string): unknown | undefined {
+export function parseModelJson(text: string): unknown | undefined {
   const trimmed = text.trim();
   const candidates = [trimmed];
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -207,6 +219,23 @@ function parseModelJson(text: string): unknown | undefined {
     }
   }
   return undefined;
+}
+
+/** Low thinking on Gemini 3 models; older models do not take this setting. */
+export function thinkingFor(model: string): { thinkingConfig?: { thinkingLevel: ThinkingLevel } } {
+  return /^gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {};
+}
+
+/** A short, safe label for why a model gave no draft, for the warning the browser shows. */
+export function failureKind(reason: string): string {
+  if (/timed out|DEADLINE_EXCEEDED/i.test(reason)) return "timed out";
+  if (/429|RESOURCE_EXHAUSTED|quota/i.test(reason)) return "over quota";
+  if (/503|UNAVAILABLE|overloaded|high demand/i.test(reason)) return "busy";
+  if (/404|NOT_FOUND|no longer available|not supported|does not support/i.test(reason)) return "not available to this key";
+  if (/401|403|PERMISSION_DENIED|API_KEY_INVALID|API key not valid/i.test(reason)) return "key rejected";
+  if (/non-JSON|Empty Gemini response|failed validation/i.test(reason)) return "unusable reply";
+  if (/400|INVALID_ARGUMENT/i.test(reason)) return "request rejected";
+  return "error";
 }
 
 async function requestDraft(
@@ -227,8 +256,13 @@ ${buildUserPayload(facts)}`,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
           temperature: 0.4,
-          // Room for several extra issues in one proposal.
-          maxOutputTokens: 2048,
+          // Thinking tokens count against this too, so leave plenty of room
+          // for the JSON after them. Several extra issues fit easily.
+          maxOutputTokens: 8192,
+          // Gemini 3 thinks before answering by default, which can take longer
+          // than the per-model timeout. A short proposal from given facts
+          // needs very little of it.
+          ...thinkingFor(model),
         },
       }),
       timeoutMs,
@@ -265,21 +299,23 @@ export async function draftWithGemini(
   }
 
   const started = Date.now();
+  const budget = TOTAL_BUDGET_MS - (openRouterConfigured() ? OPENROUTER_RESERVE_MS : 0);
   const ai = new GoogleGenAI({ apiKey });
   const tried: string[] = [];
   let last: DraftAttempt = { ok: false, reason: "Gemini call failed" };
 
   // gemini-3.8-flash goes first without waiting for the model list.
-  const first = await requestDraft(ai, facts, PRIMARY_MODEL, CALL_TIMEOUT_MS);
+  const first = await requestDraft(ai, facts, PRIMARY_MODEL, PRIMARY_TIMEOUT_MS);
   tried.push(PRIMARY_MODEL);
   if (first.ok) return { ...first, model: PRIMARY_MODEL, tried };
   last = first;
+  const primaryFailure = failureKind(first.reason);
   console.error(`[@morrow/api] Gemini ${PRIMARY_MODEL} skipped:`, first.reason);
-  if (!shouldTryNextModel(first.reason)) return { ...first, tried };
+  if (!shouldTryNextModel(first.reason)) return { ...first, tried, primaryFailure };
 
   for (const model of modelCandidates(geminiModel(), await availableModels(ai))) {
     if (tried.includes(model)) continue;
-    const left = TOTAL_BUDGET_MS - (Date.now() - started);
+    const left = budget - (Date.now() - started);
     if (left < MIN_CALL_MS) {
       last = { ok: false, reason: `${last.ok ? "" : last.reason}; stopped after ${tried.length} models (time limit)` };
       break;
@@ -288,11 +324,11 @@ export async function draftWithGemini(
     tried.push(model);
     if (result.ok) {
       console.info(`[@morrow/api] Gemini draft from ${model} after ${tried.length} tries`);
-      return { ...result, model, tried };
+      return { ...result, model, tried, primaryFailure };
     }
     last = result;
     console.error(`[@morrow/api] Gemini ${model} skipped:`, result.reason);
     if (!shouldTryNextModel(result.reason)) break;
   }
-  return { ...(last as { ok: false; reason: string }), tried };
+  return { ...(last as { ok: false; reason: string }), tried, primaryFailure };
 }

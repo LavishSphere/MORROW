@@ -100,10 +100,13 @@ test("a busy or slow Gemini moves on to the next model instead of hanging", asyn
   assert.match(gemini, /withTimeout\(/);
   assert.match(gemini, /timed out/);
   // gemini-3.8-flash first, then every other model the key can see, inside one time budget.
-  assert.match(gemini, /requestDraft\(ai, facts, PRIMARY_MODEL, CALL_TIMEOUT_MS\)/);
+  assert.match(gemini, /requestDraft\(ai, facts, PRIMARY_MODEL, PRIMARY_TIMEOUT_MS\)/);
+  assert.match(gemini, /const PRIMARY_TIMEOUT_MS = 22_000;/);
   assert.match(gemini, /for \(const model of modelCandidates\(geminiModel\(\), await availableModels\(ai\)\)\)/);
   assert.match(gemini, /const TOTAL_BUDGET_MS = 48_000;/);
-  assert.match(gemini, /maxOutputTokens: 2048/);
+  // Thinking counts against the output limit, so it is kept low and the limit roomy.
+  assert.match(gemini, /maxOutputTokens: 8192/);
+  assert.match(gemini, /thinkingLevel: ThinkingLevel\.LOW/);
   const api = await readFile("src/data/api.ts", "utf8");
   assert.match(api, /AbortSignal\.timeout\(55_000\)/);
 });
@@ -136,4 +139,18 @@ test("freeways, ramps, and bus lanes tagged sidewalk=no are not missing sidewalk
     issues.filter((issue) => issue.kind === "no_sidewalk").map((issue) => issue.id),
     ["no_sidewalk-4"],
   );
+});
+
+test("OpenRouter is an optional last resort before the template", async () => {
+  const router = await readFile("packages/api/src/draft/openrouter.ts", "utf8");
+  const workflow = await readFile("packages/api/src/workflow/proposal.ts", "utf8");
+  const gemini = await readFile("packages/api/src/draft/gemini.ts", "utf8");
+  // Skipped entirely without a key.
+  assert.match(router, /OPENROUTER_API_KEY not set/);
+  assert.match(workflow, /if \(!aiGenerated && openRouterConfigured\(\)\)/);
+  // Gemini only gives up time for it when the key is there.
+  assert.match(gemini, /TOTAL_BUDGET_MS - \(openRouterConfigured\(\) \? OPENROUTER_RESERVE_MS : 0\)/);
+  // Gemini 3 models through OpenRouter, cheapest first, with a capped bill.
+  assert.match(router, /"google\/gemini-3\.5-flash-lite",\n  "google\/gemini-3\.6-flash",\n  "google\/gemini-3\.8-flash",/);
+  assert.match(router, /max_tokens: 4096/);
 });

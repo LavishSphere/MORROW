@@ -20,7 +20,14 @@ import {
   getScenario,
 } from "../data/dataset.ts";
 import { saveProposal } from "../data/proposals.ts";
-import { draftWithGemini, geminiConfigured } from "../draft/gemini.ts";
+import {
+  OPENROUTER_RESERVE_MS,
+  draftWithGemini,
+  failureKind,
+  geminiConfigured,
+  openRouterConfigured,
+} from "../draft/gemini.ts";
+import { draftWithOpenRouter } from "../draft/openrouter.ts";
 import {
   draftProposalSchema,
   generateRequestSchema,
@@ -162,6 +169,7 @@ const generateDraft = createStep({
     let draft: DraftProposal;
     let aiGenerated = false;
     let draftModel: string | null = null;
+    let geminiFailed = "";
 
     if (keyPresent) {
       const gemini = await draftWithGemini(inputData.facts);
@@ -170,6 +178,9 @@ const generateDraft = createStep({
           draft = parseDraftProposal(gemini.draft);
           aiGenerated = true;
           draftModel = gemini.model;
+          if (gemini.primaryFailure) {
+            warnings.push(`Gemini 3.8 Flash ${gemini.primaryFailure}, so ${gemini.model} wrote this draft.`);
+          }
         } catch {
           draft = buildTemplateDraft(inputData.facts);
           warnings.push(
@@ -179,14 +190,37 @@ const generateDraft = createStep({
       } else {
         draft = buildTemplateDraft(inputData.facts);
         console.error("[@morrow/api] Gemini draft skipped:", gemini.reason);
-        warnings.push(
-          `Gemini did not return a draft (tried ${gemini.tried.length} model${gemini.tried.length === 1 ? "" : "s"}). This proposal uses the template.`,
-        );
+        geminiFailed = `Gemini did not return a draft (tried ${gemini.tried.length} model${gemini.tried.length === 1 ? "" : "s"}; 3.8 Flash ${gemini.primaryFailure ?? failureKind(gemini.reason)})`;
       }
     } else {
       draft = buildTemplateDraft(inputData.facts);
+      geminiFailed = "GEMINI_API_KEY not set";
+    }
+
+    // Optional last resort: Gemini through OpenRouter, only when its key is set.
+    if (!aiGenerated && openRouterConfigured()) {
+      const viaRouter = await draftWithOpenRouter(inputData.facts, OPENROUTER_RESERVE_MS - 1_000);
+      if (viaRouter.ok) {
+        try {
+          draft = parseDraftProposal(viaRouter.draft);
+          aiGenerated = true;
+          draftModel = `${viaRouter.model} (OpenRouter)`;
+          warnings.push(`${geminiFailed}, so ${viaRouter.model} on OpenRouter wrote this draft.`);
+          geminiFailed = "";
+        } catch {
+          // Falls through to the template below.
+        }
+      } else {
+        console.error("[@morrow/api] OpenRouter draft skipped:", viaRouter.reason);
+        geminiFailed += `; OpenRouter ${failureKind(viaRouter.reason)}`;
+      }
+    }
+
+    if (!aiGenerated && geminiFailed) {
       warnings.push(
-        "GEMINI_API_KEY not set — using deterministic template (expected for local/outage demos).",
+        keyPresent || openRouterConfigured()
+          ? `${geminiFailed}. This proposal uses the template.`
+          : "GEMINI_API_KEY not set — using deterministic template (expected for local/outage demos).",
       );
     }
 
