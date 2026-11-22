@@ -37,3 +37,22 @@ test("the API only relays Overpass JSON queries, keeps answers on disk, and pre-
   assert.match(loader, /const cached = await viaApi\(query, signal\)/);
   assert.match(loader, /const FIRST_BYTE_MS = 20000/);
 });
+
+test("visitors jump ahead of pre-loading, which uses at most one download slot", async () => {
+  const osm = await readFile("packages/api/src/routes/osm.ts", "utf8");
+  assert.match(osm, /return !background \|\| \(busyBackground < 1 && waitingLive\.length === 0\);/);
+  assert.match(osm, /await osmAnswer\(query, true\)/);
+  const { MAJOR_CITIES } = await import("../shared/osmQueries.ts");
+  assert.ok(MAJOR_CITIES.length >= 60);
+  assert.equal(new Set(MAJOR_CITIES).size, MAJOR_CITIES.length);
+  assert.equal(MAJOR_CITIES[0], "Boston, MA");
+});
+
+test("a server that refuses or stays silent is skipped for a while, so uncached places fail fast", async () => {
+  const osm = await readFile("packages/api/src/routes/osm.ts", "utf8");
+  assert.match(osm, /const BENCH_MS = 10 \* 60 \* 1000;/);
+  assert.match(osm, /res\.status === 401 \|\| res\.status === 403 \|\| res\.status === 406/);
+  assert.match(osm, /if \(benched\(url\)\) continue;/);
+  assert.match(osm, /throw new Error\(tried\.join\("; "\)\)/);
+  assert.match(osm, /if \(err instanceof OverpassUnavailable\) await pause\(BENCH_MS\);/);
+});

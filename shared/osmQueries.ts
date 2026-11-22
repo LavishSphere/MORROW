@@ -54,7 +54,7 @@ export function tileQuery(key: string) {
   // Streets, buildings, landmark pieces, and water get separate quotas.
   // Some landmarks (SF City Hall) map their outline and lower floors as
   // relations, so building relations are asked for too.
-  return `[out:json][timeout:60];way["highway"](${b});out tags geom 2500;way["building"](${b});out tags geom 4000;way["building:part"](${b});out tags geom 5000;relation["building:part"](${b});out tags geom 400;relation["building"](${b});out tags geom 600;way["natural"="water"](${b});out tags geom 400;way["natural"="bay"](${b});out tags geom 80;way["natural"="coastline"](${b});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${b});out tags geom 800;relation["natural"="water"](${b});out tags geom 60;relation["natural"="bay"](${b});out tags geom 20;relation["natural"="coastline"](${b});out tags geom 40;relation["waterway"="riverbank"](${b});out tags geom 40;way["man_made"="bridge"](${b});out tags geom 80;relation["man_made"="bridge"](${b});out tags geom 20;way["natural"~"^(beach|sand)$"](${b});out tags geom 150;relation["natural"~"^(beach|sand)$"](${b});out tags geom 20;${railQuery(b)}`
+  return `[out:json][timeout:60];way["highway"](${b});out tags geom 2500;way["building"](${b});out tags geom 4000;way["building:part"](${b});out tags geom 5000;relation["building:part"](${b});out tags geom 400;relation["building"](${b});out tags geom 600;way["natural"="water"](${b});out tags geom 400;way["natural"="bay"](${b});out tags geom 80;way["natural"="coastline"](${b});out tags geom 400;way["waterway"~"^(river|stream|canal|riverbank)$"](${b});out tags geom 800;relation["natural"="water"](${b});out tags geom 60;relation["natural"="bay"](${b});out tags geom 20;relation["natural"="coastline"](${b});out tags geom 40;relation["waterway"="riverbank"](${b});out tags geom 40;way["man_made"="bridge"](${b});out tags geom 80;relation["man_made"="bridge"](${b});out tags geom 20;way["natural"~"^(beach|sand)$"](${b});out tags geom 150;relation["natural"~"^(beach|sand)$"](${b});out tags geom 20;node["natural"="tree"](${b});out body 4000;way["natural"="tree_row"](${b});out tags geom 400;${railQuery(b)}`
 }
 
 /** Ocean shoreline around a tile: wider than the tile, coastline only. */
@@ -90,26 +90,73 @@ export function ringTiles(lng: number, lat: number, radius: number): string[] {
 }
 
 /**
- * Places judges and visitors are likely to type, pre-loaded by the API.
- * The API geocodes each name the same way the address bar does.
+ * Places judges and visitors are likely to type, most likely first,
+ * pre-loaded by the API. The API geocodes each name the same way the
+ * address bar does.
  */
 export const MAJOR_CITIES = [
+  // The judges' own area and the cities we audited.
   'Boston, MA',
   'Cambridge, MA',
   'New York, NY',
   'San Francisco, CA',
   'Los Angeles, CA',
   'Chicago, IL',
+  'Somerville, MA',
+  'Brookline, MA',
+  'Newton, MA',
+  'Hollywood, FL',
+  'Fort Lauderdale, FL',
+  'Miami, FL',
+  'Las Vegas, NV',
+  'Austin, TX',
+  'Dallas, TX',
+  'Portland, ME',
+  // Big US cities.
   'Seattle, WA',
   'Washington, DC',
   'Philadelphia, PA',
-  'Miami, FL',
-  'Hollywood, FL',
-  'Fort Lauderdale, FL',
-  'Austin, TX',
-  'Dallas, TX',
-  'Las Vegas, NV',
-  'Portland, ME',
-  'Portland, OR',
+  'Houston, TX',
   'Atlanta, GA',
+  'Denver, CO',
+  'San Diego, CA',
+  'Phoenix, AZ',
+  'Portland, OR',
+  'Nashville, TN',
+  'New Orleans, LA',
+  'Minneapolis, MN',
+  'Detroit, MI',
+  'Pittsburgh, PA',
+  'Baltimore, MD',
+  'San Jose, CA',
+  'Oakland, CA',
+  'Brooklyn, NY',
+  'Santa Monica, CA',
+  'Miami Beach, FL',
+  'Orlando, FL',
+  'Tampa, FL',
+  'Charlotte, NC',
+  'Raleigh, NC',
+  'Salt Lake City, UT',
+  'San Antonio, TX',
+  'Honolulu, HI',
+  'Sacramento, CA',
+  'Columbus, OH',
+  'Cleveland, OH',
+  'Indianapolis, IN',
+  'Kansas City, MO',
+  'St. Louis, MO',
+  'Milwaukee, WI',
+  // New England and college towns.
+  'Providence, RI',
+  'New Haven, CT',
+  'Hartford, CT',
+  'Worcester, MA',
+  'Natick, MA',
+  'Berkeley, CA',
+  'Princeton, NJ',
+  'Ann Arbor, MI',
+  'Madison, WI',
+  'Ithaca, NY',
+  'Burlington, VT',
 ] as const

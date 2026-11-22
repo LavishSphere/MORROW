@@ -50,14 +50,16 @@ export async function readJsonBody(
 }
 
 export function applyCors(res: ServerResponse, originHeader: string | undefined): void {
-  const allowed = process.env.MORROW_CORS_ORIGIN?.trim();
-  if (!allowed) {
+  // One origin, or several separated by commas (the site moving domains).
+  const allowed = (process.env.MORROW_CORS_ORIGIN ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  if (allowed.length === 0 || allowed.includes("*")) {
     res.setHeader("access-control-allow-origin", "*");
-  } else if (originHeader && originHeader === allowed) {
-    res.setHeader("access-control-allow-origin", allowed);
+  } else if (originHeader && allowed.includes(originHeader)) {
+    res.setHeader("access-control-allow-origin", originHeader);
     res.setHeader("vary", "Origin");
-  } else if (allowed === "*") {
-    res.setHeader("access-control-allow-origin", "*");
   }
   res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
   res.setHeader(
