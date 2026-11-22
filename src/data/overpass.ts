@@ -15,7 +15,7 @@ export type OsmWay = {
    * 'part' is an OSM building:part: one 3D piece of a detailed building.
    * 'bridge' is a man_made=bridge outline: the structure under its roads.
    */
-  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge' | 'rail' | 'platform' | 'station'
+  kind: 'road' | 'building' | 'part' | 'water' | 'waterway' | 'coastline' | 'bridge' | 'rail' | 'platform' | 'station' | 'sand'
   /** OSM highway tag (footway, residential, …) when the way is a street. */
   highway?: string | null
   /** OSM building tag (house, college, …) when the way is a building. */
@@ -237,7 +237,8 @@ function relationWater(row: OverpassElement): OsmWay[] {
   const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
   const coast = natural === 'coastline'
   const wet = natural === 'water' || natural === 'bay' || waterway === 'riverbank'
-  if (!coast && !wet) return []
+  const sandy = natural === 'beach' || natural === 'sand'
+  if (!coast && !wet && !sandy) return []
   const name = typeof row.tags?.name === 'string' ? row.tags.name : null
   const water =
     typeof row.tags?.water === 'string' ? row.tags.water : natural === 'bay' ? 'bay' : 'water'
@@ -259,6 +260,9 @@ function relationWater(row: OverpassElement): OsmWay[] {
     }))
   }
   const rings = stitchRings(lines)
+  if (sandy && !wet) {
+    return rings.map((points) => ({ id: row.id as number, osmType: 'relation' as const, name, kind: 'sand' as const, points }))
+  }
   return rings.map((points) => ({
     id: row.id as number,
     osmType: 'relation' as const,
@@ -385,6 +389,8 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
     const highway = typeof row.tags?.highway === 'string'
     const coastline = row.tags?.natural === 'coastline'
     const natural = row.tags?.natural === 'water' || row.tags?.natural === 'bay'
+    // Beaches and sand: drawn as sand, kept free of trees.
+    const sandy = (row.tags?.natural === 'beach' || row.tags?.natural === 'sand') && isClosedRing(points)
     const water = typeof row.tags?.water === 'string' ? row.tags.water : null
     const waterway = typeof row.tags?.waterway === 'string' ? row.tags.waterway : null
     const riverbank = waterway === 'riverbank'
@@ -405,7 +411,9 @@ export function waysFromOverpass(body: unknown): OsmWay[] {
               ? 'water'
               : riverbank || waterway === 'river' || waterway === 'stream' || waterway === 'canal'
                 ? 'waterway'
-                : null
+                : sandy
+                  ? 'sand'
+                  : null
     if (!kind) continue
     const tags = keptTags(row.tags)
     const width = kind === 'road' ? resolveRoadWidth(row.tags ?? {}) : null
@@ -721,6 +729,19 @@ export function neighborhoodGeoJson(neighborhood: LoadedNeighborhood) {
         type: 'Feature',
         geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { osmId: way.id, layer: 'water', name: way.name, water: way.water ?? 'water' },
+      })
+      continue
+    }
+    if (way.kind === 'sand') {
+      if (way.points.length < 3) continue
+      const ring = [...way.points]
+      const [first] = ring
+      const last = ring[ring.length - 1]
+      if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push(first)
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: { osmId: way.id, layer: 'sand', name: way.name },
       })
       continue
     }

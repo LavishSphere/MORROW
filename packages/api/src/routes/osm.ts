@@ -10,7 +10,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, open, rename } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import {
@@ -36,11 +35,11 @@ const MAX_QUERY = 12_000;
 /** At most this many Overpass downloads at once, to stay a polite client. */
 const UPSTREAM_SLOTS = 2;
 
-/** Pterodactyl keeps /home/container between restarts; elsewhere use the temp dir. */
+/** Pterodactyl keeps /home/container between restarts; elsewhere a folder beside the working directory. */
 export function cacheDir(): string {
   const set = process.env.MORROW_CACHE_DIR?.trim();
   if (set) return set;
-  return existsSync("/home/container") ? "/home/container/osm-cache" : join(tmpdir(), "morrow-osm-cache");
+  return existsSync("/home/container") ? "/home/container/osm-cache" : join(process.cwd(), ".osm-cache");
 }
 
 function keyFor(query: string) {
