@@ -76,7 +76,13 @@ type CityModel = {
   unproject: (x: number, z: number) => readonly [number, number];
   /** Longitude / latitude box of the map's buildings. */
   geoBounds: { west: number; south: number; east: number; north: number };
+  /** All OpenStreetMap tags per building id (height, roof shape, colour…). */
+  tags: Map<string, Record<string, unknown>>;
+  /** building:part pieces: the real 3D shape of detailed landmarks. */
+  parts: Part[];
 };
+
+type Part = { id: string; ring: Ring; tags: Record<string, unknown> };
 
 function hash(a: number, b: number) {
   const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
@@ -133,10 +139,29 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
   const projector = createProjector(bbox, CITY_SCALE);
   const parsed = parseBasemap(geoJson, projector) ?? { buildings: [], ways: [] };
   const kinds = new Map<string, string>();
+  const tags = new Map<string, Record<string, unknown>>();
+  const parts: Part[] = [];
   if (isFeatureCollection(geoJson)) {
     for (const feature of geoJson.features) {
       const props = (feature as { properties?: Record<string, unknown> }).properties;
-      if (props?.layer === "building") kinds.set(String(props.osmId), String(props.building ?? "yes"));
+      if (props?.layer === "building") {
+        kinds.set(String(props.osmId), String(props.building ?? "yes"));
+        tags.set(String(props.osmId), props);
+      } else if (props?.layer === "building_part") {
+        const coords = (feature as { geometry?: { coordinates?: unknown } }).geometry?.coordinates;
+        const outer = Array.isArray(coords) ? (coords[0] as unknown) : null;
+        if (!Array.isArray(outer)) continue;
+        const ring: (readonly [number, number])[] = [];
+        for (const pt of outer) {
+          if (Array.isArray(pt) && typeof pt[0] === "number" && typeof pt[1] === "number") {
+            ring.push(projector.project(pt[0], pt[1]));
+          }
+        }
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first && last && first[0] === last[0] && first[1] === last[1]) ring.pop();
+        if (ring.length >= 3) parts.push({ id: String(props.osmId), ring, tags: props });
+      }
     }
   }
   const bounds: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
@@ -155,6 +180,8 @@ function buildModel(geoJson: unknown, center?: readonly [number, number]): CityM
     parsed,
     kinds,
     bounds,
+    tags,
+    parts,
     project: projector.project,
     unproject: (x: number, z: number) => {
       const [lon0, lat0] = bbox.center;
@@ -481,6 +508,8 @@ type Placement = { x: number; z: number; rot?: number; s?: number; color?: strin
 
 type Built = {
   glass: THREE.BufferGeometry[];
+  /** Real 3D landmark pieces in their mapped colours. */
+  masonry: { color: string; geometry: THREE.BufferGeometry }[];
   siding: THREE.BufferGeometry[];
   shingles: THREE.BufferGeometry[];
   garden: THREE.BufferGeometry;
@@ -608,6 +637,158 @@ function house(siding: Bucket, roof: Bucket, chimney: Bucket, ring: Ring, seed: 
   return wallTop + rise;
 }
 
+/* —— Real 3D shapes from OpenStreetMap (Simple 3D Buildings) —— */
+
+/** Real metres → scene units, with the same ~1.5× height boost the city uses. */
+const REAL_TO_SCENE = 0.14 * 1.5;
+const METRES_PER_LEVEL = 3.2;
+
+/** "443.2", "75 m" → number; anything else → null. */
+function metres(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const n = parseFloat(String(value));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Real top and bottom in metres, if the mapper recorded them. */
+function realHeights(tags: Record<string, unknown>) {
+  const levels = metres(tags["building:levels"]);
+  const minLevel = metres(tags["building:min_level"]);
+  const top = metres(tags.height) ?? (levels !== null ? levels * METRES_PER_LEVEL : null);
+  if (top === null || top <= 0) return null;
+  const bottom = metres(tags.min_height) ?? (minLevel !== null ? minLevel * METRES_PER_LEVEL : 0);
+  return { top, bottom: Math.min(bottom, top - 0.5) };
+}
+
+/** "glass" for glass, else a hex colour from building:colour (stone if none). */
+function facade(tags: Record<string, unknown>): string {
+  if (String(tags["building:material"] ?? "").toLowerCase() === "glass") return "glass";
+  const raw = tags["building:colour"];
+  if (typeof raw === "string" && raw.trim()) {
+    const color = new THREE.Color();
+    try {
+      color.setStyle(raw.trim());
+      return `#${color.getHexString()}`;
+    } catch {
+      // Unknown colour name: fall through to stone.
+    }
+  }
+  return STONE;
+}
+
+/** Walls whose top height can differ at each corner (sloped roofs). */
+function wallsTo(bucket: Bucket, ring: Ring, y0: number, topAt: (i: number) => number) {
+  const outward = signedArea(ring) > 0;
+  let u = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const j = (i + 1) % ring.length;
+    const [ax, az] = ring[i]!;
+    const [bx, bz] = ring[j]!;
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 1e-5) continue;
+    const A0: Point3 = [ax, y0, az];
+    const B0: Point3 = [bx, y0, bz];
+    const B1: Point3 = [bx, topAt(j), bz];
+    const A1: Point3 = [ax, topAt(i), az];
+    if (outward) {
+      tri(bucket, A0, B1, B0);
+      tri(bucket, A0, A1, B1);
+    } else {
+      tri(bucket, A0, B0, B1);
+      tri(bucket, A0, B1, A1);
+    }
+    u += len;
+  }
+  return u;
+}
+
+/** A slanted band between two rings (domes taper in steps). */
+function band(bucket: Bucket, lower: Ring, y0: number, upper: Ring, y1: number) {
+  const outward = signedArea(lower) > 0;
+  for (let i = 0; i < lower.length; i += 1) {
+    const j = (i + 1) % lower.length;
+    const A0: Point3 = [lower[i]![0], y0, lower[i]![1]];
+    const B0: Point3 = [lower[j]![0], y0, lower[j]![1]];
+    const B1: Point3 = [upper[j]![0], y1, upper[j]![1]];
+    const A1: Point3 = [upper[i]![0], y1, upper[i]![1]];
+    if (outward) {
+      tri(bucket, A0, B1, B0);
+      tri(bucket, A0, A1, B1);
+    } else {
+      tri(bucket, A0, B0, B1);
+      tri(bucket, A0, B1, A1);
+    }
+  }
+}
+
+/** An upward-facing roof over a ring with a height per corner. */
+function slopedCap(bucket: Bucket, ring: Ring, heightAt: (i: number) => number) {
+  const contour = ring.map(([x, z]) => new THREE.Vector2(x, z));
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+    const a: Point3 = [ring[i!]![0], heightAt(i!), ring[i!]![1]];
+    let b: Point3 = [ring[j!]![0], heightAt(j!), ring[j!]![1]];
+    let c: Point3 = [ring[k!]![0], heightAt(k!), ring[k!]![1]];
+    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    if (ny < 0) [b, c] = [c, b];
+    tri(bucket, a, b, c);
+  }
+}
+
+/**
+ * One real 3D piece: walls from its bottom to the roof line, then the
+ * mapped roof shape. `center` is the whole building's middle, which sloped
+ * crowns rise toward.
+ */
+function drawPiece(wall: Bucket, roof: Bucket, ring: Ring, tags: Record<string, unknown>, center: readonly [number, number]) {
+  const h = realHeights(tags);
+  if (!h) return 0;
+  const y0 = h.bottom * REAL_TO_SCENE;
+  const yTop = Math.max(y0 + 0.05, h.top * REAL_TO_SCENE);
+  const shape = String(tags["roof:shape"] ?? "flat").toLowerCase();
+  // A roof taller than a quarter of the piece is almost always a mapping slip.
+  const roofH = shape === "flat" ? 0 : Math.min((yTop - y0) * 0.25, (metres(tags["roof:height"]) ?? 6) * REAL_TO_SCENE);
+  const base = yTop - roofH;
+
+  if (shape === "skillion") {
+    // Corners nearest the building's middle are highest: a tapered crown.
+    const d = ring.map(([x, z]) => Math.hypot(x - center[0], z - center[1]));
+    const near = Math.min(...d);
+    const far = Math.max(...d);
+    const at = (i: number) => base + roofH * (far - near > 1e-4 ? 1 - (d[i]! - near) / (far - near) : 1);
+    wallsTo(wall, ring, y0, at);
+    slopedCap(roof, ring, at);
+  } else if (shape === "dome" || shape === "onion" || shape === "round") {
+    walls(wall, ring, y0, base);
+    let lower = ring;
+    let yLower = base;
+    for (let k = 1; k <= 4; k += 1) {
+      const t = (k / 4) * (Math.PI / 2);
+      const upper = shrink(ring, Math.max(0.05, Math.cos(t)));
+      const yUpper = base + roofH * Math.sin(t);
+      band(roof, lower, yLower, upper, yUpper);
+      lower = upper;
+      yLower = yUpper;
+    }
+    cap(roof, lower, yLower);
+  } else if (shape !== "flat") {
+    // Pyramidal, hipped, gabled…: all rise to a point over the middle.
+    walls(wall, ring, y0, base);
+    const [cx, cz] = centroid(ring);
+    const apex: Point3 = [cx, yTop, cz];
+    const up = signedArea(ring) > 0;
+    for (let i = 0; i < ring.length; i += 1) {
+      const a: Point3 = [ring[i]![0], base, ring[i]![1]];
+      const b: Point3 = [ring[(i + 1) % ring.length]![0], base, ring[(i + 1) % ring.length]![1]];
+      if (up) tri(roof, b, a, apex);
+      else tri(roof, a, b, apex);
+    }
+  } else {
+    walls(wall, ring, y0, yTop);
+    cap(roof, ring, yTop);
+  }
+  return yTop;
+}
+
 function buildCity(model: CityModel): Built {
   const glass = GLASS_TINTS.map(() => new Bucket());
   const siding = SIDING.map(() => new Bucket());
@@ -617,15 +798,68 @@ function buildCity(model: CityModel): Built {
   const stone = new Bucket();
   const occupancy = new Occupancy(model.bounds);
 
+  // Real 3D landmarks: masonry buckets by mapped colour; glass uses the tints.
+  const masonry = new Map<string, Bucket>();
+  const surface = (tags: Record<string, unknown>, key: string) => {
+    const look = facade(tags);
+    if (look === "glass") return glass[Math.floor(idHash(key) * glass.length)] ?? glass[0]!;
+    let bucket = masonry.get(look);
+    if (!bucket) {
+      bucket = new Bucket();
+      masonry.set(look, bucket);
+    }
+    return bucket;
+  };
+  // Which building each 3D piece belongs to (the piece's middle is inside it).
+  const piecesOf = new Map<string, Part[]>();
+  const orphanPieces: Part[] = [];
+  for (const part of model.parts) {
+    const [px, pz] = centroid(part.ring);
+    const owner = model.parsed.buildings.find((b) => insideRing(px, pz, b.ring));
+    if (owner) piecesOf.set(owner.id, [...(piecesOf.get(owner.id) ?? []), part]);
+    else orphanPieces.push(part);
+  }
+  for (const part of orphanPieces) {
+    const peak = drawPiece(surface(part.tags, part.id), metal, part.ring, part.tags, centroid(part.ring));
+    if (peak > 0) occupancy.markHeight(part.ring, peak);
+  }
+
   for (const building of model.parsed.buildings) {
     const ring = building.ring;
     if (ring.length < 3 || Math.abs(signedArea(ring)) < 0.05) continue;
     const kind = model.kinds.get(building.id) ?? "yes";
     const seed = idHash(building.id);
+    const own = model.tags.get(building.id) ?? {};
+    const pieces = piecesOf.get(building.id);
+    // Dense downtowns can hit the download quota partway through a
+    // landmark. If its pieces stop well short of its own recorded height,
+    // they are incomplete: draw the whole building at that height instead.
+    const ownTop = realHeights(own)?.top ?? 0;
+    const piecesTop = Math.max(0, ...(pieces ?? []).map((piece) => realHeights({ ...own, ...piece.tags })?.top ?? 0));
+    const complete = piecesTop >= ownTop * 0.9;
+    if (pieces && complete && pieces.some((piece) => realHeights(piece.tags))) {
+      // A detailed landmark: draw its mapped 3D pieces, not the outline.
+      const middle = centroid(ring);
+      let peak = 0;
+      for (const piece of pieces) {
+        const tags = { ...own, ...piece.tags };
+        peak = Math.max(peak, drawPiece(surface(tags, piece.id), metal, piece.ring, tags, middle));
+      }
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
     if (HOUSE_KINDS.has(kind) || (kind === "yes" && Math.abs(signedArea(ring)) < SMALL_UNTYPED)) {
       const wall = siding[Math.floor(idHash(`${building.id}s`) * siding.length)] ?? siding[0]!;
       const roof = shingles[Math.floor(idHash(`${building.id}r`) * shingles.length)] ?? shingles[0]!;
       const peak = house(wall, roof, stone, ring, seed);
+      occupancy.markRing(ring, 0.9);
+      occupancy.markHeight(ring, peak);
+      continue;
+    }
+    if (!HOUSE_KINDS.has(kind) && realHeights(own)) {
+      // The mapper recorded its real height: use it, not a guess.
+      const peak = drawPiece(surface(own, building.id), metal, ring, own, centroid(ring));
       occupancy.markRing(ring, 0.9);
       occupancy.markHeight(ring, peak);
       continue;
@@ -836,6 +1070,7 @@ function buildCity(model: CityModel): Built {
   }
 
   return {
+    masonry: [...masonry].map(([color, bucket]) => ({ color, geometry: bucket.geometry() })),
     glass: glass.map((b) => b.geometry()),
     siding: siding.map((b) => b.geometry()),
     shingles: shingles.map((b) => b.geometry()),
@@ -1176,6 +1411,19 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
   const { shapes, looks } = useFurniture();
   const model = useMemo(() => (geoJson ? buildModel(geoJson) : TOWN), [geoJson]);
   const built = useMemo(() => buildCity(model), [model]);
+  const masonryLooks = useMemo(
+    () =>
+      built.masonry.map(
+        ({ color }) => new THREE.MeshStandardMaterial({ color, roughness: 0.78, side: THREE.DoubleSide }),
+      ),
+    [built],
+  );
+  useEffect(
+    () => () => {
+      for (const material of masonryLooks) material.dispose();
+    },
+    [masonryLooks],
+  );
 
   useEffect(() => publishMap(mapFor(model)), [model]);
   // Accessibility issues from the map's own OpenStreetMap tags.
@@ -1195,6 +1443,7 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
     () => () => {
       for (const g of [
         ...built.glass,
+        ...built.masonry.map((m) => m.geometry),
         ...built.siding,
         ...built.shingles,
         built.garden,
@@ -1251,6 +1500,16 @@ export function City({ geoJson, reducedMotion = false }: { geoJson?: unknown; re
           key={`roof-${i}`}
           geometry={geometry}
           material={houses.shingles[i]}
+          castShadow
+          receiveShadow
+          raycast={() => null}
+        />
+      ))}
+      {built.masonry.map(({ color, geometry }, i) => (
+        <mesh
+          key={`masonry-${color}`}
+          geometry={geometry}
+          material={masonryLooks[i]}
           castShadow
           receiveShadow
           raycast={() => null}
