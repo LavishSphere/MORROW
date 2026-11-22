@@ -238,7 +238,14 @@ export function warmOverture(): void {
 export async function fetchOvertureBase(box: NeighborhoodBox): Promise<OsmWay[]> {
   const [roads, water] = await Promise.all([
     readCollection("segment", ["id", "names", "subtype", "class", "subclass", "road_surface", "road_flags", "geometry", "bbox"], box, wayFromSegment),
-    readCollection("water", ["id", "names", "subtype", "class", "geometry", "bbox"], box, waterFromRow).catch(() => [] as OsmWay[]),
+    readCollection("water", ["id", "names", "subtype", "class", "geometry", "bbox"], box, waterFromRow)
+      .then((ways) =>
+        ways.flatMap((way) => {
+          const points = clipRing(way.points, box);
+          return points.length >= 4 ? [{ ...way, points }] : [];
+        }),
+      )
+      .catch(() => [] as OsmWay[]),
   ]);
   return [...roads, ...water];
 }
