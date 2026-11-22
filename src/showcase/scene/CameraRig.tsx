@@ -221,7 +221,8 @@ export function CameraRig({
         toZ: fly.z,
         fromDist: camera.position.distanceTo(controls.target),
         toDist: fly.distance ?? null,
-        t: 0,
+        // Teleport: finish the move in this very frame.
+        t: fly.instant ? 1 : 0,
       };
     }
     if (flight.current) {

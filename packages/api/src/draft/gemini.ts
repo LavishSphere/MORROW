@@ -40,6 +40,7 @@ export function modelCandidates(preferred = geminiModel()): string[] {
 const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
 State that results are modeled, retain the evidence status, and ask officials to assess feasibility.
 Do not invent real accessibility defects, agency names, source links, cost estimates, construction timelines, or outcome figures.
+If scope is "issues", there is no main route: the proposal is entirely about the additionalIssues.
 If additionalIssues are supplied, the proposal covers every one of them: name where it is, what the problem is, the suggested fix, and its before/after exactly as given. Give each its own talking point when space allows.
 Their evidence status "community_reported" means OpenStreetMap mapper data, not a field survey; say so once.
 Return only the requested JSON fields.`;
@@ -47,6 +48,7 @@ Return only the requested JSON fields.`;
 function buildUserPayload(facts: ProposalFacts): string {
   return JSON.stringify(
     {
+      scope: facts.scope ?? "scenario",
       city: facts.city,
       locationLabel: facts.locationLabel,
       evidenceStatus: facts.evidenceStatus,

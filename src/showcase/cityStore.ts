@@ -21,6 +21,8 @@ export type CityMap = {
   project: (lon: number, lat: number) => readonly [number, number];
   /** Center of every building, for "what is near this fix". */
   buildingPoints: [number, number][];
+  /** OpenStreetMap building type for each entry of buildingPoints. */
+  buildingKinds: string[];
   /** Path2D strings in scene units (x right, z down). */
   roads: string;
   walks: string;
@@ -50,8 +52,10 @@ type State = {
    * A spot the camera should fly to, with a counter so repeats still fire.
    * `distance`, when set, also zooms to that camera distance.
    */
-  fly: { x: number; z: number; id: number; distance?: number } | null;
+  fly: { x: number; z: number; id: number; distance?: number; instant?: boolean } | null;
   pin: AddressPin | null;
+  /** The city on screen, for labels and offline drafts. */
+  placeLabel: string;
 };
 
 let state: State = {
@@ -59,6 +63,7 @@ let state: State = {
   pose: { x: 0, z: 0, dirX: 0, dirZ: -1, distance: 60 },
   fly: null,
   pin: null,
+  placeLabel: "Wellesley, MA",
 };
 const listeners = new Set<() => void>();
 
@@ -85,6 +90,10 @@ export function publishMap(map: CityMap) {
   emit({ map, pin: null });
 }
 
+export function setPlaceLabel(placeLabel: string) {
+  if (state.placeLabel !== placeLabel) emit({ placeLabel });
+}
+
 export function setPin(pin: AddressPin | null) {
   emit({ pin });
 }
@@ -104,7 +113,8 @@ export function publishPose(pose: CameraPose) {
   emit({ pose });
 }
 
-export function flyTo(x: number, z: number, options: { distance?: number } = {}) {
+/** Glide the camera to a spot; `instant` teleports instead. */
+export function flyTo(x: number, z: number, options: { distance?: number; instant?: boolean } = {}) {
   emit({ fly: { x, z, id: (state.fly?.id ?? 0) + 1, ...options } });
 }
 

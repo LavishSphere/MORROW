@@ -107,5 +107,5 @@ test("a loaded city becomes a basemap the glass city can rebuild from", async ()
   const city = await readFile("src/showcase/scene/City.tsx", "utf8");
   assert.match(slot, /neighborhoodGeoJson\(neighborhood\)/);
   assert.match(slot, /geoJson=\{geoJson\}/);
-  assert.match(city, /export function City\(\{ geoJson \}/);
+  assert.match(city, /export function City\(\{ geoJson, reducedMotion = false \}/);
 });

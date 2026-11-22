@@ -16,7 +16,7 @@ export function ProposalIssuePicker() {
       <h3 className="proposal-issues__title">Issues in this proposal</h3>
       {picked.length === 0 ? (
         <p className="propose-sheet__lead">
-          Only the showcase curb ramp so far. Improve issues, or tick “Add to proposal” in Improve.
+          No issues picked yet. Improve issues on the map, or tick “Add to proposal” in Improve.
         </p>
       ) : (
         <ul className="proposal-issues__list">
@@ -47,11 +47,17 @@ export function ProposalIssuePicker() {
 }
 
 /** The issues section of a finished proposal. */
-export function ProposalIssueFacts({ issues }: { issues: IssueFact[] }) {
+export function ProposalIssueFacts({
+  issues,
+  title = 'Additional issues',
+}: {
+  issues: IssueFact[]
+  title?: string
+}) {
   if (issues.length === 0) return null
   return (
     <section>
-      <h3>Additional issues</h3>
+      <h3>{title}</h3>
       <ul className="proposal-issues__facts">
         {issues.map((issue) => (
           <li key={issue.id}>

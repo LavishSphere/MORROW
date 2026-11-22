@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { resolveGenerateInput, resolveIssues } from "../packages/api/src/facts.ts";
-import { detectIssues, measureIssue } from "../shared/issues.ts";
+import { buildIssuesDraft, detectIssues, measureIssue } from "../shared/issues.ts";
 
 const town = JSON.parse(await readFile("data/wellesley/town.geojson", "utf8"));
 
@@ -78,13 +78,17 @@ test("Improve, Compare, and Propose use the map's issues", async () => {
   const gemini = await readFile("packages/api/src/draft/gemini.ts", "utf8");
 
   assert.match(city, /detectIssues\(source\)/);
-  assert.match(city, /<IssueLayer \/>/);
+  assert.match(city, /<IssueLayer reducedMotion=\{reducedMotion\} \/>/);
   assert.match(improve, /<IssueBrowser \/>/);
   assert.match(compare, /<IssueComparisons \/>/);
   assert.match(propose, /<ProposalIssuePicker \/>/);
-  assert.match(propose, /issueIds/);
+  assert.match(propose, /issueIds: \[\.\.\.chosen\]/);
   assert.match(editor, /<ProposalIssueFacts issues=\{facts\.issues \?\? \[\]\} \/>/);
   assert.match(api, /issueIds: req\.issueIds/);
+  // The showcase scenario is gone from the screens.
+  assert.equal(improve.includes('Showcase'), false);
+  assert.equal(compare.includes('compareByIds'), false);
+  assert.equal(propose.includes('getDemoScenario'), false);
   assert.match(app, /setMode\('improve'\)/);
   assert.match(schema, /issueIds: z\.array\(z\.string\(\)\.min\(1\)\.max\(120\)\)\.max\(12\)\.optional\(\)/);
   assert.match(gemini, /additionalIssues/);
@@ -99,4 +103,18 @@ test("a busy or slow Gemini moves on to the next model instead of hanging", asyn
   assert.match(gemini, /maxOutputTokens: 2048/);
   const api = await readFile("src/data/api.ts", "utf8");
   assert.match(api, /AbortSignal\.timeout\(55_000\)/);
+});
+
+test("a proposal can be the picked issues alone, with no showcase route", () => {
+  const ids = ["stairs-1328680411", "unmarked_crossing-856586352"];
+  const resolved = resolveGenerateInput({ issueIds: ids });
+  assert.equal(resolved.scenarioId, null);
+  assert.equal(resolved.facts.scope, "issues");
+  assert.equal(resolved.facts.issues?.length, 2);
+  assert.equal(resolved.facts.beforeMeters, null);
+  assert.equal(resolved.facts.evidenceStatus, "community_reported");
+  assert.throws(() => resolveGenerateInput({}), /Pick at least one issue/);
+  const draft = buildIssuesDraft(resolved.facts);
+  assert.match(draft.headline, /^Fix 2 walking barriers in Wellesley, MA$/);
+  assert.equal(draft.meetingTalkingPoints.length, 2);
 });
