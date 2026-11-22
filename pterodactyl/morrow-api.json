@@ -51,7 +51,7 @@
       "name": "Gemini model",
       "description": "Model id used only when GEMINI_API_KEY is set.",
       "env_variable": "GEMINI_MODEL",
-      "default_value": "gemini-2.0-flash",
+      "default_value": "gemini-3.8-flash",
       "user_viewable": true,
       "user_editable": true,
       "rules": "required|string|max:100",

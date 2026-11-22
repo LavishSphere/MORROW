@@ -25,7 +25,7 @@ Meters, evidence status, and sources are never taken from the client.
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | No | — | Server-side Google Gemini key. When unset, the deterministic template always runs. |
-| `GEMINI_MODEL` | No | `gemini-2.0-flash` | Model id for `@google/genai` |
+| `GEMINI_MODEL` | No | `gemini-3.8-flash` | First model to try. A retired or busy model is followed by other Flash models. |
 | `DATABASE_URL` | No | — | Tiger Data / PostGIS URL with TLS (`sslmode=require`). When unset or unreachable, the API uses the bundled dataset. |
 | `PORT` | No | `8787` | Listen port. `SERVER_PORT` wins when Pterodactyl sets it. |
 | `HOST` | No | `127.0.0.1` | Bind address. `0.0.0.0` when `SERVER_PORT` is set and `HOST` is empty. |

@@ -11,7 +11,13 @@ import {
   type GeminiProposalDraft,
 } from "./schema.ts";
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
+/** Tried in order when the preferred model is retired or at capacity. */
+const FALLBACK_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+] as const;
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -19,6 +25,16 @@ export function geminiConfigured(): boolean {
 
 export function geminiModel(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+export function modelCandidates(preferred = geminiModel()): string[] {
+  const seen = new Set<string>();
+  const ordered = [preferred, ...FALLBACK_MODELS];
+  return ordered.filter((id) => {
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 const PROMPT_CONTRACT = `Write an editable community advocacy proposal using ONLY the supplied facts.
@@ -77,18 +93,21 @@ export type GeminiDraftResult =
   | { ok: true; draft: DraftProposal }
   | { ok: false; reason: string };
 
-export async function draftWithGemini(
-  facts: ProposalFacts,
-): Promise<GeminiDraftResult> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, reason: "GEMINI_API_KEY not set" };
-  }
+function shouldTryNextModel(reason: string): boolean {
+  return /503|404|UNAVAILABLE|NOT_FOUND|high demand|no longer available/i.test(
+    reason,
+  );
+}
 
+async function requestDraft(
+  apiKey: string,
+  facts: ProposalFacts,
+  model: string,
+): Promise<GeminiDraftResult> {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: geminiModel(),
+      model,
       contents: `${PROMPT_CONTRACT}\n\nFacts:\n${buildUserPayload(facts)}`,
       config: {
         responseMimeType: "application/json",
@@ -116,4 +135,23 @@ export async function draftWithGemini(
     const message = err instanceof Error ? err.message : "Gemini call failed";
     return { ok: false, reason: message };
   }
+}
+
+export async function draftWithGemini(
+  facts: ProposalFacts,
+): Promise<GeminiDraftResult> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, reason: "GEMINI_API_KEY not set" };
+  }
+
+  let last: GeminiDraftResult = { ok: false, reason: "Gemini call failed" };
+  for (const model of modelCandidates()) {
+    const result = await requestDraft(apiKey, facts, model);
+    if (result.ok) return result;
+    last = result;
+    if (!shouldTryNextModel(result.reason)) return result;
+    console.error(`[@morrow/api] Gemini ${model} skipped:`, result.reason);
+  }
+  return last;
 }

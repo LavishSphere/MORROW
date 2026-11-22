@@ -156,8 +156,9 @@ const generateDraft = createStep({
         }
       } else {
         draft = buildTemplateDraft(inputData.facts);
+        console.error("[@morrow/api] Gemini draft skipped:", gemini.reason);
         warnings.push(
-          `Gemini unavailable (${gemini.reason}) — using deterministic template.`,
+          "Gemini did not return a draft. This proposal uses the template.",
         );
       }
     } else {

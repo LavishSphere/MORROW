@@ -73,7 +73,7 @@ Listens on `http://127.0.0.1:8787`. Vite proxies `/api` there during `npm run de
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | No | Server-only. When unset, generate uses the deterministic template. |
-| `GEMINI_MODEL` | No | Defaults to `gemini-2.0-flash`. |
+| `GEMINI_MODEL` | No | First model to try. Defaults to `gemini-3.8-flash`, then other Flash models if that one is retired or busy. |
 | `DATABASE_URL` | No | Tiger Data / PostGIS with TLS (`sslmode=require`). Unset → bundled dataset. |
 | `PORT` / `HOST` | No | Defaults `8787` / `127.0.0.1`. |
 | `MORROW_CORS_ORIGIN` | No | Exact origin, or omit for `*`. |
