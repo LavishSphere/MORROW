@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { MotionTracker, REBUILD_QUIET_MS, SETTLE_MS, whenCameraRests } from "../src/showcase/motion.ts";
 import { FramePace, FrameStrain, pickDpr } from "../src/showcase/viewBudget.ts";
 
-const still = Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 1 : 0));
+const still: number[] = Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 1 : 0));
 
 test("the camera counts as moving while it changes, and briefly after", () => {
   const motion = new MotionTracker();
